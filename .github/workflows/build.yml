@@ -1,0 +1,28 @@
+name: Build
+
+on:
+  push:
+    paths-ignore:
+      - 'spec/**'
+      - '**/*.md'
+      - 'LICENSE'
+  workflow_dispatch:
+
+jobs:
+  build-c64-boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      - name: Build c64-boot
+        working-directory: reference/host/6502/c64-boot
+        run: make
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: c64-boot
+          path: reference/host/6502/c64-boot/build/c64_boot.bin
