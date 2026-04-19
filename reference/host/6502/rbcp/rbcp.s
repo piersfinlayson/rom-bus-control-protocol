@@ -1,7 +1,6 @@
 ; rbcp.s — RBCP protocol library
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
-; RBCP specification version 0.1.0
-;
+
 ; No C64-specific references. All addresses come from rbcp_defs.s.
 ;
 ; All code is in the CODE segment (post-relocation, runs from RAM).
@@ -25,7 +24,7 @@
 
 ; RBCP_READ — compile-time constant only. No leading '(' or ca65 sees indirect.
 .macro RBCP_READ byte_val
-    lda RBCP_BASE_HI * $100 + (byte_val & $FF)
+    lda RBCP_CMD_HI * $100 + (byte_val & $FF)
 .endmacro
 
 ; ---------------------------------------------------------------------------
@@ -66,12 +65,12 @@ rbcp_send_cmd:
     lda rbcp_zp_0
     sta rbcp_sm_group+1
 rbcp_sm_group:
-    lda RBCP_BASE_HI * $100 ; GROUP — lo byte patched above
+    lda RBCP_CMD_HI * $100 ; GROUP — lo byte patched above
 
     lda rbcp_zp_1
     sta rbcp_sm_cmd+1
 rbcp_sm_cmd:
-    lda RBCP_BASE_HI * $100 ; CMD — lo byte patched above
+    lda RBCP_CMD_HI * $100 ; CMD — lo byte patched above
 
     lda rbcp_zp_4
     beq rbcp_send_done
@@ -81,7 +80,7 @@ rbcp_send_arg_loop:
     lda rbcp_arg0, y
     sta rbcp_sm_arg+1
 rbcp_sm_arg:
-    lda RBCP_BASE_HI * $100 ; ARG — lo byte patched above
+    lda RBCP_CMD_HI * $100 ; ARG — lo byte patched above
     iny
     dex
     bne rbcp_send_arg_loop
@@ -172,7 +171,10 @@ rbcp_cr_ok:
 ;                  → check_response.
 ; Returns carry clear = success, carry set = failure. Clobbers: A, X, Y.
 ; ---------------------------------------------------------------------------
-
+; On failure, rbcp_zp_5 holds the stage that failed:
+;   1 = token poll timeout (command not received)
+;   2 = progress poll timeout (received but never completed)
+;   3 = response = FAILED
 .export rbcp_issue_cmd
 rbcp_issue_cmd:
     tay
@@ -180,42 +182,129 @@ rbcp_issue_cmd:
     tya
     jsr rbcp_send_cmd
     jsr rbcp_poll_token
-    bcs rbcp_ic_fail
-    jsr rbcp_poll_progress
-    bcs rbcp_ic_fail
-    jsr rbcp_check_response
-    rts
-rbcp_ic_fail:
+    bcc @tok_ok
+    lda #1
+    sta rbcp_zp_5
     sec
+    rts
+@tok_ok:
+    jsr rbcp_poll_progress
+    bcc @prog_ok
+    lda #2
+    sta rbcp_zp_5
+    sec
+    rts
+@prog_ok:
+    jsr rbcp_check_response
+    bcc @rsp_ok
+    lda #3
+    sta rbcp_zp_5
+    sec
+    rts
+@rsp_ok:
+    clc
     rts
 
 ; ---------------------------------------------------------------------------
 ; Command helpers
 ; ---------------------------------------------------------------------------
 
-.export rbcp_cmd_enter_cmd_resp
-rbcp_cmd_enter_cmd_resp:
+; ---------------------------------------------------------------------------
+; The spec defines a reset sequence as being:
+; - 4 x resets (no knock)
+; - pause
+; - 1 x knock
+; - 1 x reset
+; - pause
+;
+; Two different methods are provided for each stage so the host can decide
+; what pause to include between them (as it depends on clock speed, etc.).
+; ---------------------------------------------------------------------------
+rbcp_cmd_reset:
+    lda #RBCP_GRP_RESET
+    sta rbcp_zp_0
+    lda #RBCP_CMD_RESET
+    sta rbcp_zp_1
+    lda #0
+    jmp rbcp_send_cmd
+
+.export rbcp_reset_stage_1
+rbcp_reset_stage_1:
+    jsr rbcp_cmd_reset
+    jsr rbcp_cmd_reset
+    jsr rbcp_cmd_reset
+    jsr rbcp_cmd_reset
+    rts
+
+.export rbcp_reset_stage_2
+rbcp_reset_stage_2:
+    jsr rbcp_knock
+    jsr rbcp_cmd_reset
+    rts
+
+; ---------------------------------------------------------------------------
+; This is more complex than the other commands because it needs to first
+; confirm the back channel is live by polling for pending/complete.
+; A0 = location, A1 = size_id (caller sets rbcp_arg0/1).
+; ---------------------------------------------------------------------------
+.export rbcp_cmd_config_and_enter_cmd_resp
+rbcp_cmd_config_and_enter_cmd_resp:
     lda #RBCP_GRP_CTRL
     sta rbcp_zp_0
-    lda #RBCP_CMD_ENTER_CMD_RESP
+    lda #RBCP_CMD_CONFIG_AND_ENTER_CMD_RESP
+    sta rbcp_zp_1
+    lda #RBCP_COMPLETE
+    sta rbcp_arg2
+    lda #RBCP_STATUS_OK
+    sta rbcp_arg3
+    lda #4
+    jsr rbcp_send_cmd
+
+    ; Poll progress until pending or complete — confirms back channel is live
+.if RBCP_POLL_TIMEOUT > 0
+    ldx #<RBCP_POLL_TIMEOUT
+.endif
+@poll_active:
+    lda RBCP_PROGRESS_ADDR
+    cmp #RBCP_PENDING
+    beq @poll_complete
+    cmp #RBCP_COMPLETE
+    beq @check_response
+.if RBCP_POLL_TIMEOUT > 0
+    dex
+    bne @poll_active
+    sec
+    rts
+.else
+    jmp @poll_active
+.endif
+
+@poll_complete:
+    jsr rbcp_poll_progress
+    bcs @fail
+
+@check_response:
+    jsr rbcp_check_response
+    rts
+
+@fail:
+    sec
+    rts
+
+.export rbcp_cmd_get_ram_slot_info_all
+rbcp_cmd_get_ram_slot_info_all:
+    lda #RBCP_GRP_READ
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_RAM_SLOT_INFO_ALL
     sta rbcp_zp_1
     lda #0
     jmp rbcp_issue_cmd
 
-.export rbcp_cmd_get_ram_slot_info
-rbcp_cmd_get_ram_slot_info:
+.export rbcp_cmd_get_flash_slot_info_all
+rbcp_cmd_get_flash_slot_info_all:
     lda #RBCP_GRP_READ
     sta rbcp_zp_0
-    lda #RBCP_CMD_GET_RAM_SLOT
-    sta rbcp_zp_1
-    lda #0
-    jmp rbcp_issue_cmd
-
-.export rbcp_cmd_get_flash_slot_info
-rbcp_cmd_get_flash_slot_info:
-    lda #RBCP_GRP_READ
-    sta rbcp_zp_0
-    lda #RBCP_CMD_GET_FLASH_SLOT
+    lda #RBCP_CMD_GET_FLASH_SLOT_INFO_ALL
     sta rbcp_zp_1
     lda #0
     jmp rbcp_issue_cmd
@@ -242,3 +331,21 @@ rbcp_cmd_switch_and_exit:
     sta rbcp_zp_1
     lda #1
     jmp rbcp_send_cmd
+
+.export rbcp_cmd_get_device_type
+rbcp_cmd_get_device_type:
+    lda #RBCP_GRP_READ
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_DEVICE_TYPE
+    sta rbcp_zp_1
+    lda #0
+    jmp rbcp_issue_cmd
+
+.export rbcp_cmd_get_device_version
+rbcp_cmd_get_device_version:
+    lda #RBCP_GRP_READ
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_DEVICE_VERSION
+    sta rbcp_zp_1
+    lda #0
+    jmp rbcp_issue_cmd

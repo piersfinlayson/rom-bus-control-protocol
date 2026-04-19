@@ -16,11 +16,13 @@
 .import c64_scan_key
 
 .import rbcp_knock
-.import rbcp_cmd_enter_cmd_resp
-.import rbcp_cmd_get_ram_slot_info
-.import rbcp_cmd_get_flash_slot_info
+.import rbcp_reset_stage_1, rbcp_reset_stage_2
+.import rbcp_cmd_config_and_enter_cmd_resp
+.import rbcp_cmd_get_ram_slot_info_all
+.import rbcp_cmd_get_flash_slot_info_all
 .import rbcp_cmd_load_slot
 .import rbcp_cmd_switch_and_exit
+.import rbcp_cmd_get_device_type, rbcp_cmd_get_device_version
 
 .import row_off_lo
 .import row_scr_hi
@@ -38,10 +40,12 @@
 
 RESET_VECTOR    = $FFFC
 MENU_HEADER_ROW = 1
-MENU_PROMPT_ROW = 3
-MENU_ENTRY_ROW0 = 5
-MENU_FOOTER_ROW = 23
-MAX_DISPLAY     = 15
+MENU_COPYRIGHT_ROW = 3
+MENU_PROMPT_ROW = 5
+MENU_ENTRY_ROW0 = 7
+MENU_FOOTER_ROW = 22
+MENU_DEVICE_ROW = 24
+MAX_DISPLAY     = 14
 
 ; ---------------------------------------------------------------------------
 ; BSS — RAM-resident variables
@@ -49,9 +53,14 @@ MAX_DISPLAY     = 15
 
 .bss
 
-; Slot name buffer: 15 entries * 32 bytes = 480 bytes.
+; Slot name buffer: 14 entries * 32 bytes = 448 bytes.  Fits in 512-byte RBCP
+; data section, which itself includes an 8 byte header.
 ; Entry 0 = flash slot 1, entry N = flash slot N+1.
 slot_name_buf:  .res MAX_DISPLAY * 32
+status_line_buf: .res 32
+device_type_buf:    .res 24
+device_version_buf: .res 24
+device_line_buf:    .res 49
 
 var_total_ram:  .res 1
 var_active_ram: .res 1
@@ -79,6 +88,8 @@ var_cbm_held:   .res 1      ; $00 = C= held; non-zero = not held
 boot_entry:
     sei
     cld
+    ldx #$FF
+    txs                     ; set up stack
 
     jsr c64_hw_init         ; hardware init (in BOOT segment, safe from ROM)
 
@@ -156,20 +167,35 @@ boot_entry:
 ; ---------------------------------------------------------------------------
 
 boot_ram_entry:
+    ldy #COL_BLACK
     jsr c64_clear_screen
+    lda #VIC_CTRL1_VAL
+    sta VIC_CTRL1               ; Enable display
 
     ; ------------------------------------------------------------------
     ; RBCP common setup
     ; ------------------------------------------------------------------
 
-    jsr rbcp_knock
+    ; Spec defined reset sequence.
+    jsr rbcp_reset_stage_1
+    jsr pause
+    jsr rbcp_reset_stage_2
+    jsr pause
 
-    jsr rbcp_cmd_enter_cmd_resp
+    ; Enter command-response mode, with desired configuration:
+    ; - Back channel data section at start of ROM image
+    ; - 512 bytes long, including 8 byte header
+    jsr rbcp_knock
+    lda #RBCP_LOCATION_START
+    sta rbcp_arg0
+    lda #RBCP_SIZE_512
+    sta rbcp_arg1
+    jsr rbcp_cmd_config_and_enter_cmd_resp
     bcc @ok_enter
-    jmp err_generic
+    jmp err_no_cmd_resp
 @ok_enter:
 
-    jsr rbcp_cmd_get_ram_slot_info
+    jsr rbcp_cmd_get_ram_slot_info_all
     bcc @ok_ram
     jmp err_ram_info
 @ok_ram:
@@ -207,8 +233,12 @@ boot_ram_entry:
     jmp err_load
 @ok_load_auto:
 
-    lda var_target_ram
+    lda #1
+    ;lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
+
+    jsr pause
+
     jmp (RESET_VECTOR)
 
     ; ==================================================================
@@ -216,7 +246,63 @@ boot_ram_entry:
     ; ==================================================================
 
 path_menu:
-    jsr rbcp_cmd_get_flash_slot_info
+    ldy #COL_LIGHT_BLUE
+    sty VIC_BORDER
+    jsr c64_clear_screen
+
+    jsr rbcp_cmd_get_device_type
+    bcc @ok_devtype
+    jmp err_device_type
+@ok_devtype:
+    lda #<RBCP_DATA_ADDR
+    sta ZP_PTR_LO
+    lda #>RBCP_DATA_ADDR
+    sta ZP_PTR_HI
+    lda #<device_type_buf
+    sta ZP_TMP0
+    lda #>device_type_buf
+    sta ZP_TMP1
+    jsr buf_puts
+    lda #0
+    jsr buf_putc
+
+    jsr rbcp_cmd_get_device_version
+    bcc @ok_devver
+    jmp err_device_version
+@ok_devver:
+    lda #<RBCP_DATA_ADDR
+    sta ZP_PTR_LO
+    lda #>RBCP_DATA_ADDR
+    sta ZP_PTR_HI
+    lda #<device_version_buf
+    sta ZP_TMP0
+    lda #>device_version_buf
+    sta ZP_TMP1
+    jsr buf_puts
+    lda #0
+    jsr buf_putc
+
+    ; Build the device line
+    lda #<device_type_buf
+    sta ZP_PTR_LO
+    lda #>device_type_buf
+    sta ZP_PTR_HI
+    lda #<device_line_buf
+    sta ZP_TMP0
+    lda #>device_line_buf
+    sta ZP_TMP1
+    jsr buf_puts
+    lda #' '
+    jsr buf_putc
+    lda #<device_version_buf
+    sta ZP_PTR_LO
+    lda #>device_version_buf
+    sta ZP_PTR_HI
+    jsr buf_puts
+    lda #0
+    jsr buf_putc
+
+    jsr rbcp_cmd_get_flash_slot_info_all
     bcc @ok_flash
     jmp err_flash_info
 @ok_flash:
@@ -336,7 +422,7 @@ do_up:
     jsr unhighlight_selection
     dec var_selection
     jsr highlight_selection
-    jmp key_loop
+    jmp key_delay
 
 do_down:
     lda var_selection
@@ -347,6 +433,16 @@ do_down:
     jsr unhighlight_selection
     inc var_selection
     jsr highlight_selection
+    ; fall through
+
+key_delay:
+    ldx #0
+    ldy #0
+@delay_loop:
+    dex
+    bne @delay_loop
+    dey
+    bne @delay_loop
     jmp key_loop
 
 do_boot:
@@ -362,20 +458,37 @@ do_boot:
 @ok_load_menu:
     lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
+
+    ; No need to pause as we'll clear the screen before a reset
+    ldy #COL_BLACK
+    jsr c64_clear_screen
+    sty VIC_BORDER
+
     jmp (RESET_VECTOR)
+
+pause:
+    ldx #$04
+@pause_loop:
+    dex
+    bne @pause_loop
+    rts
 
 ; ===========================================================================
 ; Error handlers
 ; ===========================================================================
 
-err_generic:
-    lda #<msg_err_generic
+err_no_cmd_resp:
+    lda #COL_RED
+    sta VIC_BORDER
+    lda #<msg_err_no_cmd_resp
     sta ZP_PTR_LO
-    lda #>msg_err_generic
+    lda #>msg_err_no_cmd_resp
     sta ZP_PTR_HI
     jmp halt_with_msg
 
 err_ram_info:
+    lda #COL_RED
+    sta VIC_BORDER
     lda #<msg_err_ram_info
     sta ZP_PTR_LO
     lda #>msg_err_ram_info
@@ -383,6 +496,8 @@ err_ram_info:
     jmp halt_with_msg
 
 err_insuff_ram:
+    lda #COL_RED
+    sta VIC_BORDER
     lda #<msg_err_insuff_ram
     sta ZP_PTR_LO
     lda #>msg_err_insuff_ram
@@ -390,6 +505,8 @@ err_insuff_ram:
     jmp halt_with_msg
 
 err_flash_info:
+    lda #COL_RED
+    sta VIC_BORDER
     lda #<msg_err_flash_info
     sta ZP_PTR_LO
     lda #>msg_err_flash_info
@@ -397,13 +514,35 @@ err_flash_info:
     jmp halt_with_msg
 
 err_no_kernals:
+    lda #COL_RED
+    sta VIC_BORDER
     lda #<msg_err_no_kernals
     sta ZP_PTR_LO
     lda #>msg_err_no_kernals
     sta ZP_PTR_HI
     jmp halt_with_msg
 
+err_device_type:
+    lda #COL_RED
+    sta VIC_BORDER
+    lda #<msg_err_device_type
+    sta ZP_PTR_LO
+    lda #>msg_err_device_type
+    sta ZP_PTR_HI
+    jmp halt_with_msg
+
+err_device_version:
+    lda #COL_RED
+    sta VIC_BORDER
+    lda #<msg_err_device_version
+    sta ZP_PTR_LO
+    lda #>msg_err_device_version
+    sta ZP_PTR_HI
+    jmp halt_with_msg
+
 err_load:
+    lda #COL_RED
+    sta VIC_BORDER
     lda #<msg_err_load
     sta ZP_PTR_LO
     lda #>msg_err_load
@@ -411,17 +550,148 @@ err_load:
     ; fall through
 
 halt_with_msg:
+    ; Turn on the display if turned off
+    lda #VIC_CTRL1_VAL
+    sta VIC_CTRL1
+
+    ; Set colour for text
+    ldy #COL_LIGHT_BLUE
+    jsr c64_clear_screen
+
     lda #12
     sta ZP_TMP0
-    lda #1
+    lda #0
     sta ZP_TMP1
     jsr c64_print_at
+
+    jsr build_status_line
+
+    lda #<status_line_buf
+    sta ZP_PTR_LO
+    lda #>status_line_buf
+    sta ZP_PTR_HI
+    lda #13
+    sta ZP_TMP0
+    lda #0
+    sta ZP_TMP1
+    jsr c64_print_at
+
 @halt:
     jmp @halt
+
+; ---------------------------------------------------------------------------
+; buf_putc — writes A to (ZP_TMP0/1), advances ZP_TMP0/1. Clobbers Y.
+; ---------------------------------------------------------------------------
+buf_putc:
+    ldy #0
+    sta (ZP_TMP0), y
+    inc ZP_TMP0
+    bne @ret
+    inc ZP_TMP1
+@ret:
+    rts
+
+; ---------------------------------------------------------------------------
+; buf_puts — copies null-terminated string from (ZP_PTR_LO/HI) to (ZP_TMP0/1).
+; Advances both pointers. Clobbers A, Y.
+; ---------------------------------------------------------------------------
+buf_puts:
+@loop:
+    ldy #0
+    lda (ZP_PTR_LO), y
+    beq @done
+    jsr buf_putc
+    inc ZP_PTR_LO
+    bne @loop
+    inc ZP_PTR_HI
+    bne @loop           ; always
+@done:
+    rts
+
+; ---------------------------------------------------------------------------
+; byte_to_hex — writes A as two uppercase hex chars via buf_putc.
+; Clobbers A, X, Y.
+; ---------------------------------------------------------------------------
+byte_to_hex:
+    tax
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    jsr @nibble
+    txa
+    and #$0F
+@nibble:
+    cmp #10
+    bcc @digit
+    adc #6
+@digit:
+    adc #'0'
+    jmp buf_putc        ; tail call
+
+; ---------------------------------------------------------------------------
+; build_status_line
+; ---------------------------------------------------------------------------
+
+.macro set_ptr addr
+    lda #<addr
+    sta ZP_PTR_LO
+    lda #>addr
+    sta ZP_PTR_HI
+.endmacro
+
+build_status_line:
+    lda #<status_line_buf
+    sta ZP_TMP0
+    lda #>status_line_buf
+    sta ZP_TMP1
+
+    set_ptr str_sl_stg
+    jsr buf_puts
+    lda rbcp_zp_5
+    adc #'0'            ; carry clear after set_ptr sequence
+    jsr buf_putc
+
+    set_ptr str_sl_grp
+    jsr buf_puts
+    lda rbcp_zp_0
+    jsr byte_to_hex
+
+    set_ptr str_sl_cmd
+    jsr buf_puts
+    lda rbcp_zp_1
+    jsr byte_to_hex
+
+    set_ptr str_sl_tok
+    jsr buf_puts
+    lda RBCP_TOKEN_LSB_ADDR
+    jsr byte_to_hex
+
+    set_ptr str_sl_prog
+    jsr buf_puts
+    lda RBCP_PROGRESS_ADDR
+    jsr byte_to_hex
+
+    set_ptr str_sl_resp
+    jsr buf_puts
+    lda RBCP_RESPONSE_ADDR
+    jsr byte_to_hex
+
+    lda #0
+    jsr buf_putc
+    rts
+
+str_sl_stg:  .byte "STG:", 0
+str_sl_grp:  .byte " GRP:", 0
+str_sl_cmd:  .byte " CMD:", 0
+str_sl_tok:  .byte " TOK:", 0
+str_sl_prog: .byte " PRG:", 0
+str_sl_resp: .byte " RSP:", 0
 
 ; ===========================================================================
 ; draw_menu
 ; Draws header, prompt, footer, and all slot name entries.
+; Relies on c64_print_at to not clobber rbcp_zp_0..4.
 ; ===========================================================================
 
 draw_menu:
@@ -430,6 +700,16 @@ draw_menu:
     lda #>str_header
     sta ZP_PTR_HI
     lda #MENU_HEADER_ROW
+    sta ZP_TMP0
+    lda #1
+    sta ZP_TMP1
+    jsr c64_print_at
+
+    lda #<str_copright
+    sta ZP_PTR_LO
+    lda #>str_copright
+    sta ZP_PTR_HI
+    lda #MENU_COPYRIGHT_ROW
     sta ZP_TMP0
     lda #1
     sta ZP_TMP1
@@ -453,6 +733,27 @@ draw_menu:
     sta ZP_TMP0
     lda #1
     sta ZP_TMP1
+    jsr c64_print_at
+
+    ; Output the device info line right aligned
+    lda #<device_line_buf
+    sta ZP_PTR_LO
+    lda #>device_line_buf
+    sta ZP_PTR_HI
+    ldy #0
+@dlen:
+    lda (ZP_PTR_LO), y
+    beq @dlen_done
+    iny
+    bne @dlen
+@dlen_done:
+    tya
+    eor #$FF
+    clc
+    adc #41             ; ~len + 41 = 40 - len
+    sta ZP_TMP1
+    lda #24
+    sta ZP_TMP0
     jsr c64_print_at
 
     ; Draw slot names
@@ -489,6 +790,12 @@ draw_menu:
     adc rbcp_zp_4
     sta ZP_PTR_HI
 
+    ; Skip byte 0 (ROM type field)
+    inc ZP_PTR_LO
+    bne @no_carry
+    inc ZP_PTR_HI
+
+@no_carry:
     lda rbcp_zp_0
     clc
     adc #MENU_ENTRY_ROW0
@@ -561,18 +868,20 @@ clear_arrow:
     rts
 
 ; ===========================================================================
-; String data (RODATA — accessed via ROM addresses)
+; String data (RODATA — accessed via RAM so in code)
 ; ===========================================================================
 
-.rodata
-
-str_header:         .byte "RBCP KERNAL BOOTLOADER", 0
+str_header:         .byte "      C64 RBCP KERNAL BOOTLOADER", 0
+str_copright:       .byte "         (C) 2026 PIERS.ROCKS", 0
 str_prompt:         .byte "SELECT KERNAL:", 0
-str_footer:         .byte "UP/DOWN TO MOVE, RETURN TO BOOT", 0
+str_footer:         .byte "   UP/DOWN TO MOVE, RETURN TO BOOT", 0
 
-msg_err_generic:    .byte "RBCP ERROR: COMMAND FAILED", 0
-msg_err_ram_info:   .byte "RBCP ERROR: RAM SLOT INFO FAILED", 0
-msg_err_insuff_ram: .byte "RBCP ERROR: INSUFFICIENT RAM SLOTS", 0
-msg_err_flash_info: .byte "RBCP ERROR: FLASH SLOT INFO FAILED", 0
-msg_err_no_kernals: .byte "NO KERNALS FOUND TO BOOT", 0
-msg_err_load:       .byte "RBCP ERROR: LOAD FAILED", 0
+msg_err_no_cmd_resp:    .byte "RBCP ERROR: FAILED TO ENTER CMD RESP", 0
+msg_err_ram_info:       .byte "RBCP ERROR: RAM SLOT INFO FAILED", 0
+msg_err_insuff_ram:     .byte "RBCP ERROR: INSUFFICIENT RAM SLOTS", 0
+msg_err_flash_info:     .byte "RBCP ERROR: FLASH SLOT INFO FAILED", 0
+msg_err_device_type:    .byte "RBCP ERROR: GET DEVICE TYPE FAILED", 0
+msg_err_device_version: .byte "RBCP ERROR: GET DEVICE VERSION FAILED", 0
+msg_err_no_kernals:     .byte "NO KERNALS FOUND TO BOOT", 0
+msg_err_load:           .byte "RBCP ERROR: LOAD FAILED", 0
+msg_halt:               .byte "HALTING", 0

@@ -44,7 +44,7 @@ CIA2_PRA        = $DD00
 CIA2_DDRA       = $DD02
 
 CIA2_DDRA_VAL   = %00000011 ; PA0, PA1 as output
-CIA2_PRA_VAL    = %11111100 ; bank 0 ($0000-$3FFF)
+CIA2_PRA_VAL    = %11111111 ; bank 0 ($0000-$3FFF)
 
 ; ---------------------------------------------------------------------------
 ; Screen / colour RAM
@@ -69,7 +69,20 @@ CHAR_SPACE_REV  = $A0       ; reversed space
 
 COL_BLACK       = 0
 COL_WHITE       = 1
+COL_RED         = 2
+COL_CYAN        = 3
+COL_PURPLE      = 4
+COL_GREEN       = 5
+COL_BLUE        = 6
+COL_YELLOW      = 7
+COL_ORANGE      = 8
+COL_BROWN       = 9
+COL_LIGHT_RED   = 10
+COL_DARK_GREY   = 11
+COL_MED_GREY    = 12
+COL_LIGHT_GREEN = 13
 COL_LIGHT_BLUE  = 14
+COL_LIGHT_GREY  = 15
 
 ; ---------------------------------------------------------------------------
 ; Keyboard matrix
@@ -81,17 +94,21 @@ COL_LIGHT_BLUE  = 14
 KEY_CBM_COL     = %01111111
 KEY_CBM_ROW_BIT = %00100000
 
-; RETURN: column 1, row 0
-KEY_RET_COL     = %11111101
-KEY_RET_ROW_BIT = %00000001
+; RETURN: column 0, row 1
+KEY_RET_COL     = %11111110
+KEY_RET_ROW_BIT = %00000010
 
-; Cursor up/down: column 7, row 7
-KEY_CRS_COL     = %01111111
+; Cursor up/down: column 0, row 7
+KEY_CRS_COL     = %11111110
 KEY_CRS_ROW_BIT = %10000000
 
 ; Left SHIFT: column 1, row 7
 KEY_LSH_COL     = %11111101
 KEY_LSH_ROW_BIT = %10000000
+
+; Right SHIFT: column 6, row 4
+KEY_RSH_COL     = %10111111
+KEY_RSH_ROW_BIT = %00010000
 
 ; Key tokens
 KEY_NONE        = $00
@@ -107,10 +124,10 @@ DEBOUNCE_COUNT  = 200
 
 ; ---------------------------------------------------------------------------
 ; Zero-page addresses — shared with rbcp_defs.s
-; Hardware/boot scratch at $EB-$EE.
+; Hardware/boot scratch at $D0-$D3.
 ; ---------------------------------------------------------------------------
 
-ZP_PTR_LO  = $EB
-ZP_PTR_HI  = $EC
-ZP_TMP0    = $ED
-ZP_TMP1    = $EE
+ZP_PTR_LO  = $D0
+ZP_PTR_HI  = $D1
+ZP_TMP0    = $D2
+ZP_TMP1    = $D3

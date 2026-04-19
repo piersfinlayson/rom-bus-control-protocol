@@ -97,6 +97,29 @@ RBCP defines five operational modes. Two are currently specified; three are rese
 
 Out-Stream, In-Stream and Bi-Stream are reserved for future definition. Their definitions, including any protocol changes required to support them, are subject to change.
 
+When operating in Command mode:
+- Every command is a separate session, framed by a knock. The device processes each command immediately on receipt and does not maintain any state between commands.
+- There is no back-channel, so the device cannot acknowledge receipt or indicate success or failure. The host must assume that any well-formed command was received and is being processed, and that any malformed command was not received.
+- As the device is unable to confirm completion of a command, the host should allow a reasonable amount of time for the device to process each command before issuing the next one. What constitutes a reasonable amount of time is currently left to a device implementation and may vary by command.  For this reason, Command-Response mode is much preferred where possible. 
+
+---
+
+## Communication Initiation - Resetting the Device
+
+While not strictly necessary, particularly if a device was powered on at the same time as a device, it is highly recommended to reset the device before initiating communication. This ensures that the device starts in a known state and can help prevent synchronization issues which can be caused by the host reseting mid-communication.  While this reset is unlikely to be foolproof (no host-initiated reset can be), this significant reduces the likelihood of failure to synchronize at the start of a communication.
+
+The recommended reset sequence is:
+1. Issue the RBCP_RESET command 4 times in succession, with no knock in-front or in-between them.
+2. Pause to allow the device to reset.  The amount of time required is implementation-specific, but a reset is likely to be a fast operation on the device.
+3. Issue a knock followed by an RBCP_RESET.
+4. Pause to allow the device to reset.  The amount of time required is implementation-specific, but a reset is likely to be a fast operation on the device.
+
+This sequence ensures that, if the device is already in command-response mode, even mid-command, it should detect that RBCP_RESET and reset (exiting command-response mode).  If it were originally in command mode, even mid command, the number of bytes sent is longer than any command, and hence the device will end command processing.
+
+The knock and then RBCP_RESET ensures that the device then resets if it were originally in command mode.
+
+The group and command bytes of RBCP_RESET are deliberately chosen to be mode unique across all commands, and identical to each other, meaning that whether the device was expecting a group or command byte next, it will receive the reset group or command value.
+
 ---
 
 ## Session Initiation — The Knock
@@ -140,6 +163,7 @@ The maximum argument count for any command defined by this version of the protoc
 | 0x00 | Control | Command, Command-Response | Session and mode management |
 | 0x01 | Read | Command-Response only | Query the device for information |
 | 0x02 | Modify | Command, Command-Response | Change device state |
+| 0xAA | Reset | Command, Command-Response | Reset the device's RBCP implementation |
 
 ---
 
@@ -150,18 +174,27 @@ The maximum argument count for any command defined by this version of the protoc
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
 | 0x00 | NOP | 0 | No operation. In command-response mode the device acknowledges via the standard header sequence, allowing the host to verify the device is alive and processing commands. |
-| 0x01 | CONFIG_CMD_RESP | 4: A0=location, A1=size, A2=complete, A3=status-OK | Configures command-response mode parameters. If not issued, the device uses the [protocol defaults](#protocol-defaults). May be issued in either mode. A0 indexes the [location table](#location-table) defining where the back-channel region sits within the slot. A1 indexes the [size table](#size-table) defining the data section size. A2 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A3 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. See [Protocol Defaults](#protocol-defaults). CONFIG_CMD_RESP cannot be confirmed: it may be issued in either mode, but if issued before ENTER_CMD_RESP no back-channel exists to verify reception. A misreceived CONFIG_CMD_RESP will cause the host to poll the wrong location or interpret the wrong bytes after entering command-response mode. Hosts should treat any subsequent failure to observe a token increment or progress transition as a possible CONFIG_CMD_RESP misconfiguration. |
-| 0x02 | ENTER_CMD_RESP | 0 | Enters command-response mode using the parameters set by CONFIG_CMD_RESP, or [protocol defaults](#protocol-defaults) if not configured. If already in command-response mode, this command succeeds. |
-| 0x03 | EXIT_CMD_RESP_ACK | 0 | Exits command-response mode. The device completes the full command processing sequence, including setting progress = complete, before exiting command-response mode. The host should poll progress for complete as normal. Once complete is observed, the device has exited command-response mode and the back-channel region is no longer maintained.|
-| 0x04 | EXIT_CMD_RESP_SILENT | 0 | Exits command-response mode without updating the [response header](#response-header). |
-| 0x05 | SWITCH_AND_EXIT | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. |
+| 0x01 | CONFIG_CMD_RESP | 4: A0=location, A1=size, A2=complete, A3=status-OK | Configures command-response mode parameters. If not issued, the device uses the [protocol defaults](#protocol-defaults). May be issued in either mode. A0 indexes the [location table](#location-table) defining where the back-channel region sits within the slot. A1 indexes the [size table](#size-table) defining the data section size. A2 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A3 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. See [Protocol Defaults](#protocol-defaults). CONFIG_CMD_RESP cannot be confirmed: it may be issued in either mode, but if issued before ENTER_CMD_RESP no back-channel exists to verify reception. A misreceived CONFIG_CMD_RESP will cause the host to poll the wrong location or interpret the wrong bytes after entering command-response mode. Hosts should treat any subsequent failure to observe a token increment or progress transition as a possible CONFIG_CMD_RESP misconfiguration. Not supported when in command-response mode. |
+| 0x02 | ENTER_CMD_RESP | 0 | Enters command-response mode using the parameters set by CONFIG_CMD_RESP, or [protocol defaults](#protocol-defaults) if not configured. If already in command-response mode, this command succeeds. Not supported when in command-response mode. |
+| 0x03 | CONFIG_AND_ENTER_CMD_RESP | 4: As per CONFIG_CMD_RESP | Configures command-response mode parameters and enters command-response mode in a single command. This is atomic and therefore safer than issuing CONFIG_CMD_RESP followed by ENTER_CMD_RESP, which risks desynchronization if a command is misreceived between them. The arguments are the same as for CONFIG_CMD_RESP. Not supported when in command-response mode. |
+| 0x04 | EXIT_CMD_RESP_ACK | 0 | Exits command-response mode. The device completes the full command processing sequence, including setting progress = complete, before exiting command-response mode. The host should poll progress for complete as normal. Once complete is observed, the device has exited command-response mode and the back-channel region is no longer maintained.|
+| 0x05 | EXIT_CMD_RESP_SILENT | 0 | Exits command-response mode without updating the [response header](#response-header). |
+| 0x06 | SWITCH_AND_EXIT | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. |
+
+CMD 0xAA is reserved and must never be assigned.
 
 ### Group 0x01 — Read
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
-| 0x00 | GET_FLASH_SLOT_INFO | 0 | Requests the device to populate the command-response region with information about available flash ROM slots. See [GET_FLASH_SLOT_INFO Response Format](#get_flash_slot_info-response-format). |
-| 0x01 | GET_RAM_SLOT_INFO | 0 | Requests the device to populate the command-response region with information about available RAM slots. See [GET_RAM_SLOT_INFO Response Format](#get_ram_slot_info-response-format). |
+| 0x00 | GET_FLASH_SLOT_COUNT | 0 | Requests the device to write the total number of available (populated, non plugin) flash slots available on the device into the first byte of the command-response region. See [GET_FLASH_SLOT_COUNT Response Format](#get_flash_slot_count-response-format). |
+| 0x01 | GET_FLASH_SLOT_INFO | 1: A0=slot | Requests the device to populate the command-response region with information about the specified flash ROM slot. See [GET_FLASH_SLOT_INFO Response Format](#get_flash_slot_info-response-format). Only succeeds if there i sufficient space, which means a back channel size of at least 64 bytes. |
+| 0x02 | GET_FLASH_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available (populated, non plugin) flash ROM slots. This provides the entirety of the information exposed by GET_FLASH_SLOT_COUNT and GET_FLASH_SLOT_INFO in a single request response. See [GET_FLASH_SLOT_INFO_ALL Response Format](#get_flash_slot_info_all-response-format). |
+| 0x03 | GET_RAM_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available RAM slots. See [GET_RAM_SLOT_INFO Response Format](#get_ram_slot_info-response-format). |
+| 0x04 | GET_DEVICE_TYPE | 0 | Requests the device to write its type (e.g. One ROM) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. See [GET_DEVICE_TYPE Response Format](#get_device_type-response-format). |
+| 0x05 | GET_DEVICE_VERSION | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
+
+CMD 0xAA is reserved and must never be assigned.
 
 ### Group 0x02 — Modify
 
@@ -170,6 +203,15 @@ The maximum argument count for any command defined by this version of the protoc
 | 0x00 | SLOT_POKE | 5: A0=slot, A1/A2/A3=24-bit address (little-endian), A4=byte | Writes a single byte into the specified RAM slot at the specified address. May be used for patching vectors or other known locations prior to activating that slot or entering command-response mode. The target slot need not be active. In fact, patching multi-byte values such as interrupt vectors should only be done to inactive slots. Because SLOT_POKE writes one byte at a time, there is no atomic write of a 16-bit value — a vector partially written to an active slot will be transiently inconsistent and will corrupt any interrupt that occurs between the two writes. The safe pattern is: LOAD_SLOT the target image into an inactive RAM slot, issue SLOT_POKE commands to patch any vectors in that inactive slot, then issue SWITCH_AND_EXIT to make it active. The vector bytes are consistent at the instant the slot becomes active. |
 | 0x01 | SWITCH_SLOT | 1: A0=slot | Activates the specified RAM slot. |
 | 0x02 | LOAD_SLOT | 2: A0=RAM slot, A1=flash slot | Copies the specified ROM image from the slot on the ROM into the specified RAM slot. Does not activate the slot. |
+| 0x03 | SLOT_POKE_ALL_BYTE | 2: A0=RAM slot, A1=byte | Fills the specified RAM slot with the specified byte. Does not activate the slot. |
+
+CMD 0xAA is reserved and must never be assigned.
+
+### Group 0xAA - Reset
+
+| CMD | Name | Args | Description |
+|-----|------|------|-------------|
+| 0xAA | RBCP_RESET | 0 | Resets the device's RBCP implementation. This can be used to set the device implementation to a known good state before issuing subsequent commands. This command doesn't change any flash or RAM slot contents nor does it change the active RAM slot. There is never any respons from this command - if it is executed in command-response mode, the device immediately and silently exits from that mode. |
 
 ---
 
@@ -246,7 +288,7 @@ The device sets progress = pending before incrementing the token, ensuring no fa
 
 The location and size of the back-channel region within the RAM slot are configured independently via two table-indexed bytes supplied as arguments to [CONFIG_CMD_RESP](#group-0x00--control). The device guarantees that all addresses in the active slot outside the back-channel region are served unmodified.
 
-The back-channel region is always 4-byte aligned. The region consists of the 8-byte [response header](#response-header) followed immediately by the data section.
+The back-channel region is always 4-byte aligned. The region consists of the 8-byte [response header](#response-header) followed immediately by any remaining data section.
 
 ### Location Table
 
@@ -263,32 +305,48 @@ For location 0x01 the device is responsible for computing the start address as s
 
 ### Size Table
 
-Defines the size of the data section, which is appended immediately after the response header.
+Defines the size of the data section, which includes the response header.
 
 | ID | Data Section Size |
 |----|------------------|
-| 0x00 | 0 bytes (header only) |
-| 0x01 | 8 bytes |
-| 0x02 | 16 bytes |
-| 0x03 | 32 bytes |
-| 0x04 | 64 bytes |
-| 0x05 | 128 bytes |
-| 0x06 | 256 bytes |
-| 0x07 | 512 bytes |
-| 0x08 | 1024 bytes |
-| 0x09 | 2048 bytes |
-| 0x0A | 4096 bytes |
-| 0x0B | 8192 bytes |
-| 0x0C | 16384 bytes |
-| 0x0D | 32768 bytes |
-| 0x0E–0x7F | Reserved |
+| 0x00 | 8 bytes (header only) |
+| 0x01 | 16 bytes |
+| 0x02 | 32 bytes |
+| 0x03 | 64 bytes |
+| 0x04 | 128 bytes |
+| 0x05 | 256 bytes |
+| 0x06 | 512 bytes |
+| 0x07 | 1024 bytes |
+| 0x08 | 2048 bytes |
+| 0x09 | 4096 bytes |
+| 0x0A | 8192 bytes |
+| 0x0B | 16384 bytes |
+| 0x0C | 32768 bytes |
+| 0x0D–0x7F | Reserved |
 | 0x80–0xFF | Implementation-specific |
 
-The total region size is always the data section size plus 8 bytes for the response header.
+The total region size is always the data section including the first 8 bytes which is reserved for the response header.
 
 ---
 
+## GET_FLASH_SLOT_COUNT Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | total_count | Total number of available (populated, non plugin) flash slots on the device. The host can use this information to determine valid slot indices for subsequent GET_FLASH_SLOT_INFO commands. |
+
 ## GET_FLASH_SLOT_INFO Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | rom_type | ROM type identifier for the specified flash slot. See [ROM Types](#rom-types). |
+| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Not null-terminated — all 31 bytes may be used. A zero length name is a valid response where the device has no name associated with the slot. |
+
+## GET_FLASH_SLOT_INFO_ALL Response Format
 
 The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
 
@@ -308,11 +366,13 @@ Each complete record is 32 bytes:
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | rom_type | ROM type identifier |
-| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Not null-terminated — all 31 bytes may be used. A fully zeroed name is valid. |
+| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Not null-terminated — all 31 bytes may be used. A zero length name is a valid response where the device has no name associated with the slot. |
 
-Records follow the preamble in slot index order. `whole_count` complete records are returned first. If `partial_flag` is 0x01, a truncated record follows, containing as many bytes of that record as the data section permits.
+Records follow the preamble in slot index order. `whole_count` complete records are returned first. If `partial_flag` is 0x01, a truncated record follows, containing as many bytes of that record as the data section (minus space for header) permits.
 
 The host can determine whether all slots were returned by comparing `whole_count` (plus `partial_flag`) against `total_count`.
+
+If the data section is only the size of the header, the host may return status-OK, but no record data is present.
 
 ---
 
@@ -328,6 +388,22 @@ The response data section begins immediately after the [response header](#respon
 | 3 | 1 | Reserved | Must be zero |
 
 No per-slot records follow. RAM slots are an internal device resource; the host requires only the aggregate information above.
+
+## GET_DEVICE_TYPE Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 24 | device_type | Device type as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. |
+
+## GET_DEVICE_VERSION Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 24 | device_version | Device version as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. |
 
 ---
 
@@ -381,14 +457,13 @@ This illustrates a typical RBCP session for a C64 kernal bootloader application.
 
 1. Bootloader kernal boots and detects whether the C= key is held.
 2. Copies itself into RAM and begins executing from there.
-3. Issues CONFIG_CMD_RESP with format=0x01 and chosen complete/status-OK bytes.
-4. Issues ENTER_CMD_RESP.
-5. Polls token LSB then progress to confirm command-response mode is active.
-6. Issues GET_FLASH_SLOT_INFO.
-7. Reads flash slot count, names and types from the response region.
-8. **Auto-boot path:** selects target slot, issues LOAD_SLOT then SWITCH_AND_EXIT.
-9. **Menu path:** presents a menu, scanning the keyboard as needed (exiting and re-entering command-response mode via a full knock each time to service IRQs), then issues LOAD_SLOT and SWITCH_AND_EXIT on selection.
-10. The device activates the new ROM slot. The bootloader jumps through the reset vector of the newly loaded ROM.
+3. Issues CONFIG_AND_ENTER_CMD_RESP with format=0x01 and chosen complete/status-OK bytes.
+4. Polls token LSB then progress to confirm command-response mode is active.
+5. Issues GET_FLASH_SLOT_INFO_ALL.
+6. Reads flash slot count, names and types from the response region.
+7. **Auto-boot path:** selects target slot, issues LOAD_SLOT then SWITCH_AND_EXIT.
+8. **Menu path:** presents a menu, scanning the keyboard as needed (exiting and re-entering command-response mode via a full knock each time to service IRQs), then issues LOAD_SLOT and SWITCH_AND_EXIT on selection.
+9. **Menu path:** The device activates the new ROM slot. The bootloader jumps through the reset vector of the newly loaded ROM.
 
 ---
 

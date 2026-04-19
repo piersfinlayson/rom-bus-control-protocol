@@ -19,10 +19,53 @@
 .export zp_tmp1   = ZP_TMP1
 
 ; ---------------------------------------------------------------------------
-; Row-offset tables (RODATA — in ROM, accessed via absolute ROM addresses)
+; BOOT segment — runs from ROM, called before relocation
 ; ---------------------------------------------------------------------------
 
-.rodata
+.segment "BOOT"
+
+; c64_hw_init
+; One-time hardware initialisation at reset entry. Runs from ROM.
+; Must not call any subroutine in the CODE segment (not in RAM yet).
+; Clobbers: A
+.export c64_hw_init
+c64_hw_init:
+    lda #CPU_PORT_VAL
+    sta CPU_PORT
+    lda #CPU_DDR_VAL
+    sta CPU_DDR
+
+    lda #CIA2_DDRA_VAL
+    sta CIA2_DDRA
+    lda #CIA2_PRA_VAL
+    sta CIA2_PRA
+    lda #VIC_CTRL1_VAL
+    and #$EF                    ; screen off (bit 4 = 0)
+    sta VIC_CTRL1
+    lda #VIC_CTRL2_VAL
+    sta VIC_CTRL2
+    lda #VIC_MEMSETUP_VAL
+    sta VIC_MEMSETUP
+    lda #COL_BLACK
+    sta VIC_BORDER
+    sta VIC_BACKGROUND
+
+    lda #$FF
+    sta CIA1_DDRA
+    lda #$00
+    sta CIA1_DDRB
+
+    rts
+
+; ---------------------------------------------------------------------------
+; CODE segment — runs from RAM post-relocation
+; ---------------------------------------------------------------------------
+
+.code
+
+; ---------------------------------------------------------------------------
+; Row-offset tables (RODATA — in code, accessed via absolute RAM addresses)
+; ---------------------------------------------------------------------------
 
 .export row_off_lo : absolute
 row_off_lo:
@@ -43,58 +86,16 @@ row_col_hi:
     .endrepeat
 
 ; ---------------------------------------------------------------------------
-; BOOT segment — runs from ROM, called before relocation
-; ---------------------------------------------------------------------------
-
-.segment "BOOT"
-
-; c64_hw_init
-; One-time hardware initialisation at reset entry. Runs from ROM.
-; Must not call any subroutine in the CODE segment (not in RAM yet).
-; Clobbers: A
-.export c64_hw_init
-c64_hw_init:
-    lda #CPU_DDR_VAL
-    sta CPU_DDR
-    lda #CPU_PORT_VAL
-    sta CPU_PORT
-
-    lda #CIA2_DDRA_VAL
-    sta CIA2_DDRA
-    lda #CIA2_PRA_VAL
-    sta CIA2_PRA
-
-    lda #VIC_CTRL1_VAL
-    sta VIC_CTRL1
-    lda #VIC_CTRL2_VAL
-    sta VIC_CTRL2
-    lda #VIC_MEMSETUP_VAL
-    sta VIC_MEMSETUP
-    lda #COL_BLACK
-    sta VIC_BORDER
-    sta VIC_BACKGROUND
-
-    lda #$FF
-    sta CIA1_DDRA
-    lda #$00
-    sta CIA1_DDRB
-    rts
-
-; ---------------------------------------------------------------------------
-; CODE segment — runs from RAM post-relocation
-; ---------------------------------------------------------------------------
-
-.code
-
-; ---------------------------------------------------------------------------
 ; c64_clear_screen
 ; Screen RAM ($0400-$07E7) filled with spaces, colour RAM ($D800-$DBE7) with
-; COL_LIGHT_BLUE. 1000 bytes = 3*256 + 232.
-; Clobbers: A, X
+; the colour passed in Y. 1000 bytes = 3*256 + 232.
+; Input: Y = colour
+; Clobbers: A, X, Y
 ; ---------------------------------------------------------------------------
 
 .export c64_clear_screen
 c64_clear_screen:
+    sty zp_tmp0             ; save colour argument
     lda #CHAR_SPACE
     ldx #0
 @scr_pages:
@@ -110,7 +111,7 @@ c64_clear_screen:
     cpx #232
     bne @scr_tail
 
-    lda #COL_LIGHT_BLUE
+    lda zp_tmp0             ; restore colour argument
     ldx #0
 @col_pages:
     sta COLOUR_RAM + $000, x
@@ -242,7 +243,8 @@ c64_unhighlight_row:
 
 ; ---------------------------------------------------------------------------
 ; c64_scan_key
-; Scans CIA1 for RETURN, cursor DOWN, cursor UP (= cursor + left SHIFT).
+; Scans CIA1 for RETURN, cursor DOWN, cursor UP (= cursor + left/right
+; SHIFT).
 ; Returns: A = KEY_NONE | KEY_RETURN | KEY_DOWN | KEY_UP. Clobbers: A, X.
 ; ---------------------------------------------------------------------------
 
@@ -267,6 +269,15 @@ c64_scan_key:
     sta CIA1_PRA
     lda CIA1_PRB
     and #KEY_LSH_ROW_BIT
+    bne @check_rsh
+    lda #KEY_UP
+    bne @debounce           ; always taken
+
+@check_rsh:
+    lda #KEY_RSH_COL
+    sta CIA1_PRA
+    lda CIA1_PRB
+    and #KEY_RSH_ROW_BIT
     bne @is_down
     lda #KEY_UP
     bne @debounce           ; always taken
