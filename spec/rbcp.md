@@ -477,3 +477,14 @@ All items in this section, including future modes, are subject to change and sho
 - Out-Stream, In-Stream and Bi-Stream mode definitions
 - Additional format identifiers for other platforms and ROM socket types
 - Utilisation of additional ROM bus lines (R/W, /WE, /BYTE, /AS) in future protocol versions
+
+---
+
+## Attribution
+
+Inspired by the [One ROM](https://onerom.org/) project and discussions associated with that project, in particular [this thread](https://github.com/piersfinlayson/one-rom/issues/170) with:
+- [r107sl](https://github.com/r107sl)
+- [MacGyver4B](https://github.com/MacGyver4B)
+- [Steph71](https://github.com/Steph71)
+
+The overall concept of a host communicating with a ROM emulator using the address and data lines was originally shared with the author by [Jaime Idolpx](https://github.com/idolpx) and together they did much original brainstorming in this area.
