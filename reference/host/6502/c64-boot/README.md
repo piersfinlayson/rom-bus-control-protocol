@@ -2,9 +2,7 @@
 
 A custom Commodore 64 kernal ROM image that acts as an RBCP-aware bootloader, allowing the user to select and boot from multiple kernal ROM images stored on a One ROM, or other RBCP capable ROM emulator, fitted in the C64's kernal socket.
 
-This is designed to be a reference implementation of an RBCP host on a real 6502-based system.
-
-This code was mostly written by an LLM (Claude).
+This is designed to be a reference implementation of an RBCP host on a real 6502-based system.  Other, better, implementations are hoped to supercede this.
 
 ## What it does
 
@@ -20,7 +18,7 @@ On any RBCP error the bootloader displays a message and halts; power-cycle to re
 
 ## Dependencies
 
-- [cc65](https://cc65.github.io/) — provides `ca65` (assembler) and `ld65` (linker). Version 2.19 or later.
+- [cc65](https://cc65.github.io/) — provides `ca65` (assembler) and `ld65` (linker).
 
 On Debian/Ubuntu:
 
