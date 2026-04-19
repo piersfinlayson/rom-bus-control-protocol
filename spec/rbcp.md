@@ -55,6 +55,8 @@ RBCP is designed around the following principles:
 
 **Response header:** The first 8 bytes of the back-channel region, present in all configurations. Contains the token, progress, response, and last-command fields.
 
+***Response data section***: The portion of the back-channel region immediately following the response header, beginning at offset 8. Contains command-specific response data. Its size is the back-channel region size minus 8 bytes.
+
 **Token:** A monotonically incrementing counter in the response header, incremented by the device on receipt of each command. Used by the host to detect that a command has been received.
 
 **Progress:** A boolean field in the response header indicating whether the device has completed processing the most recently received command. Takes one of two states: complete or pending.
@@ -64,6 +66,20 @@ RBCP is designed around the following principles:
 **Complete / Pending:** The two states of the progress field. The complete value and its bitwise inverse (pending) are either protocol defaults or configured by the host via CONFIG_CMD_RESP.
 
 **Status-OK / Failed:** The two states of the response field. The status-OK value and its bitwise inverse (failed) are either protocol defaults or configured by the host via CONFIG_CMD_RESP.
+
+---
+
+## Versioning and Compatibility
+
+RBCP uses semantic versioning (major.minor.patch). The current version is indicated at the top of this document. A version is stable when it has been tagged in the GitHub repo and published as a GitHub release.
+
+During the 0.x.y series, minor version increments may introduce breaking changes. A host implementation written against version 0.Y.z is guaranteed to interoperate correctly with any device implementing version 0.Y.w where w >= z.
+
+From version 1.0.0 onwards, major version alone defines the compatibility contract. A host written against version X.Y.z is guaranteed to interoperate correctly with any device implementing version X.W.w where W > Y or (W == Y and w >= z).
+
+Patch increments are backwards-compatible. A device implementing version X.Y.w is guaranteed to support all behaviour defined by version X.Y.z where z <= w.
+
+A host should query the device version using GET_PROTOCOL_VERSION and reject a device whose version falls outside the bounds it was written for.
 
 ---
 
@@ -174,8 +190,8 @@ The maximum argument count for any command defined by this version of the protoc
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
 | 0x00 | NOP | 0 | No operation. In command-response mode the device acknowledges via the standard header sequence, allowing the host to verify the device is alive and processing commands. |
-| 0x01 | CONFIG_CMD_RESP | 4: A0=location, A1=size, A2=complete, A3=status-OK | Configures command-response mode parameters. If not issued, the device uses the [protocol defaults](#protocol-defaults). May be issued in either mode. A0 indexes the [location table](#location-table) defining where the back-channel region sits within the slot. A1 indexes the [size table](#size-table) defining the data section size. A2 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A3 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. See [Protocol Defaults](#protocol-defaults). CONFIG_CMD_RESP cannot be confirmed: it may be issued in either mode, but if issued before ENTER_CMD_RESP no back-channel exists to verify reception. A misreceived CONFIG_CMD_RESP will cause the host to poll the wrong location or interpret the wrong bytes after entering command-response mode. Hosts should treat any subsequent failure to observe a token increment or progress transition as a possible CONFIG_CMD_RESP misconfiguration. Not supported when in command-response mode. |
-| 0x02 | ENTER_CMD_RESP | 0 | Enters command-response mode using the parameters set by CONFIG_CMD_RESP, or [protocol defaults](#protocol-defaults) if not configured. If already in command-response mode, this command succeeds. Not supported when in command-response mode. |
+| 0x01 | CONFIG_CMD_RESP | 4: A0=location, A1=size, A2=complete, A3=status-OK | Configures command-response mode parameters. If not issued, the device uses the [protocol defaults](#protocol-defaults). May be issued in either mode. A0 indexes the [location table](#location-table) defining where the back-channel region sits within the slot. A1 indexes the [size table](#size-table) defining the data section size. A2 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A3 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. See [Protocol Defaults](#protocol-defaults). CONFIG_CMD_RESP cannot be confirmed as it issued before ENTER_CMD_RESP so no back-channel exists to verify reception. A misreceived CONFIG_CMD_RESP will cause the host to poll the wrong location or interpret the wrong bytes after entering command-response mode. Hosts should treat any subsequent failure to observe a token increment or progress transition as a possible CONFIG_CMD_RESP misconfiguration. Not supported when in command-response mode. |
+| 0x02 | ENTER_CMD_RESP | 0 | Enters command-response mode using the parameters set by CONFIG_CMD_RESP, or [protocol defaults](#protocol-defaults) if not configured. Not supported when in command-response mode. |
 | 0x03 | CONFIG_AND_ENTER_CMD_RESP | 4: As per CONFIG_CMD_RESP | Configures command-response mode parameters and enters command-response mode in a single command. This is atomic and therefore safer than issuing CONFIG_CMD_RESP followed by ENTER_CMD_RESP, which risks desynchronization if a command is misreceived between them. The arguments are the same as for CONFIG_CMD_RESP. Not supported when in command-response mode. |
 | 0x04 | EXIT_CMD_RESP_ACK | 0 | Exits command-response mode. The device completes the full command processing sequence, including setting progress = complete, before exiting command-response mode. The host should poll progress for complete as normal. Once complete is observed, the device has exited command-response mode and the back-channel region is no longer maintained.|
 | 0x05 | EXIT_CMD_RESP_SILENT | 0 | Exits command-response mode without updating the [response header](#response-header). |
@@ -187,12 +203,13 @@ CMD 0xAA is reserved and must never be assigned.
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
-| 0x00 | GET_FLASH_SLOT_COUNT | 0 | Requests the device to write the total number of available (populated, non plugin) flash slots available on the device into the first byte of the command-response region. See [GET_FLASH_SLOT_COUNT Response Format](#get_flash_slot_count-response-format). |
-| 0x01 | GET_FLASH_SLOT_INFO | 1: A0=slot | Requests the device to populate the command-response region with information about the specified flash ROM slot. See [GET_FLASH_SLOT_INFO Response Format](#get_flash_slot_info-response-format). Only succeeds if there i sufficient space, which means a back channel size of at least 64 bytes. |
-| 0x02 | GET_FLASH_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available (populated, non plugin) flash ROM slots. This provides the entirety of the information exposed by GET_FLASH_SLOT_COUNT and GET_FLASH_SLOT_INFO in a single request response. See [GET_FLASH_SLOT_INFO_ALL Response Format](#get_flash_slot_info_all-response-format). |
+| 0x00 | GET_FLASH_SLOT_COUNT | 0 | Requests the device to write the total number of available (populated, non plugin or other special) flash slots available on the device into the first byte of the command-response region. See [GET_FLASH_SLOT_COUNT Response Format](#get_flash_slot_count-response-format). |
+| 0x01 | GET_FLASH_SLOT_INFO | 1: A0=slot | Requests the device to populate the command-response region with information about the specified flash ROM slot. See [GET_FLASH_SLOT_INFO Response Format](#get_flash_slot_info-response-format). Only succeeds if there is sufficient space, which means a back channel size of at least 64 bytes. |
+| 0x02 | GET_FLASH_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available (populated, non plugin or other special) flash ROM slots. This provides the entirety of the information exposed by GET_FLASH_SLOT_COUNT and GET_FLASH_SLOT_INFO in a single request response. See [GET_FLASH_SLOT_INFO_ALL Response Format](#get_flash_slot_info_all-response-format). |
 | 0x03 | GET_RAM_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available RAM slots. See [GET_RAM_SLOT_INFO Response Format](#get_ram_slot_info-response-format). |
 | 0x04 | GET_DEVICE_TYPE | 0 | Requests the device to write its type (e.g. One ROM) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. See [GET_DEVICE_TYPE Response Format](#get_device_type-response-format). |
 | 0x05 | GET_DEVICE_VERSION | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
+| 0x06 | GET_PROTOCOL_VERSION | 0 | Requests the device to write the RBCP protocol version it implements into the response data section. See [GET_PROTOCOL_VERSION Response Format](#get_protocol_version-response-format). |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -305,9 +322,9 @@ For location 0x01 the device is responsible for computing the start address as s
 
 ### Size Table
 
-Defines the size of the data section, which includes the response header.
+Defines the size of the back-channel region, which includes the response header and response data section.
 
-| ID | Data Section Size |
+| ID | Back-Channel Region Size |
 |----|------------------|
 | 0x00 | 8 bytes (header only) |
 | 0x01 | 16 bytes |
@@ -325,8 +342,6 @@ Defines the size of the data section, which includes the response header.
 | 0x0D–0x7F | Reserved |
 | 0x80–0xFF | Implementation-specific |
 
-The total region size is always the data section including the first 8 bytes which is reserved for the response header.
-
 ---
 
 ## GET_FLASH_SLOT_COUNT Response Format
@@ -335,7 +350,7 @@ The response data section begins immediately after the [response header](#respon
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
-| 0 | 1 | total_count | Total number of available (populated, non plugin) flash slots on the device. The host can use this information to determine valid slot indices for subsequent GET_FLASH_SLOT_INFO commands. |
+| 0 | 1 | total_count | Total number of available (populated, non plugin or other special) flash slots on the device. The host can use this information to determine valid slot indices for subsequent GET_FLASH_SLOT_INFO commands. |
 
 ## GET_FLASH_SLOT_INFO Response Format
 
@@ -356,7 +371,7 @@ The response data section begins immediately after the [response header](#respon
 |--------|------|-------|-------------|
 | 0 | 1 | total_count | Total number of flash slots available on the device |
 | 1 | 1 | whole_count | Number of complete records returned |
-| 2 | 1 | partial_flag | 0x01 if a truncated record follows the complete records, 0x00 otherwise. Where partial_flag is 0x01, the number of bytes present for the partial record is: data_section_size − 4 − (whole_count × 32). |
+| 2 | 1 | partial_flag | 0x01 if a truncated record follows the complete records, 0x00 otherwise. Where partial_flag is 0x01, the number of bytes present for the partial record is: data_section_size − 8 (the header) - 4 − (whole_count × 32). |
 | 3 | 1 | Reserved | Must be zero |
 
 ### Records
@@ -404,6 +419,17 @@ The response data section begins immediately after the [response header](#respon
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 24 | device_version | Device version as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. |
+
+## GET_PROTOCOL_VERSION Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | major | Major version number |
+| 1 | 1 | minor | Minor version number |
+| 2 | 1 | patch | Patch version number |
+| 3 | 1 | Reserved | Must be zero |
 
 ---
 
@@ -457,7 +483,7 @@ This illustrates a typical RBCP session for a C64 kernal bootloader application.
 
 1. Bootloader kernal boots and detects whether the C= key is held.
 2. Copies itself into RAM and begins executing from there.
-3. Issues CONFIG_AND_ENTER_CMD_RESP with format=0x01 and chosen complete/status-OK bytes.
+3. Issues CONFIG_AND_ENTER_CMD_RESP with location and size and chosen complete/status-OK bytes.
 4. Polls token LSB then progress to confirm command-response mode is active.
 5. Issues GET_FLASH_SLOT_INFO_ALL.
 6. Reads flash slot count, names and types from the response region.

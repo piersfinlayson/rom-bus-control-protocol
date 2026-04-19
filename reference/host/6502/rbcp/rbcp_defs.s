@@ -11,6 +11,14 @@
 .include "rbcp_config.s"
 
 ; ---------------------------------------------------------------------------
+; Supported protocol version by this library
+; ---------------------------------------------------------------------------
+
+RBCP_SUPPORTED_PROTOCOL_MAJOR = 0
+RBCP_SUPPORTED_PROTOCOL_MINOR = 1
+RBCP_SUPPORTED_PROTOCOL_PATCH = 0
+
+; ---------------------------------------------------------------------------
 ; ROM base address (C64: $E000)
 ; ---------------------------------------------------------------------------
 
@@ -118,6 +126,7 @@ RBCP_CMD_GET_FLASH_SLOT_INFO_ALL    = $02
 RBCP_CMD_GET_RAM_SLOT_INFO_ALL      = $03
 RBCP_CMD_GET_DEVICE_TYPE            = $04
 RBCP_CMD_GET_DEVICE_VERSION         = $05
+RBCP_CMD_GET_PROTOCOL_VERSION       = $06
 
 RBCP_GRP_MODIFY                     = $02
 RBCP_CMD_SLOT_POKE                  = $00

@@ -23,6 +23,7 @@
 .import rbcp_cmd_load_slot
 .import rbcp_cmd_switch_and_exit
 .import rbcp_cmd_get_device_type, rbcp_cmd_get_device_version
+.import rbcp_check_protocol_version
 
 .import row_off_lo
 .import row_scr_hi
@@ -193,8 +194,14 @@ boot_ram_entry:
     jsr rbcp_cmd_config_and_enter_cmd_resp
     bcc @ok_enter
     jmp err_no_cmd_resp
-@ok_enter:
 
+    ; Check device's RBCP protocol version 
+@ok_enter:
+    jsr rbcp_check_protocol_version
+    bcc @ok_version
+    jmp err_protocol_version
+
+@ok_version:
     jsr rbcp_cmd_get_ram_slot_info_all
     bcc @ok_ram
     jmp err_ram_info
@@ -483,6 +490,15 @@ err_no_cmd_resp:
     lda #<msg_err_no_cmd_resp
     sta ZP_PTR_LO
     lda #>msg_err_no_cmd_resp
+    sta ZP_PTR_HI
+    jmp halt_with_msg
+
+err_protocol_version:
+    lda #COL_RED
+    sta VIC_BORDER
+    lda #<msg_err_protocol_version
+    sta ZP_PTR_LO
+    lda #>msg_err_protocol_version
     sta ZP_PTR_HI
     jmp halt_with_msg
 
@@ -877,6 +893,7 @@ str_prompt:         .byte "SELECT KERNAL:", 0
 str_footer:         .byte "   UP/DOWN TO MOVE, RETURN TO BOOT", 0
 
 msg_err_no_cmd_resp:    .byte "RBCP ERROR: FAILED TO ENTER CMD RESP", 0
+msg_err_protocol_version: .byte "RBCP ERROR: DEVICE PROTOCOL VERSION", 0
 msg_err_ram_info:       .byte "RBCP ERROR: RAM SLOT INFO FAILED", 0
 msg_err_insuff_ram:     .byte "RBCP ERROR: INSUFFICIENT RAM SLOTS", 0
 msg_err_flash_info:     .byte "RBCP ERROR: FLASH SLOT INFO FAILED", 0

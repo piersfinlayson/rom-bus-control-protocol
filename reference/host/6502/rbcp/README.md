@@ -54,12 +54,18 @@ start_from_ram:
     bcc @ok_enter
     jmp halt        ; Hit error entering command response mode
 
+    ; Check the device's RBCP protocol version is compatible with this library.
+@ok_enter:
+    jsr rbcp_check_protocol_version
+    bcc @ok_version
+    jmp halt        ; Incompatible protocol version
+
     ; This example obviates the calls to find out which RAM slots are free, and
     ; what kernal images are available in flash.  For simplicity it assumes RAM
     ; slot 1 is free, and flash slot 1 contains the desired ROM image.
 
     ; Load another ROM image from flash to an unused RAM slot
-@ok_enter:
+@ok_version:
     lda #1          ; RAM slot
     ldx #1          ; Flash slot
     jsr rbcp_cmd_load_slot
