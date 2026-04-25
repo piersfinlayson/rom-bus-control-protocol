@@ -257,8 +257,8 @@ boot_ram_entry:
     ; ==================================================================
 
 path_menu:
-    ldy #COL_LIGHT_BLUE
-    sty VIC_BORDER
+    ldy #COL_WHITE
+    ;sty VIC_BORDER
     jsr c64_clear_screen
 
     jsr rbcp_cmd_get_device_type
@@ -277,8 +277,8 @@ path_menu:
     lda #0
     jsr buf_putc
 
-    ldy #COL_BLUE
-    sty VIC_BORDER
+    ;ldy #COL_BLUE
+    ;sty VIC_BORDER
 
     jsr rbcp_cmd_get_device_version
     bcc @ok_devver
@@ -296,8 +296,8 @@ path_menu:
     lda #0
     jsr buf_putc
 
-    ldy #COL_ORANGE
-    sty VIC_BORDER
+    ;ldy #COL_ORANGE
+    ;sty VIC_BORDER
 
     ; Build the device line
     lda #<device_type_buf
@@ -319,16 +319,16 @@ path_menu:
     lda #0
     jsr buf_putc
 
-    ldy #COL_BROWN
-    sty VIC_BORDER
+    ;ldy #COL_BROWN
+    ;sty VIC_BORDER
 
     jsr rbcp_cmd_get_flash_slot_info_all
     bcc @ok_flash
     jmp err_flash_info
 @ok_flash:
 
-    ldy #COL_YELLOW
-    sty VIC_BORDER
+    ;ldy #COL_YELLOW
+    ;sty VIC_BORDER
 
     lda RBCP_DATA_ADDR + 0
     sta var_total_flash
@@ -341,8 +341,8 @@ path_menu:
     jmp err_no_kernals
 @ok_flashcount:
 
-    ldy #COL_PURPLE
-    sty VIC_BORDER
+    ;ldy #COL_PURPLE
+    ;sty VIC_BORDER
 
     lda var_whole_flash
     bne @ok_whole
@@ -359,8 +359,8 @@ path_menu:
 @disp_ok:
     sta var_num_display
 
-    ldy #COL_WHITE
-    sty VIC_BORDER
+    ;ldy #COL_WHITE
+    ;sty VIC_BORDER
 
     ; ------------------------------------------------------------------
     ; Copy slot name records from data section to RAM buffer.
@@ -396,8 +396,8 @@ path_menu:
     lsr a                   ; hi byte of n*32 (= n/8)
     sta ZP_TMP4
 
-    ldy #COL_WHITE
-    sty VIC_BORDER
+    ;ldy #COL_WHITE
+   ; sty VIC_BORDER
 
     lda #<(RBCP_DATA_ADDR + 36)
     sta ZP_PTR_LO
@@ -426,7 +426,7 @@ path_menu:
     ora ZP_TMP4
     bne @name_copy
 
-    ldy #COL_GREEN
+    ldy #COL_BLACK
     sty VIC_BORDER
 
     jsr draw_menu
@@ -592,7 +592,7 @@ halt_with_msg:
     sta VIC_CTRL1
 
     ; Set colour for text
-    ldy #COL_LIGHT_BLUE
+    ldy #COL_WHITE
     jsr c64_clear_screen
 
     lda #12
@@ -688,6 +688,7 @@ build_status_line:
     set_ptr str_sl_stg
     jsr buf_puts
     lda rbcp_zp_5
+    clc
     adc #'0'            ; carry clear after set_ptr sequence
     jsr buf_putc
 

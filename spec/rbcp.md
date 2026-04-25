@@ -252,6 +252,8 @@ These defaults have a 1/128 probability of clashing with the pre-existing conten
 
 When command-response mode is active, the device maintains a structured region within the active RAM slot. The host reads this region as ordinary ROM data. The location and size of this region within the slot is determined by the format identifier supplied in CONFIG_CMD_RESP.
 
+The device must not interpret address reads that fall within the back-channel region as command bytes.
+
 ### Response Header
 
 The first 8 bytes of the back-channel region form the response header, present in all format identifiers.

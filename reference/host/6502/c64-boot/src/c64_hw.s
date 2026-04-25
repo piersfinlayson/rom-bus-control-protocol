@@ -235,7 +235,7 @@ c64_unhighlight_row:
     lda (zp_ptr_lo), y
     and #$7F
     sta (zp_ptr_lo), y
-    lda #COL_LIGHT_BLUE
+    lda #COL_WHITE
     sta (zp_tmp0), y
     dey
     bpl @loop
