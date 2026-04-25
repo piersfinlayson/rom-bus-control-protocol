@@ -36,6 +36,11 @@ RBCP_CMD_HI     = CONFIG_RBCP_READ_HI
 RBCP_POLL_TIMEOUT = CONFIG_RBCP_POLL_TIMEOUT
 
 ; ---------------------------------------------------------------------------
+; Command retries on failure (0 = no retries), max 255
+; ---------------------------------------------------------------------------
+RBCP_TIMEOUT_RETRIES = CONFIG_RBCP_TIMEOUT_RETRIES
+
+; ---------------------------------------------------------------------------
 ; Zero-page addresses — must match the declarations in rbcp.s
 ; ---------------------------------------------------------------------------
 
@@ -44,9 +49,11 @@ RBCP_ZP_BASE    = CONFIG_RBCP_ZP_BASE   ; base of RBCP library ZP block
 rbcp_zp_0  = RBCP_ZP_BASE + 0  ; general purpose / loop counter lo
 rbcp_zp_1  = RBCP_ZP_BASE + 1  ; general purpose / loop counter hi
 rbcp_zp_2  = RBCP_ZP_BASE + 2  ; saved token LSB
-rbcp_zp_3  = RBCP_ZP_BASE + 3  ; current token LSB / 16-bit counter lo
+rbcp_zp_3  = RBCP_ZP_BASE + 3  ; use by pause routine
 rbcp_zp_4  = RBCP_ZP_BASE + 4  ; scratch / 16-bit counter hi
-rbcp_zp_5  = RBCP_ZP_BASE + 5  ; scratch
+rbcp_zp_5  = RBCP_ZP_BASE + 5  ; scratch (also used for error code on failure)
+rbcp_zp_6  = RBCP_ZP_BASE + 6  ; Used for retry tracking
+rbcp_zp_7  = RBCP_ZP_BASE + 7  ; Unused
 
 RBCP_ARG_OFFSET = 8
 RBCP_ARG_BASE   = CONFIG_RBCP_ZP_BASE + RBCP_ARG_OFFSET   ; base of argument buffer ZP block

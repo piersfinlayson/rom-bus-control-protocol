@@ -28,6 +28,19 @@ CONFIG_RBCP_STATUS_OK = $CC ; inverse = $33
 ; This is an arbitrary value with no fixed unit.  $00 = wait forever.
 CONFIG_RBCP_POLL_TIMEOUT = $FF
 
+; Set to the number of times to retry a command in command-response mode, if
+; the device fails to acknowledge it within the timeout via a token increment.
+; $00 = no retries.
+CONFIG_RBCP_TIMEOUT_RETRIES = $03
+
+; Used by RBCP to pause after sending a command when _not_ in command-response
+; mode, to ensure the device has time to process it (as no back-channel is
+; available to detect when the device is ready for the next command).  This is
+; an arbitrary value with no fixed unit.  $00 = no pause.  Depending on your
+; host system and device, you may need to experiemnt with this value to find
+; the optimal setting.
+CONFIG_RBCP_CMD_PAUSE = $10
+
 ; Set to the base address of the ZP block that the RBCP library should use.
 ; Must be at least 16 bytes long.
 CONFIG_RBCP_ZP_BASE = $F0

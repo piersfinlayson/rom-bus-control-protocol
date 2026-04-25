@@ -131,3 +131,6 @@ ZP_PTR_LO  = $D0
 ZP_PTR_HI  = $D1
 ZP_TMP0    = $D2
 ZP_TMP1    = $D3
+ZP_TMP2    = $D4
+ZP_TMP3    = $D5
+ZP_TMP4    = $D6

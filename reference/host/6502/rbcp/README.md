@@ -14,10 +14,11 @@ An example usage of this library is provided below.  This example is for a 6502 
 
 For a fuller implementation, see the [C64 kernal bootloader](../c64-boot/README.md), which implements this example on a real C64 with One ROM and its RBCP plugin, and includes additional features such as displaying device and ROM information on the screen, and allowing the user to select from multiple ROM images in flash.
 
+In addition to the code below, an `rbcp_config.s` file must be provided with the appropriate configuration for the platform.  See [`sample_rbcp_config.s`](sample_rbcp_config.s) for an example.
+
 ```asm
 ; Required imports
-.import rbcp_reset_stage_1, rbcp_reset_stage_2
-.import rbcp_knock
+.import rbcp_reset
 .import rbcp_cmd_config_and_enter_cmd_resp
 .import rbcp_cmd_load_slot
 .import rbcp_cmd_switch_and_exit
@@ -38,14 +39,10 @@ start_from_ram:
 
     ; Reset the device's RBCP implemenation, to ensure it's in a known state
     ; before attempting to communicate.
-    jsr rbcp_reset_stage_1
-    jsr pause
-    jsr rbcp_reset_stage_2
-    jsr pause
+    jsr rbcp_reset
 
     ; Put the device into command-respond mode, with a 512-byte back channel, at
     ; the start of the currently loaded ROM image.
-    jsr rbcp_knock
     lda #RBCP_LOCATION_START
     sta rbcp_arg0
     lda #RBCP_SIZE_512
@@ -77,29 +74,10 @@ start_from_ram:
 @ok_load:
     lda #1          ; RAM slot to switch to
     jsr rbcp_cmd_switch_and_exit
-    
-    ; There is no response to this command, so pause to allow it time to take
-    ; effect.
-    jsr pause
 
     ; Now jump to the reset vector for the newly loaded ROM image.
     jmp ($FFFC)     ; 6502 reset vector
 
 halt:
     jmp halt
-
-; Routine to pause briefly after issuing commands when not in command-response
-; mode, to give the device time to complete them.  The required length of
-; pause is implementation dependent - it will need to be longer on a faster
-; host or when logging is enabled on the device.  This example is sufficient
-; on a stock C64 with One ROM and its RBCP plugin, with logging disabled.
-; Pausing is not required after commands when in command-response mode, as
-; the host should wait for the completion response before issuing the next
-; command.
-pause:
-    ldx #$04
-@pause_loop:
-    dex
-    bne @pause_loop
-    rts
 ```

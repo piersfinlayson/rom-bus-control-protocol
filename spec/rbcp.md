@@ -210,6 +210,7 @@ CMD 0xAA is reserved and must never be assigned.
 | 0x04 | GET_DEVICE_TYPE | 0 | Requests the device to write its type (e.g. One ROM) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. See [GET_DEVICE_TYPE Response Format](#get_device_type-response-format). |
 | 0x05 | GET_DEVICE_VERSION | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
 | 0x06 | GET_PROTOCOL_VERSION | 0 | Requests the device to write the RBCP protocol version it implements into the response data section. See [GET_PROTOCOL_VERSION Response Format](#get_protocol_version-response-format). |
+| 0x07 | SLOT_PEEK | 5: A0=slot, A1/A2/A3=24-bit address (little-endian), A4=count | Requests the device to read one or more bytes from the specified RAM slot at the specified address and write them into the response data section. A count of zero indicates 256 bytes should be read. This command fails if there is insufficient space in the response data section to accommodate the requested bytes. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -258,7 +259,7 @@ The first 8 bytes of the back-channel region form the response header, present i
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 2 | Last Command | The GROUP and CMD bytes of the most recently received command. Updated as part of the [command processing sequence](#command-processing-sequence). The host is not required to read this field as part of normal command execution. |
-| 2 | 2 | Token | Monotonically incrementing counter, wrapping from 0xFFFF to 0x0000. Incremented by exactly 1 by the device on receipt of every command. The LSB is incremented first; when it wraps from 0xFF to 0x00 the MSB is incremented. All individual byte writes are atomic. The host polling sequence relies on reading the LSB only, which is guaranteed atomic. Hosts requiring the full u16 value should use a read-high/read-low/read-high sequence and retry if the two high-byte reads differ.|
+| 2 | 2 | Token | Monotonically incrementing counter, wrapping from 0xFFFF to 0x0000. Incremented by exactly 1 by the device on receipt of every command. The LSB is incremented first; when it wraps from 0xFF to 0x00 the MSB is incremented. All individual byte writes are atomic. The host polling sequence relies on reading the LSB only, which is guaranteed atomic. Hosts requiring the full u16 value should use a read-high/read-low/read-high sequence and retry if the two high-byte reads differ. The device must not initialise the token on entering command-response mode.  Instead the device increments whatever value is already present and the host must snapshot the current value before issuing the command to enter command-response mode, and use the token incrementing sequence to detect command completion, as for other commands in command-response mode. |
 | 4 | 1 | Progress | Boolean field. Contains the configured complete value when the device has finished processing the last command, and its bitwise inverse (pending) while processing is in progress. |
 | 5 | 1 | Response | Boolean field. Contains the configured status-OK value if the last completed command succeeded, and its bitwise inverse (failed) if it did not. |
 | 6 | 2 | Reserved | Must be set to zero by the device.  Must not be assumed to have any particular value by the host. |
@@ -359,7 +360,7 @@ The response data section begins immediately after the [response header](#respon
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | rom_type | ROM type identifier for the specified flash slot. See [ROM Types](#rom-types). |
-| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Not null-terminated — all 31 bytes may be used. A zero length name is a valid response where the device has no name associated with the slot. |
+| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Null-terminated. A zero length name is a valid response where the device has no name associated with the slot. |
 
 ## GET_FLASH_SLOT_INFO_ALL Response Format
 
@@ -381,7 +382,7 @@ Each complete record is 32 bytes:
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | rom_type | ROM type identifier |
-| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Not null-terminated — all 31 bytes may be used. A zero length name is a valid response where the device has no name associated with the slot. |
+| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Null-terminated — all 31 bytes may be used. A zero length name is a valid response where the device has no name associated with the slot. |
 
 Records follow the preamble in slot index order. `whole_count` complete records are returned first. If `partial_flag` is 0x01, a truncated record follows, containing as many bytes of that record as the data section (minus space for header) permits.
 

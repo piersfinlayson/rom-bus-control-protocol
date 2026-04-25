@@ -15,8 +15,7 @@
 .import c64_unhighlight_row
 .import c64_scan_key
 
-.import rbcp_knock
-.import rbcp_reset_stage_1, rbcp_reset_stage_2
+.import rbcp_reset
 .import rbcp_cmd_config_and_enter_cmd_resp
 .import rbcp_cmd_get_ram_slot_info_all
 .import rbcp_cmd_get_flash_slot_info_all
@@ -61,7 +60,7 @@ slot_name_buf:  .res MAX_DISPLAY * 32
 status_line_buf: .res 32
 device_type_buf:    .res 24
 device_version_buf: .res 24
-device_line_buf:    .res 49
+device_line_buf:    .res 50
 
 var_total_ram:  .res 1
 var_active_ram: .res 1
@@ -115,7 +114,7 @@ boot_entry:
     ; __CODE_SIZE__ = byte count of CODE segment
     ;
     ; ZP use: ZP_PTR_LO/hi = ROM source, ZP_TMP0/1 = RAM destination.
-    ; rbcp_zp_3/4 = 16-bit byte counter (RBCP lib not yet called).
+    ; ZP_TMP3/4
     ;
     ; Y is used as a byte index within each 256-byte page. When Y wraps
     ; from $FF to $00 we advance both pointers by 256 (one full page).
@@ -132,9 +131,9 @@ boot_entry:
     sta ZP_TMP1
 
     lda #<__CODE_SIZE__
-    sta rbcp_zp_3
+    sta ZP_TMP3
     lda #>__CODE_SIZE__
-    sta rbcp_zp_4
+    sta ZP_TMP4
 
     ldy #0
 @copy_loop:
@@ -146,13 +145,13 @@ boot_entry:
     inc ZP_TMP1
 @copy_no_page:
     ; Decrement 16-bit counter
-    lda rbcp_zp_3
+    lda ZP_TMP3
     bne @copy_dec_lo
-    dec rbcp_zp_4
+    dec ZP_TMP4
 @copy_dec_lo:
-    dec rbcp_zp_3
-    lda rbcp_zp_3
-    ora rbcp_zp_4
+    dec ZP_TMP3
+    lda ZP_TMP3
+    ora ZP_TMP4
     bne @copy_loop
 
     jmp boot_ram_entry      ; run (RAM) address of boot_ram_entry
@@ -177,16 +176,23 @@ boot_ram_entry:
     ; RBCP common setup
     ; ------------------------------------------------------------------
 
+.if 0
+    ; Wait for 256 x 256 cycles
+    ldx #$00
+    ldy #$00
+@delay_loop:
+    dex
+    bne @delay_loop
+    dey
+    bne @delay_loop
+.endif
+
     ; Spec defined reset sequence.
-    jsr rbcp_reset_stage_1
-    jsr pause
-    jsr rbcp_reset_stage_2
-    jsr pause
+    jsr rbcp_reset
 
     ; Enter command-response mode, with desired configuration:
     ; - Back channel data section at start of ROM image
     ; - 512 bytes long, including 8 byte header
-    jsr rbcp_knock
     lda #RBCP_LOCATION_START
     sta rbcp_arg0
     lda #RBCP_SIZE_512
@@ -233,8 +239,8 @@ boot_ram_entry:
     ; AUTO-BOOT PATH — load flash slot 1, switch, and go
     ; ==================================================================
 
-    lda var_target_ram
-    ldx #1
+    lda var_target_ram      ; RAM slot
+    ldx #1                  ; Flash slot
     jsr rbcp_cmd_load_slot
     bcc @ok_load_auto
     jmp err_load
@@ -243,8 +249,6 @@ boot_ram_entry:
     lda #1
     ;lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
-
-    jsr pause
 
     jmp (RESET_VECTOR)
 
@@ -273,6 +277,9 @@ path_menu:
     lda #0
     jsr buf_putc
 
+    ldy #COL_BLUE
+    sty VIC_BORDER
+
     jsr rbcp_cmd_get_device_version
     bcc @ok_devver
     jmp err_device_version
@@ -288,6 +295,9 @@ path_menu:
     jsr buf_puts
     lda #0
     jsr buf_putc
+
+    ldy #COL_ORANGE
+    sty VIC_BORDER
 
     ; Build the device line
     lda #<device_type_buf
@@ -309,10 +319,16 @@ path_menu:
     lda #0
     jsr buf_putc
 
+    ldy #COL_BROWN
+    sty VIC_BORDER
+
     jsr rbcp_cmd_get_flash_slot_info_all
     bcc @ok_flash
     jmp err_flash_info
 @ok_flash:
+
+    ldy #COL_YELLOW
+    sty VIC_BORDER
 
     lda RBCP_DATA_ADDR + 0
     sta var_total_flash
@@ -324,6 +340,9 @@ path_menu:
     bcs @ok_flashcount
     jmp err_no_kernals
 @ok_flashcount:
+
+    ldy #COL_PURPLE
+    sty VIC_BORDER
 
     lda var_whole_flash
     bne @ok_whole
@@ -339,6 +358,9 @@ path_menu:
     lda #MAX_DISPLAY
 @disp_ok:
     sta var_num_display
+
+    ldy #COL_WHITE
+    sty VIC_BORDER
 
     ; ------------------------------------------------------------------
     ; Copy slot name records from data section to RAM buffer.
@@ -367,12 +389,15 @@ path_menu:
     asl a
     asl a
     asl a                   ; lo byte of n*32
-    sta rbcp_zp_3
+    sta ZP_TMP3
     lda var_num_display
     lsr a
     lsr a
     lsr a                   ; hi byte of n*32 (= n/8)
-    sta rbcp_zp_4
+    sta ZP_TMP4
+
+    ldy #COL_WHITE
+    sty VIC_BORDER
 
     lda #<(RBCP_DATA_ADDR + 36)
     sta ZP_PTR_LO
@@ -392,14 +417,17 @@ path_menu:
     inc ZP_PTR_HI
     inc ZP_TMP1
 @name_no_page:
-    lda rbcp_zp_3
+    lda ZP_TMP3
     bne @name_dec_lo
-    dec rbcp_zp_4
+    dec ZP_TMP4
 @name_dec_lo:
-    dec rbcp_zp_3
-    lda rbcp_zp_3
-    ora rbcp_zp_4
+    dec ZP_TMP3
+    lda ZP_TMP3
+    ora ZP_TMP4
     bne @name_copy
+
+    ldy #COL_GREEN
+    sty VIC_BORDER
 
     jsr draw_menu
 
@@ -472,13 +500,6 @@ do_boot:
     sty VIC_BORDER
 
     jmp (RESET_VECTOR)
-
-pause:
-    ldx #$04
-@pause_loop:
-    dex
-    bne @pause_loop
-    rts
 
 ; ===========================================================================
 ; Error handlers
@@ -647,6 +668,8 @@ byte_to_hex:
 
 ; ---------------------------------------------------------------------------
 ; build_status_line
+;
+; Accesses RBCP library zero page addresses
 ; ---------------------------------------------------------------------------
 
 .macro set_ptr addr
@@ -693,6 +716,16 @@ build_status_line:
     lda RBCP_RESPONSE_ADDR
     jsr byte_to_hex
 
+    set_ptr str_sl_dgrp
+    jsr buf_puts
+    lda RBCP_DATA_ADDR + 0
+    jsr byte_to_hex
+
+    set_ptr str_sl_dcmd
+    jsr buf_puts
+    lda RBCP_DATA_ADDR + 1
+    jsr byte_to_hex
+
     lda #0
     jsr buf_putc
     rts
@@ -703,11 +736,13 @@ str_sl_cmd:  .byte " CMD:", 0
 str_sl_tok:  .byte " TOK:", 0
 str_sl_prog: .byte " PRG:", 0
 str_sl_resp: .byte " RSP:", 0
+str_sl_dgrp:  .byte "DGRP:", 0
+str_sl_dcmd:  .byte " DCMD:", 0
 
 ; ===========================================================================
 ; draw_menu
 ; Draws header, prompt, footer, and all slot name entries.
-; Relies on c64_print_at to not clobber rbcp_zp_0..4.
+; Relies on c64_print_at to not clobber ZP_TMP2+.
 ; ===========================================================================
 
 draw_menu:
@@ -775,13 +810,13 @@ draw_menu:
     ; Draw slot names
     ; For each entry i: source = slot_name_buf + i*32, row = MENU_ENTRY_ROW0+i
     ; i*32: lo = (i<<5)&$FF, hi = i>>3
-    ; Loop counter in rbcp_zp_0
+    ; Loop counter in ZP_TMP2
 
     lda #0
-    sta rbcp_zp_0           ; i = 0
+    sta ZP_TMP2           ; i = 0
 
 @entry_loop:
-    lda rbcp_zp_0
+    lda ZP_TMP2
     cmp var_num_display
     beq @entries_done
 
@@ -791,19 +826,19 @@ draw_menu:
     asl a
     asl a
     asl a
-    sta rbcp_zp_3           ; offset lo
-    lda rbcp_zp_0
+    sta ZP_TMP3           ; offset lo
+    lda ZP_TMP2
     lsr a
     lsr a
     lsr a
-    sta rbcp_zp_4           ; offset hi
+    sta ZP_TMP4           ; offset hi
 
     lda #<slot_name_buf
     clc
-    adc rbcp_zp_3
+    adc ZP_TMP3
     sta ZP_PTR_LO
     lda #>slot_name_buf
-    adc rbcp_zp_4
+    adc ZP_TMP4
     sta ZP_PTR_HI
 
     ; Skip byte 0 (ROM type field)
@@ -812,16 +847,16 @@ draw_menu:
     inc ZP_PTR_HI
 
 @no_carry:
-    lda rbcp_zp_0
+    lda ZP_TMP2
     clc
     adc #MENU_ENTRY_ROW0
     sta ZP_TMP0
     lda #3
     sta ZP_TMP1
 
-    jsr c64_print_at        ; does not clobber rbcp_zp_0..4
+    jsr c64_print_at        ; does not clobber ZP_TMP2+
 
-    inc rbcp_zp_0
+    inc ZP_TMP2
     jmp @entry_loop
 
 @entries_done:

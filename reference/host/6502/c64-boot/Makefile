@@ -21,7 +21,7 @@ all: $(BUILD) $(TARGET)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/rbcp.o: ../rbcp/rbcp.s ../rbcp/rbcp_defs.s
+$(BUILD)/rbcp.o: ../rbcp/rbcp.s ../rbcp/rbcp_defs.s rbcp_config.s
 	$(AS) $(ASFLAGS) ../rbcp/rbcp.s -o $@
 
 $(BUILD)/c64_hw.o: src/c64_hw.s src/c64_defs.s

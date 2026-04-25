@@ -139,6 +139,7 @@ rbcp_pp_loop:
     cmp #RBCP_COMPLETE
     beq rbcp_pp_ok
 .if RBCP_POLL_TIMEOUT > 0
+    jsr pause   ; Add a delay between polls
     dex
     bne rbcp_pp_loop
     sec
@@ -177,27 +178,37 @@ rbcp_cr_ok:
 ;   3 = response = FAILED
 .export rbcp_issue_cmd
 rbcp_issue_cmd:
-    tay
+    sta rbcp_zp_4           ; save argument count (if any)
+
+    lda #$FF
+    sta rbcp_zp_5           ; clear error code
+
+.if RBCP_TIMEOUT_RETRIES > 0
+    lda #RBCP_TIMEOUT_RETRIES
+    sta rbcp_zp_6
+.endif
+@tok_attempt:
     jsr rbcp_save_token
-    tya
+    lda rbcp_zp_4
     jsr rbcp_send_cmd
     jsr rbcp_poll_token
     bcc @tok_ok
+.if RBCP_TIMEOUT_RETRIES > 0
+    dec rbcp_zp_6
+    bpl @tok_attempt
+.endif
     lda #1
-    sta rbcp_zp_5
-    sec
-    rts
+    jmp @err
 @tok_ok:
     jsr rbcp_poll_progress
     bcc @prog_ok
     lda #2
-    sta rbcp_zp_5
-    sec
-    rts
+    jmp @err
 @prog_ok:
     jsr rbcp_check_response
     bcc @rsp_ok
     lda #3
+@err:
     sta rbcp_zp_5
     sec
     rts
@@ -219,7 +230,17 @@ rbcp_issue_cmd:
 ;
 ; Two different methods are provided for each stage so the host can decide
 ; what pause to include between them (as it depends on clock speed, etc.).
+; Alternatively, rbcp_reset can be used to do the whole sequence with a
+; single call.
 ; ---------------------------------------------------------------------------
+.export rbcp_reset
+rbcp_reset:
+    jsr rbcp_reset_stage_1
+    jsr pause
+    jsr rbcp_reset_stage_2
+    jsr pause
+    rts
+
 rbcp_cmd_reset:
     lda #RBCP_GRP_RESET
     sta rbcp_zp_0
@@ -247,8 +268,15 @@ rbcp_reset_stage_2:
 ; confirm the back channel is live by polling for pending/complete.
 ; A0 = location, A1 = size_id (caller sets rbcp_arg0/1).
 ; ---------------------------------------------------------------------------
+; On failure, rbcp_zp_5 holds the stage that failed:
+;   1 = token poll timeout (command not received)
+;   2 = progress poll timeout (received but never completed)
+;   3 = response = FAILED
 .export rbcp_cmd_config_and_enter_cmd_resp
 rbcp_cmd_config_and_enter_cmd_resp:
+    lda #$FF
+    sta rbcp_zp_5           ; clear error code
+
     lda #RBCP_GRP_CTRL
     sta rbcp_zp_0
     lda #RBCP_CMD_CONFIG_AND_ENTER_CMD_RESP
@@ -257,38 +285,39 @@ rbcp_cmd_config_and_enter_cmd_resp:
     sta rbcp_arg2
     lda #RBCP_STATUS_OK
     sta rbcp_arg3
+
+.if RBCP_TIMEOUT_RETRIES > 0
+    lda #RBCP_TIMEOUT_RETRIES
+    sta rbcp_zp_6
+.endif
+@tok_attempt:
+    jsr rbcp_save_token
+    jsr rbcp_knock
     lda #4
     jsr rbcp_send_cmd
-
-    ; Poll progress until pending or complete — confirms back channel is live
-.if RBCP_POLL_TIMEOUT > 0
-    ldx #<RBCP_POLL_TIMEOUT
+    jsr rbcp_poll_token
+    bcc @tok_ok
+.if RBCP_TIMEOUT_RETRIES > 0
+    dec rbcp_zp_6
+    bpl @tok_attempt
 .endif
-@poll_active:
-    lda RBCP_PROGRESS_ADDR
-    cmp #RBCP_PENDING
-    beq @poll_complete
-    cmp #RBCP_COMPLETE
-    beq @check_response
-.if RBCP_POLL_TIMEOUT > 0
-    dex
-    bne @poll_active
-    sec
-    rts
-.else
-    jmp @poll_active
-.endif
-
-@poll_complete:
+    lda #1
+    jmp @fail
+@tok_ok:
     jsr rbcp_poll_progress
-    bcs @fail
-
-@check_response:
+    bcc @prog_ok
+    lda #2
+    jmp @fail
+@prog_ok:
     jsr rbcp_check_response
-    rts
-
+    bcc @ok
+    lda #3
 @fail:
+    sta rbcp_zp_5
     sec
+    rts
+@ok:
+    clc
     rts
 
 .export rbcp_cmd_get_ram_slot_info_all
@@ -330,7 +359,9 @@ rbcp_cmd_switch_and_exit:
     lda #RBCP_CMD_SWITCH_AND_EXIT
     sta rbcp_zp_1
     lda #1
-    jmp rbcp_send_cmd
+    jsr rbcp_send_cmd
+    jsr pause
+    rts
 
 .export rbcp_cmd_get_device_type
 rbcp_cmd_get_device_type:
@@ -412,4 +443,13 @@ rbcp_check_protocol_version_min:
     rts
 @fail:
     sec
+    rts
+
+pause:
+    stx rbcp_zp_3
+    ldx #CONFIG_RBCP_CMD_PAUSE
+@pause_loop:
+    dex
+    bne @pause_loop
+    ldx rbcp_zp_3
     rts
