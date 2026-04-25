@@ -689,7 +689,7 @@ build_status_line:
     jsr buf_puts
     lda rbcp_zp_5
     clc
-    adc #'0'            ; carry clear after set_ptr sequence
+    adc #'0'
     jsr buf_putc
 
     set_ptr str_sl_grp
