@@ -63,9 +63,9 @@ RBCP is designed around the following principles:
 
 **Response:** A boolean field in the response header indicating whether the most recently completed command succeeded. Takes one of two states: status-OK or failed.
 
-**Complete / Pending:** The two states of the progress field. The complete value and its bitwise inverse (pending) are either protocol defaults or configured by the host via CONFIG_CMD_RESP.
+**Complete / Pending:** The two states of the progress field. The complete value and its bitwise inverse (pending) are either protocol defaults or configured by the host via CONFIG_CMD_RESP or CONFIG_AND_ENTER_CMD_RESP.
 
-**Status-OK / Failed:** The two states of the response field. The status-OK value and its bitwise inverse (failed) are either protocol defaults or configured by the host via CONFIG_CMD_RESP.
+**Status-OK / Failed:** The two states of the response field. The status-OK value and its bitwise inverse (failed) are either protocol defaults or configured by the host via CONFIG_CMD_RESP or CONFIG_AND_ENTER_CMD_RESP.
 
 ---
 
@@ -386,7 +386,7 @@ Each complete record is 32 bytes:
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | rom_type | ROM type identifier |
-| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Null-terminated — all 31 bytes may be used. A zero length name is a valid response where the device has no name associated with the slot. |
+| 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Null-terminated. A zero length name is a valid response where the device has no name associated with the slot. |
 
 Records follow the preamble in slot index order. `whole_count` complete records are returned first. If `partial_flag` is 0x01, a truncated record follows, containing as many bytes of that record as the data section (minus space for header) permits.
 
