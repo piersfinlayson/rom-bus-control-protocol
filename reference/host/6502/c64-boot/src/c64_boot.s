@@ -1,8 +1,7 @@
 ; c64_boot.s — Reset entry, relocation, RBCP session, menu UX
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-    .include "../rbcp/rbcp_defs.s"
-    .include "c64_defs.s"
+.include "c64_defs.s"
 
 ; ---------------------------------------------------------------------------
 ; Imports
@@ -16,7 +15,7 @@
 .import c64_scan_key
 
 .import rbcp_reset
-.import rbcp_cmd_config_and_enter_cmd_resp
+.import rbcp_cmd_enter_cmd_resp
 .import rbcp_cmd_get_ram_slot_info_all
 .import rbcp_cmd_get_flash_slot_info_all
 .import rbcp_cmd_load_slot
@@ -190,14 +189,26 @@ boot_ram_entry:
     ; Spec defined reset sequence.
     jsr rbcp_reset
 
-    ; Enter command-response mode, with desired configuration:
-    ; - Back channel data section at start of ROM image
-    ; - 512 bytes long, including 8 byte header
-    lda #RBCP_LOCATION_START
+    ; Enter command-response mode. The command page ($0000) tells the device
+    ; to treat only address reads where the upper bits (above A7) equal $00 ($E000)
+    ; as command bytes — matching the ROM's base address high byte. The
+    ; back-channel region sits at RBCP_BCH_START ($0100) within the slot,
+    ; immediately above the command page, for RBCP_BCH_SIZE (512) bytes.
+    lda #CONFIG_RBCP_CMD_PAGE_REL
     sta rbcp_arg0
-    lda #RBCP_SIZE_512
+    lda #0
     sta rbcp_arg1
-    jsr rbcp_cmd_config_and_enter_cmd_resp
+    lda #<RBCP_BCH_START
+    sta rbcp_arg2
+    lda #>RBCP_BCH_START
+    sta rbcp_arg3
+    lda #0
+    sta rbcp_arg4
+    lda #<RBCP_BCH_SIZE
+    sta rbcp_arg5
+    lda #>RBCP_BCH_SIZE
+    sta rbcp_arg6
+    jsr rbcp_cmd_enter_cmd_resp
     bcc @ok_enter
     jmp err_no_cmd_resp
 

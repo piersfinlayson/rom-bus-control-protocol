@@ -25,9 +25,9 @@ RBCP_SUPPORTED_PROTOCOL_PATCH = 0
 RBCP_BASE_HI    = CONFIG_ROM_BASE_HI
 
 ; ---------------------------------------------------------------------------
-; High byte of ROM address for RBCP command reads. Calculated from the above.
+; High byte of ROM address for RBCP command reads.
 ; ---------------------------------------------------------------------------
-RBCP_CMD_HI     = CONFIG_RBCP_READ_HI
+RBCP_CMD_HI     = CONFIG_RBCP_CMD_PAGE
 
 ; ---------------------------------------------------------------------------
 ; Poll timeout  (0 = no timeout), max 255
@@ -53,9 +53,8 @@ rbcp_zp_3  = RBCP_ZP_BASE + 3  ; use by pause routine
 rbcp_zp_4  = RBCP_ZP_BASE + 4  ; scratch / 16-bit counter hi
 rbcp_zp_5  = RBCP_ZP_BASE + 5  ; scratch (also used for error code on failure)
 rbcp_zp_6  = RBCP_ZP_BASE + 6  ; Used for retry tracking
-rbcp_zp_7  = RBCP_ZP_BASE + 7  ; Unused
 
-RBCP_ARG_OFFSET = 8
+RBCP_ARG_OFFSET = 7
 RBCP_ARG_BASE   = CONFIG_RBCP_ZP_BASE + RBCP_ARG_OFFSET   ; base of argument buffer ZP block
 
 rbcp_arg0  = RBCP_ARG_BASE + 0
@@ -63,6 +62,10 @@ rbcp_arg1  = RBCP_ARG_BASE + 1
 rbcp_arg2  = RBCP_ARG_BASE + 2
 rbcp_arg3  = RBCP_ARG_BASE + 3
 rbcp_arg4  = RBCP_ARG_BASE + 4
+rbcp_arg5  = RBCP_ARG_BASE + 5
+rbcp_arg6  = RBCP_ARG_BASE + 6
+rbcp_arg7  = RBCP_ARG_BASE + 7
+rbcp_arg8  = RBCP_ARG_BASE + 8
 
 .assert CONFIG_RBCP_ZP_LENGTH >= 16, error, "RBCP requires at least 16 bytes of zero page"
 .assert CONFIG_RBCP_ZP_BASE + CONFIG_RBCP_ZP_LENGTH <= $100, error, "RBCP zero page block exceeds page size"
@@ -93,38 +96,15 @@ RBCP_STATUS_OK  = CONFIG_RBCP_STATUS_OK             ; response: success
 RBCP_FAILED     = (~CONFIG_RBCP_STATUS_OK) & $FF    ; response: failure
 
 ; ---------------------------------------------------------------------------
-; CONFIG_CMD_RESP location and size table indices
-; ---------------------------------------------------------------------------
-
-RBCP_LOCATION_START     = $00       ; back-channel at start of slot
-RBCP_LOCATION_END       = $01       ; back-channel at end of slot
-
-RBCP_SIZE_8             = $00       ; header only (0 bytes data)
-RBCP_SIZE_16            = $01
-RBCP_SIZE_32            = $02
-RBCP_SIZE_64            = $03
-RBCP_SIZE_128           = $04
-RBCP_SIZE_256           = $05
-RBCP_SIZE_512           = $06
-RBCP_SIZE_1024          = $07
-RBCP_SIZE_2048          = $08
-RBCP_SIZE_4096          = $09
-RBCP_SIZE_8192          = $0A
-RBCP_SIZE_16384         = $0B
-RBCP_SIZE_32768         = $0C
-
-; ---------------------------------------------------------------------------
 ; Command GROUP and CMD values
 ; ---------------------------------------------------------------------------
 
 RBCP_GRP_CTRL                       = $00
 RBCP_CMD_NOP                        = $00
-RBCP_CMD_CONFIG_CMD_RESP            = $01
-RBCP_CMD_ENTER_CMD_RESP             = $02
-RBCP_CMD_CONFIG_AND_ENTER_CMD_RESP  = $03
-RBCP_CMD_EXIT_CMD_RESP_ACK          = $04
-RBCP_CMD_EXIT_CMD_RESP_SILENT       = $05
-RBCP_CMD_SWITCH_AND_EXIT            = $06
+RBCP_CMD_ENTER_CMD_RESP             = $01
+RBCP_CMD_EXIT_CMD_RESP_ACK          = $02
+RBCP_CMD_EXIT_CMD_RESP_SILENT       = $03
+RBCP_CMD_SWITCH_AND_EXIT            = $04
 
 RBCP_GRP_READ                       = $01
 RBCP_CMD_GET_FLASH_SLOT_COUNT       = $00
@@ -155,7 +135,7 @@ RBCP_CMD_RESET                      = $AA
 ;   +$08  data section  (512 bytes)
 ; ---------------------------------------------------------------------------
 
-RBCP_TOKEN_LSB_ADDR  = RBCP_BASE_HI * $100 + $02
-RBCP_PROGRESS_ADDR   = RBCP_BASE_HI * $100 + $04
-RBCP_RESPONSE_ADDR   = RBCP_BASE_HI * $100 + $05
-RBCP_DATA_ADDR       = RBCP_BASE_HI * $100 + $08
+RBCP_TOKEN_LSB_ADDR  = CONFIG_RBCP_BCH_BASE + $02
+RBCP_PROGRESS_ADDR   = CONFIG_RBCP_BCH_BASE + $04
+RBCP_RESPONSE_ADDR   = CONFIG_RBCP_BCH_BASE + $05
+RBCP_DATA_ADDR       = CONFIG_RBCP_BCH_BASE + $08

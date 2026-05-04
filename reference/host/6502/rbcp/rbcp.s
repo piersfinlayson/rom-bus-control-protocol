@@ -221,23 +221,26 @@ rbcp_issue_cmd:
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; The spec defines a reset sequence as being:
-; - 4 x resets (no knock)
-; - pause
-; - 1 x knock
-; - 1 x reset
-; - pause
-;
-; Two different methods are provided for each stage so the host can decide
-; what pause to include between them (as it depends on clock speed, etc.).
-; Alternatively, rbcp_reset can be used to do the whole sequence with a
-; single call.
+; rbcp_reset — issues the full RBCP reset sequence:
+;   Stage 1: 5 × RBCP_RESET, no knock — flushes any partially-received
+;            command (max 9 arg bytes + 2 framing bytes) and triggers
+;            execution of whatever command was in progress.
+;   pause  — allows that command to complete.
+;   Stage 2: 1 × RBCP_RESET, no knock — resets the now-idle device.
+;   pause  — allows reset to complete.
+;   Stage 3: knock + 1 × RBCP_RESET — resets the device if it was in
+;            command-response mode, where a knock is required to re-
+;            establish framing before a reset is recognised.
+;   pause  — allows reset to complete.
+; Clobbers: A, X, Y.
 ; ---------------------------------------------------------------------------
 .export rbcp_reset
 rbcp_reset:
     jsr rbcp_reset_stage_1
     jsr pause
     jsr rbcp_reset_stage_2
+    jsr pause
+    jsr rbcp_reset_stage_3
     jsr pause
     rts
 
@@ -251,40 +254,59 @@ rbcp_cmd_reset:
 
 .export rbcp_reset_stage_1
 rbcp_reset_stage_1:
+    ldy #5
+@loop:
     jsr rbcp_cmd_reset
-    jsr rbcp_cmd_reset
-    jsr rbcp_cmd_reset
-    jsr rbcp_cmd_reset
+    dey
+    bne @loop
     rts
 
 .export rbcp_reset_stage_2
 rbcp_reset_stage_2:
+    jsr rbcp_cmd_reset
+    rts
+
+.export rbcp_reset_stage_3
+rbcp_reset_stage_3:
     jsr rbcp_knock
     jsr rbcp_cmd_reset
     rts
 
 ; ---------------------------------------------------------------------------
-; This is more complex than the other commands because it needs to first
-; confirm the back channel is live by polling for pending/complete.
-; A0 = location, A1 = size_id (caller sets rbcp_arg0/1).
-; ---------------------------------------------------------------------------
+; rbcp_cmd_enter_cmd_resp — issues ENTER_CMD_RESP with a preceding knock.
+;
+; Caller must set before JSR:
+;   rbcp_arg0/1 = command page (16-bit LE)
+;   rbcp_arg2/3/4 = back-channel start address (24-bit LE, 4-byte aligned)
+;   rbcp_arg5/6 = back-channel size in bytes (16-bit LE)
+;
+; This function sets rbcp_arg7 = RBCP_COMPLETE and rbcp_arg8 = RBCP_STATUS_OK
+; from the protocol defaults defined in rbcp_defs.s.
+;
+; If the token LSB does not increment within the poll timeout the command
+; was silently discarded by the device (e.g. misaligned address, out-of-range
+; command page, or prohibited complete/status-OK value) and command-response
+; mode has not been entered.
+;
 ; On failure, rbcp_zp_5 holds the stage that failed:
-;   1 = token poll timeout (command not received)
+;   1 = token poll timeout (command not received / silently discarded)
 ;   2 = progress poll timeout (received but never completed)
 ;   3 = response = FAILED
-.export rbcp_cmd_config_and_enter_cmd_resp
-rbcp_cmd_config_and_enter_cmd_resp:
+; Returns carry clear = success, carry set = failure. Clobbers: A, X, Y.
+; ---------------------------------------------------------------------------
+.export rbcp_cmd_enter_cmd_resp
+rbcp_cmd_enter_cmd_resp:
     lda #$FF
     sta rbcp_zp_5           ; clear error code
 
     lda #RBCP_GRP_CTRL
     sta rbcp_zp_0
-    lda #RBCP_CMD_CONFIG_AND_ENTER_CMD_RESP
+    lda #RBCP_CMD_ENTER_CMD_RESP
     sta rbcp_zp_1
     lda #RBCP_COMPLETE
-    sta rbcp_arg2
+    sta rbcp_arg7
     lda #RBCP_STATUS_OK
-    sta rbcp_arg3
+    sta rbcp_arg8
 
 .if RBCP_TIMEOUT_RETRIES > 0
     lda #RBCP_TIMEOUT_RETRIES
@@ -293,7 +315,7 @@ rbcp_cmd_config_and_enter_cmd_resp:
 @tok_attempt:
     jsr rbcp_save_token
     jsr rbcp_knock
-    lda #4
+    lda #9
     jsr rbcp_send_cmd
     jsr rbcp_poll_token
     bcc @tok_ok
