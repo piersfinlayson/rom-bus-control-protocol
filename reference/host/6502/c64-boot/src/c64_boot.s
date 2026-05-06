@@ -22,6 +22,9 @@
 .import rbcp_cmd_switch_and_exit
 .import rbcp_cmd_get_device_type, rbcp_cmd_get_device_version
 .import rbcp_check_protocol_version
+.import rbcp_cmd_get_nv_capability
+.import rbcp_cmd_nv_peek
+.import rbcp_cmd_nv_poke_commit_byte
 
 .import row_off_lo
 .import row_scr_hi
@@ -69,6 +72,8 @@ var_whole_flash:.res 1
 var_num_display:.res 1
 var_selection:  .res 1
 var_cbm_held:   .res 1      ; $00 = C= held; non-zero = not held
+var_nv_present: .res 1      ; 0 = absent or not writable, 1 = writable
+var_boot_flash: .res 1      ; resolved flash slot to boot
 
 ; ===========================================================================
 ; BOOT segment — runs from ROM, executes before relocation
@@ -239,6 +244,49 @@ boot_ram_entry:
     eor #1
     sta var_target_ram
 
+    ; Flash slot info — needed by both paths and for NV validation
+    lda #0
+    sta var_total_flash
+    sta var_whole_flash
+    jsr rbcp_cmd_get_flash_slot_info_all
+    bcs @flash_info_done        ; on failure totals stay zero; menu path catches this, auto-boot falls back to slot 1
+    lda RBCP_DATA_ADDR + 0
+    sta var_total_flash
+    lda RBCP_DATA_ADDR + 1
+    sta var_whole_flash
+@flash_info_done:
+
+    ; NV query — resolve boot slot; failures fall through to default
+    lda #0
+    sta var_nv_present
+    lda #1
+    sta var_boot_flash              ; default: flash slot 1
+
+    jsr rbcp_cmd_get_nv_capability
+    bcs @nv_skip                    ; command failed
+    lda RBCP_DATA_ADDR + RBCP_NV_CAP_SIZE_LO
+    ora RBCP_DATA_ADDR + RBCP_NV_CAP_SIZE_HI
+    beq @nv_skip                    ; size == 0, no NV storage
+    lda RBCP_DATA_ADDR + RBCP_NV_CAP_WRITABLE
+    beq @nv_skip                    ; present but read-only
+    lda #1
+    sta var_nv_present
+
+    lda #1
+    sta rbcp_arg0                   ; count = 1
+    lda #0
+    sta rbcp_arg1                   ; location LSB = 0
+    sta rbcp_arg2                   ; location MSB = 0
+    jsr rbcp_cmd_nv_peek
+    bcs @nv_skip                    ; peek failed
+
+    lda RBCP_DATA_ADDR              ; the stored slot byte
+    beq @nv_skip                    ; 0 = bootloader slot, invalid
+    cmp var_total_flash             ; >= total slots, out of range
+    bcs @nv_skip
+    sta var_boot_flash              ; valid, use it
+@nv_skip:
+
     ; ------------------------------------------------------------------
     ; Branch on C= state
     ; ------------------------------------------------------------------
@@ -250,16 +298,19 @@ boot_ram_entry:
     ; AUTO-BOOT PATH — load flash slot 1, switch, and go
     ; ==================================================================
 
-    lda var_target_ram      ; RAM slot
-    ldx #1                  ; Flash slot
+    ldx var_boot_flash
+    lda var_target_ram
     jsr rbcp_cmd_load_slot
     bcc @ok_load_auto
     jmp err_load
 @ok_load_auto:
 
-    lda #1
-    ;lda var_target_ram
+    lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
+
+.if PAUSE_BEFORE_RESET
+    jsr pause_before_reset
+.endif
 
     jmp (RESET_VECTOR)
 
@@ -333,20 +384,10 @@ path_menu:
     ;ldy #COL_BROWN
     ;sty VIC_BORDER
 
-    jsr rbcp_cmd_get_flash_slot_info_all
-    bcc @ok_flash
-    jmp err_flash_info
-@ok_flash:
-
-    ;ldy #COL_YELLOW
-    ;sty VIC_BORDER
-
-    lda RBCP_DATA_ADDR + 0
-    sta var_total_flash
-    lda RBCP_DATA_ADDR + 1
-    sta var_whole_flash
-
     lda var_total_flash
+    bne @flash_ok
+    jmp err_flash_info      ; query failed earlier, report the real error
+@flash_ok:
     cmp #2
     bcs @ok_flashcount
     jmp err_no_kernals
@@ -492,11 +533,24 @@ key_delay:
     jmp key_loop
 
 do_boot:
-    ; Flash slot = selection + 1 (slot 0 is bootloader, not displayed)
+    inc var_selection       ; convert to 1-based flash slot index
+    lda var_nv_present
+    beq @nv_skip_write
     lda var_selection
-    clc
-    adc #1
-    tax                     ; X = flash slot
+    cmp var_boot_flash      ; already stored?
+    beq @nv_skip_write      ; yes — skip the write
+    sta rbcp_arg0           ; byte to store
+    lda #0
+    sta rbcp_arg1           ; location LSB
+    sta rbcp_arg2           ; location MSB
+    lda var_target_ram
+    sta rbcp_arg3           ; RAM slot for staging
+    jsr rbcp_cmd_nv_poke_commit_byte
+    bcc @nv_skip_write
+    jmp err_nv_commit
+
+@nv_skip_write:
+    ldx var_selection       ; X = flash slot
     lda var_target_ram      ; A = RAM slot
     jsr rbcp_cmd_load_slot
     bcc @ok_load_menu
@@ -505,10 +559,14 @@ do_boot:
     lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
 
-    ; No need to pause as we'll clear the screen before a reset
+    ; No need to pause as we'll clear the screen before a reset.
     ldy #COL_BLACK
     jsr c64_clear_screen
     sty VIC_BORDER
+
+.if PAUSE_BEFORE_RESET
+    jsr pause_before_reset
+.endif
 
     jmp (RESET_VECTOR)
 
@@ -585,6 +643,15 @@ err_device_version:
     lda #<msg_err_device_version
     sta ZP_PTR_LO
     lda #>msg_err_device_version
+    sta ZP_PTR_HI
+    jmp halt_with_msg
+
+err_nv_commit:
+    lda #COL_RED
+    sta VIC_BORDER
+    lda #<msg_err_nv_commit
+    sta ZP_PTR_LO
+    lda #>msg_err_nv_commit
     sta ZP_PTR_HI
     jmp halt_with_msg
 
@@ -730,12 +797,12 @@ build_status_line:
 
     set_ptr str_sl_dgrp
     jsr buf_puts
-    lda RBCP_DATA_ADDR + 0
+    lda CONFIG_RBCP_BCH_BASE + 0
     jsr byte_to_hex
 
     set_ptr str_sl_dcmd
     jsr buf_puts
-    lda RBCP_DATA_ADDR + 1
+    lda CONFIG_RBCP_BCH_BASE + 1
     jsr byte_to_hex
 
     lda #0
@@ -930,6 +997,20 @@ clear_arrow:
     sta (ZP_PTR_LO), y
     rts
 
+.if PAUSE_BEFORE_RESET
+pause_before_reset:
+    ; Count to 65536 before resetting
+    lda #0
+    sta ZP_TMP0
+    sta ZP_TMP1
+@wait_for_reset:
+    inc ZP_TMP0
+    bne @wait_for_reset
+    inc ZP_TMP1
+    bne @wait_for_reset
+    rts
+.endif
+
 ; ===========================================================================
 ; String data (RODATA — accessed via RAM so in code)
 ; ===========================================================================
@@ -946,6 +1027,7 @@ msg_err_insuff_ram:     .byte "RBCP ERROR: INSUFFICIENT RAM SLOTS", 0
 msg_err_flash_info:     .byte "RBCP ERROR: FLASH SLOT INFO FAILED", 0
 msg_err_device_type:    .byte "RBCP ERROR: GET DEVICE TYPE FAILED", 0
 msg_err_device_version: .byte "RBCP ERROR: GET DEVICE VERSION FAILED", 0
+msg_err_nv_commit:      .byte "RBCP ERROR: NV COMMIT FAILED", 0
 msg_err_no_kernals:     .byte "NO KERNALS FOUND TO BOOT", 0
 msg_err_load:           .byte "RBCP ERROR: LOAD FAILED", 0
 msg_halt:               .byte "HALTING", 0

@@ -22,19 +22,19 @@ On any RBCP error the bootloader displays a message and halts; power-cycle to re
 
 On Debian/Ubuntu:
 
-```
+```bash
 sudo apt install cc65
 ```
 
 On macOS with Homebrew:
 
-```
+```zsh
 brew install cc65
 ```
 
 ## Building
 
-```
+```bash
 make
 ```
 
@@ -43,6 +43,14 @@ a One ROM or other RBCP capable ROM emulator.
 
 To clean:
 
-```
+```bash
 make clean
+```
+
+## Debugging
+
+When running against a One ROM with logging enabled, the bootloader will assume that One ROM has switched to a new slot before it has actually done so.  To work around this, build the bootloader with `PAUSE_BEFORE_RESET=1`:
+
+```bash
+PAUSE_BEFORE_RESET=1 make
 ```

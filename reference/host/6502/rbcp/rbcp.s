@@ -151,6 +151,30 @@ rbcp_pp_ok:
     clc
     rts
 
+.export rbcp_poll_progress_long
+rbcp_poll_progress_long:
+.if RBCP_NV_POLL_TIMEOUT > 0
+    ldx #<RBCP_NV_POLL_TIMEOUT
+    ldy #>RBCP_NV_POLL_TIMEOUT
+.endif
+rbcp_ppl_loop:
+    lda RBCP_PROGRESS_ADDR
+    cmp #RBCP_COMPLETE
+    beq rbcp_ppl_ok
+.if RBCP_NV_POLL_TIMEOUT > 0
+    dex
+    bne rbcp_ppl_loop
+    dey
+    bne rbcp_ppl_loop
+    sec
+    rts
+.else
+    jmp rbcp_ppl_loop
+.endif
+rbcp_ppl_ok:
+    clc
+    rts
+
 ; ---------------------------------------------------------------------------
 ; rbcp_check_response — carry clear if RBCP_STATUS_OK, set otherwise.
 ; Clobbers: A.
@@ -171,17 +195,32 @@ rbcp_cr_ok:
 ; rbcp_issue_cmd — save_token → send_cmd → poll_token → poll_progress
 ;                  → check_response.
 ; Returns carry clear = success, carry set = failure. Clobbers: A, X, Y.
+; Takes rbcp_zp_3 = 0 for normal progress poll, 1 for rbcp_poll_progress_long.
 ; ---------------------------------------------------------------------------
 ; On failure, rbcp_zp_5 holds the stage that failed:
 ;   1 = token poll timeout (command not received)
 ;   2 = progress poll timeout (received but never completed)
 ;   3 = response = FAILED
+
+.export rbcp_issue_cmd_long_poll
+rbcp_issue_cmd_long_poll:
+    tax
+    lda #1
+    sta rbcp_zp_3
+    txa
+    jmp rbcp_issue_cmd_body
+
 .export rbcp_issue_cmd
 rbcp_issue_cmd:
-    sta rbcp_zp_4           ; save argument count (if any)
+    tax
+    lda #0
+    sta rbcp_zp_3
+    txa
 
+rbcp_issue_cmd_body:
+    sta rbcp_zp_4
     lda #$FF
-    sta rbcp_zp_5           ; clear error code
+    sta rbcp_zp_5
 
 .if RBCP_TIMEOUT_RETRIES > 0
     lda #RBCP_TIMEOUT_RETRIES
@@ -200,8 +239,15 @@ rbcp_issue_cmd:
     lda #1
     jmp @err
 @tok_ok:
+    lda rbcp_zp_3
+    beq @short_poll
+    jsr rbcp_poll_progress_long
+    bcs @prog_fail
+    bcc @prog_ok
+@short_poll:
     jsr rbcp_poll_progress
     bcc @prog_ok
+@prog_fail:
     lda #2
     jmp @err
 @prog_ok:
@@ -215,6 +261,8 @@ rbcp_issue_cmd:
 @rsp_ok:
     clc
     rts
+
+
 
 ; ---------------------------------------------------------------------------
 ; Command helpers
@@ -475,3 +523,32 @@ pause:
     bne @pause_loop
     ldx rbcp_zp_3
     rts
+
+.export rbcp_cmd_get_nv_capability
+rbcp_cmd_get_nv_capability:
+    lda #RBCP_GRP_NV
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_NV_CAPABILITY
+    sta rbcp_zp_1
+    lda #0
+    jmp rbcp_issue_cmd
+
+; Caller sets: rbcp_arg0=count, rbcp_arg1=loc_LSB, rbcp_arg2=loc_MSB
+.export rbcp_cmd_nv_peek
+rbcp_cmd_nv_peek:
+    lda #RBCP_GRP_NV
+    sta rbcp_zp_0
+    lda #RBCP_CMD_NV_PEEK
+    sta rbcp_zp_1
+    lda #3
+    jmp rbcp_issue_cmd
+
+; Caller sets: rbcp_arg0=byte, rbcp_arg1=loc_LSB, rbcp_arg2=loc_MSB, rbcp_arg3=RAM slot
+.export rbcp_cmd_nv_poke_commit_byte
+rbcp_cmd_nv_poke_commit_byte:
+    lda #RBCP_GRP_NV
+    sta rbcp_zp_0
+    lda #RBCP_CMD_NV_POKE_COMMIT_BYTE
+    sta rbcp_zp_1
+    lda #4
+    jmp rbcp_issue_cmd_long_poll

@@ -30,10 +30,11 @@ RBCP_BASE_HI    = CONFIG_ROM_BASE_HI
 RBCP_CMD_HI     = CONFIG_RBCP_CMD_PAGE
 
 ; ---------------------------------------------------------------------------
-; Poll timeout  (0 = no timeout), max 255
+; Poll timeouts (0 = no timeout), max 255
 ; ---------------------------------------------------------------------------
 
 RBCP_POLL_TIMEOUT = CONFIG_RBCP_POLL_TIMEOUT
+RBCP_NV_POLL_TIMEOUT = CONFIG_RBCP_NV_POLL_TIMEOUT
 
 ; ---------------------------------------------------------------------------
 ; Command retries on failure (0 = no retries), max 255
@@ -49,7 +50,7 @@ RBCP_ZP_BASE    = CONFIG_RBCP_ZP_BASE   ; base of RBCP library ZP block
 rbcp_zp_0  = RBCP_ZP_BASE + 0  ; general purpose / loop counter lo
 rbcp_zp_1  = RBCP_ZP_BASE + 1  ; general purpose / loop counter hi
 rbcp_zp_2  = RBCP_ZP_BASE + 2  ; saved token LSB
-rbcp_zp_3  = RBCP_ZP_BASE + 3  ; use by pause routine
+rbcp_zp_3  = RBCP_ZP_BASE + 3  ; used by pause routine and to indicate to issue_cmd to perform a longer poll
 rbcp_zp_4  = RBCP_ZP_BASE + 4  ; scratch / 16-bit counter hi
 rbcp_zp_5  = RBCP_ZP_BASE + 5  ; scratch (also used for error code on failure)
 rbcp_zp_6  = RBCP_ZP_BASE + 6  ; Used for retry tracking
@@ -121,6 +122,15 @@ RBCP_CMD_SWITCH_SLOT                = $01
 RBCP_CMD_LOAD_SLOT                  = $02
 RBCP_CMD_SLOT_POKE_ALL_BYTE         = $03
 
+RBCP_GRP_NV                         = $03
+RBCP_CMD_GET_NV_CAPABILITY          = $00
+RBCP_CMD_NV_PEEK                    = $01
+RBCP_CMD_NV_POKE_BEGIN              = $02
+RBCP_CMD_NV_POKE                    = $03
+RBCP_CMD_NV_POKE_COMMIT             = $04
+RBCP_CMD_NV_POKE_DISCARD            = $05
+RBCP_CMD_NV_POKE_COMMIT_BYTE        = $06
+
 RBCP_GRP_RESET                      = $AA
 RBCP_CMD_RESET                      = $AA
 
@@ -139,3 +149,8 @@ RBCP_TOKEN_LSB_ADDR  = CONFIG_RBCP_BCH_BASE + $02
 RBCP_PROGRESS_ADDR   = CONFIG_RBCP_BCH_BASE + $04
 RBCP_RESPONSE_ADDR   = CONFIG_RBCP_BCH_BASE + $05
 RBCP_DATA_ADDR       = CONFIG_RBCP_BCH_BASE + $08
+
+; GET_NV_CAPABILITY response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_NV_CAP_SIZE_LO  = 0
+RBCP_NV_CAP_SIZE_HI  = 1
+RBCP_NV_CAP_WRITABLE = 2

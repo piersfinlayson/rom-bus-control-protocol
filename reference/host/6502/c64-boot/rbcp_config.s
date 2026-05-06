@@ -34,6 +34,12 @@ CONFIG_RBCP_STATUS_OK = $CC ; inverse = $33
 ; This is an arbitrary value with no fixed unit.  $00 = wait forever.
 CONFIG_RBCP_POLL_TIMEOUT = $FF
 
+; A timeout to wait for non-volatile commits to complete, as these are likely
+; to involve flash erases which take a long time (ms).
+; This is an arbitrary value with no fixed unit.  $00 = wait forever.  The
+; maximum is $FFFF
+CONFIG_RBCP_NV_POLL_TIMEOUT = $FFFF
+
 ; Set to the number of times to retry a command in command-response mode, if
 ; the device fails to acknowledge it within the timeout via a token increment.
 ; $00 = no retries.

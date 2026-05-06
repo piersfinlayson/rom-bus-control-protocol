@@ -185,6 +185,7 @@ The maximum argument count for any command defined by this version of the protoc
 | 0x00 | Control | Command, Command-Response | Session and mode management |
 | 0x01 | Read | Command-Response only | Query the device for information |
 | 0x02 | Modify | Command, Command-Response | Change device state |
+| 0x03 | NV Storage | Command-Response only | Query and modify dedicated non-volatile storage on the device |
 | 0xAA | Reset | Command, Command-Response | Reset the device's RBCP implementation |
 
 ---
@@ -214,7 +215,7 @@ CMD 0xAA is reserved and must never be assigned.
 | 0x04 | GET_DEVICE_TYPE | 0 | Requests the device to write its type (e.g. One ROM) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. See [GET_DEVICE_TYPE Response Format](#get_device_type-response-format). |
 | 0x05 | GET_DEVICE_VERSION | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
 | 0x06 | GET_PROTOCOL_VERSION | 0 | Requests the device to write the RBCP protocol version it implements into the response data section. See [GET_PROTOCOL_VERSION Response Format](#get_protocol_version-response-format). |
-| 0x07 | SLOT_PEEK | 5: A0/A1/A2=24-bit address (little-endian), A3=count, A4=slot | Requests the device to read one or more bytes from the specified RAM slot at the specified address and write them into the response data section. A count of zero indicates 256 bytes should be read. This command fails if there is insufficient space in the response data section to accommodate the requested bytes.  An A4 value of 0xAA is invalid and rejected. |
+| 0x07 | SLOT_PEEK | 5: A0=count, A1/A2/A3=24-bit address (little-endian), A4=slot | Requests the device to read one or more bytes from the specified RAM slot at the specified address and write them into the response data section. A count of zero indicates 256 bytes should be read. This command fails if there is insufficient space in the response data section to accommodate the requested bytes.  An A4 value of 0xAA is invalid and rejected. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -222,13 +223,47 @@ CMD 0xAA is reserved and must never be assigned.
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
-| 0x00 | SLOT_POKE | 5: A0/A1/A2=24-bit address (little-endian), A3=byte, A4=slot | Writes a single byte into the specified RAM slot at the specified address. May be used for patching vectors or other known locations prior to activating that slot or entering command-response mode. The target slot need not be active. In fact, patching multi-byte values such as interrupt vectors should only be done to inactive slots. Because SLOT_POKE writes one byte at a time, there is no atomic write of a 16-bit value — a vector partially written to an active slot will be transiently inconsistent and will corrupt any interrupt that occurs between the two writes. The safe pattern is: LOAD_SLOT the target image into an inactive RAM slot, issue SLOT_POKE commands to patch any vectors in that inactive slot, then issue SWITCH_AND_EXIT to make it active. The vector bytes are consistent at the instant the slot becomes active.  An A4 value of 0xAA is invalid and rejected. |
+| 0x00 | SLOT_POKE | 5: A0=byte, A1/A2/A3=24-bit address (little-endian), A4=slot | Writes a single byte into the specified RAM slot at the specified address. May be used for patching vectors or other known locations prior to activating that slot or entering command-response mode. The target slot need not be active. In fact, patching multi-byte values such as interrupt vectors should only be done to inactive slots. Because SLOT_POKE writes one byte at a time, there is no atomic write of a 16-bit value — a vector partially written to an active slot will be transiently inconsistent and will corrupt any interrupt that occurs between the two writes. The safe pattern is: LOAD_SLOT the target image into an inactive RAM slot, issue SLOT_POKE commands to patch any vectors in that inactive slot, then issue SWITCH_AND_EXIT to make it active. The vector bytes are consistent at the instant the slot becomes active.  An A4 value of 0xAA is invalid and rejected. |
 | 0x01 | SWITCH_SLOT | 1: A0=slot | Activates the specified RAM slot. An A0 value of 0xAA is invalid and rejected. |
 | 0x02 | LOAD_SLOT | 2: A0=RAM slot, A1=flash slot | Copies the specified ROM image from the slot on the ROM into the specified RAM slot. Does not activate the slot. A0 or A1 values of 0xAA are invalid and rejected. |
 | 0x03 | SLOT_POKE_ALL_BYTE | 2: A0=byte, A1=RAM slot | Fills the specified RAM slot with the specified byte. Does not activate the slot. An A1 value of 0xAA is invalid and rejected. |
 
 CMD 0xAA is reserved and must never be assigned.
 
+### Group 0x03 — NV Storage
+ 
+Commands in this group allow the host to query and modify dedicated non-volatile storage on the device. All commands in this group are valid in command-response mode only.
+ 
+NV storage is an optional device feature. The host should query GET_NV_CAPABILITY before issuing any other NV commands. A device that does not support NV storage returns a size of zero from GET_NV_CAPABILITY; all other NV commands return failure on such a device.
+ 
+Write operations follow a transactional model. The host initiates a write transaction with NV_POKE_BEGIN, which loads the current NV storage contents into a RAM staging buffer. The host then issues one or more NV_POKE commands to modify individual bytes in the staging buffer. The transaction is resolved either by NV_POKE_COMMIT, which writes the staging buffer back to NV storage and frees it, or NV_POKE_DISCARD, which abandons all staged changes and frees the staging buffer. Only one write transaction may be in progress at a time.
+ 
+For the common case of updating a single byte, NV_POKE_COMMIT_BYTE performs the full transaction — BEGIN, POKE, COMMIT — as a single command. It fails if a write transaction is already in progress.
+
+A RAM slot must be provided by the host for the device to use as a staging area of the NV writes.  This means that any RAM slot specified will be overwritten by the device and should not be used for any other purpose while a write transaction is in progress.  If the device only supports a single RAM slot, it cannot perform multiple write transactions and hence GET_NV_CAPABILITY reports any NV storage as read-only.
+
+NV_PEEK always reads directly from NV storage, regardless of whether a write transaction is in progress. This allows the host to inspect the actual state of NV storage after a failed commit — for example to verify what was written before deciding whether to retry NV_POKE_COMMIT or issue NV_POKE_DISCARD.
+ 
+If command-response mode exits for any reason while a write transaction is in progress — whether via EXIT_CMD_RESP_ACK, EXIT_CMD_RESP_SILENT, SWITCH_AND_EXIT, or RBCP_RESET — the device silently discards the staging buffer. Exit commands are never rejected on account of an in-progress transaction. RBCP_RESET in particular must unconditionally discard any in-progress transaction, as it is a recovery mechanism. The host is responsible for issuing NV_POKE_COMMIT or NV_POKE_DISCARD before exiting command-response mode if staged changes are to be resolved cleanly.
+ 
+The NV storage address space is a maximum of 32KB. The location MSB in NV_PEEK and NV_POKE encodes the upper address bits; values above 0x7F are invalid, causing the device to reject the command. This constraint ensures that 0xAA is always detectable as a reset signal in the final argument position of both commands.
+
+Before having been written by any host, the entire NV storage on any device is initialized to 0xFF.
+
+Care should be taken when running timers to police a response from the device for NV_POKE_COMMIT and NV_POKE_COMMIT_BYTE, as both of these commands is likely to involve the device erasing flash - which is a long (ms) operation.
+ 
+| CMD | Name | Args | Description |
+|-----|------|------|-------------|
+| 0x00 | GET_NV_CAPABILITY | 0 | Requests the device to report its NV storage capabilities. See [GET_NV_CAPABILITY Response Format](#GET_NV_CAPABILITY-response-format). |
+| 0x01 | NV_PEEK | 3: A0=count, A1=location_LSB, A2=location_MSB | Reads one or more bytes directly from NV storage at the specified location and writes them into the response data section. A count of zero indicates 256 bytes should be read. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Always reads from NV storage, regardless of whether a write transaction is in progress. Fails if there is insufficient space in the response data section to accommodate the requested bytes, or if the requested range exceeds the NV storage size. |
+| 0x02 | NV_POKE_BEGIN | 1: A0=RAM slot | Initiates a write transaction by loading the current NV storage contents into a RAM staging buffer, using the RAM slot specified. Fails if NV storage is not writable, if a write transaction is already in progress or if the RAM slot specified is invalid, active or too small. An A0 value of 0xAA is invalid and rejected. |
+| 0x03 | NV_POKE | 3: A0=byte, A1=location_LSB, A2=location_MSB | Writes a single byte into a staging buffer using the specified RAM slotat the specified location. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Fails if no write transaction is in progress, or if the location exceeds the NV storage size. |
+| 0x04 | NV_POKE_COMMIT | 0 | Commits the staging buffer to NV storage and frees the staging buffer. Fails if no write transaction is in progress, or if the write to NV storage fails. In the event of failure the staging buffer is retained, allowing the host to retry or discard. The protocol does not guarantee that a failed commit leaves NV storage in either its pre- or post-commit state — the degree of atomicity is implementation-defined. Device implementations should document their atomicity guarantees. |
+| 0x05 | NV_POKE_DISCARD | 0 | Discards the staging buffer without writing to NV storage and frees the staging buffer. Fails if no write transaction is in progress. |
+| 0x06 | NV_POKE_COMMIT_BYTE | 4: A0=byte, A1=location_LSB, A2=location_MSB, A3=RAM slot | Performs a complete single-byte write transaction: loads NV storage into a staging buffer using the specified RAM slot, writes the specified byte at the specified location, commits to NV storage, and frees the staging buffer. Fails if NV storage if not writable, if a write transaction is already in progress, or if the RAM slot specified is invalid, active or too small. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Atomicity guarantees are the same as for NV_POKE_COMMIT. An A3 value of 0xAA is invalid and rejected. |
+ 
+CMD 0xAA is reserved and must never be assigned.
+ 
 ### Group 0xAA - Reset
 
 | CMD | Name | Args | Description |
@@ -399,6 +434,24 @@ The response data section begins immediately after the [response header](#respon
 | 2 | 1 | patch | Patch version number |
 | 3 | 1 | Reserved | Must be zero |
 
+## GET_NV_CAPABILITY Response Format
+ 
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+ 
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 2 | size | Total NV storage size in bytes. A value of zero indicates NV storage is not present on this device. |
+| 2 | 1 | writable | 0x01 if the device supports NV storage write operations; 0x00 if read-only. Only meaningful if size is non-zero. |
+| 3 | 1 | Reserved | Must be zero. |
+ 
+## NV_PEEK Response Format
+ 
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+ 
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | count | data | The requested bytes read directly from NV storage. A count of zero in the command corresponds to 256 bytes here. | 
+ 
 ---
 
 ## ROM Types
@@ -456,8 +509,10 @@ This illustrates a typical RBCP session for a C64 kernal bootloader application.
 5. Issues GET_FLASH_SLOT_INFO_ALL.
 6. Reads flash slot count, names and types from the response region.
 7. **Auto-boot path:** selects target slot, issues LOAD_SLOT then SWITCH_AND_EXIT.
-8. **Menu path:** presents a menu, scanning the keyboard as needed (exiting and re-entering command-response mode via a full knock each time to service IRQs), then issues LOAD_SLOT and SWITCH_AND_EXIT on selection.
+8. **Menu path:** presents a menu, scanning the keyboard as needed, then issues LOAD_SLOT and SWITCH_AND_EXIT on selection.
 9. **Menu path:** The device activates the new ROM slot. The bootloader jumps through the reset vector of the newly loaded ROM.
+
+As an optional extra, the bootloader could also store the last-selected slt index in NV storage using NV_POKE_COMMIT_BYTE, and read it back on boot to auto-boot the last selection without presenting the menu.
 
 ---
 
