@@ -17,6 +17,10 @@ jobs:
       - name: Install cc65
         run: sudo apt-get install -y cc65
 
+      - name: Build c64-boot with pause before reset
+        working-directory: reference/host/6502/c64-boot
+        run: PAUSE_BEFORE_RESET=1 make
+
       - name: Build c64-boot
         working-directory: reference/host/6502/c64-boot
         run: make
