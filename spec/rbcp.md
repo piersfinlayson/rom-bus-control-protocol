@@ -57,7 +57,7 @@ RBCP is designed around the following principles:
 
 **Response header:** The first 8 bytes of the back-channel region, present in all configurations. Contains the token, progress, response, and last-command fields.
 
-***Response data section***: The portion of the back-channel region immediately following the response header, beginning at offset 8. Contains command-specific response data. Its size is the back-channel region size minus 8 bytes.
+**Response data section**: The portion of the back-channel region immediately following the response header, beginning at offset 8. Contains command-specific response data. Its size is the back-channel region size minus 8 bytes.
 
 **Token:** A monotonically incrementing counter in the response header, incremented by the device on receipt of each command. Used by the host to detect that a command has been received.
 
@@ -152,8 +152,6 @@ The knock sequence is variable in length and is defined by the device implementa
 
 The knock precedes every session, including re-entry after exiting command-response mode.
 
-There is no lightweight re-entry mechanism in this version of the protocol. One may be included in a future version.
-
 ---
 
 ## Command Framing
@@ -194,6 +192,8 @@ The maximum argument count for any command defined by this version of the protoc
 
 ### Group 0x00 — Control
 
+Commands in this group manage the session and mode of the device. All commands in this group are valid in both command and command-response modes, except where noted.
+
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
 | 0x00 | NOP | 0 | No operation. In command-response mode the device acknowledges via the standard header sequence, allowing the host to verify the device is alive and processing commands. |
@@ -205,6 +205,8 @@ The maximum argument count for any command defined by this version of the protoc
 CMD 0xAA is reserved and must never be assigned.
 
 ### Group 0x01 — Read
+
+Commands in this group query the device for information. All commands in this group are valid in command-response mode only.
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
@@ -220,6 +222,8 @@ CMD 0xAA is reserved and must never be assigned.
 CMD 0xAA is reserved and must never be assigned.
 
 ### Group 0x02 — Modify
+
+Commands in this group change the state of the device. All commands in this group are valid in both command and command-response modes, except where noted.
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
@@ -265,6 +269,8 @@ Care should be taken when running timers to police a response from the device fo
 CMD 0xAA is reserved and must never be assigned.
  
 ### Group 0xAA - Reset
+
+This group defines a single, special command for resetting the device's RBCP implementation. This is a non-standard command that does not follow the normal command processing sequence, and is designed to be reliably detectable even if issued mid-command or mid-knock, making it suitable for recovering from desynchronization or other error states.
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
@@ -343,7 +349,7 @@ The host may already know the pre-existing values at those locations — for exa
 
 The device sets progress = pending before incrementing the token, ensuring no false-complete condition is possible during the transition into command-response mode.
 
-If the token LSB does not increment within a reasonable timeout after issuing ENTER_CMD_RESP, the host should assume the command was silently discarded — due to an invalid argument such as a misaligned back-channel address, an out-of-range command page, or a prohibited complete or status-OK value — and that command-response mode has not been entered.  So safety it is advisable to reset the device before attempting to enter command-response mode, as described in [Communication Initiation - Resetting the Device](#communication-initiation---resetting-the-device).
+If the token LSB does not increment within a reasonable timeout after issuing ENTER_CMD_RESP, the host should assume the command was silently discarded — due to an invalid argument such as a misaligned back-channel address, an out-of-range command page, or a prohibited complete or status-OK value — and that command-response mode has not been entered.  For safety it is advisable to reset the device before attempting to enter command-response mode, as described in [Communication Initiation - Resetting the Device](#communication-initiation---resetting-the-device).
 
 ---
 
@@ -494,7 +500,7 @@ and [GET_RAM_SLOT_INFO](#get_ram_slot_info-response-format) responses.
 | 0x80–0xFE | Reserved for implementation-specific use |
 | 0xFF | Invalid/ROM not being served |
 
-Note that the ROM type values above are defined by the protocol independently of any specific device implementation. A device is not required to support all ROM types listed.
+Note that the ROM type values above are defined by the protocol independently of any specific device implementation. A device is not required to support all ROM types listed.  Host implementations must handle reserved values gracefully, as new ROM types may be defined in future protocol versions without a non-backwards compatible version increase.
 
 ---
 
@@ -522,7 +528,6 @@ All items in this section, including future modes, are subject to change and sho
 
 - SLOT_POKE_MULT: write a stream of consecutive bytes in a single command
 - Pagination for GET_FLASH_SLOT_INFO when slot count or name lengths exceed the response region
-- Lightweight re-entry into command-response mode without a full knock
 - Out-Stream, In-Stream and Bi-Stream mode definitions
 - Utilisation of additional ROM bus lines (R/W, /WE, /BYTE, /AS) in future protocol versions
 
