@@ -8,6 +8,10 @@ For a list of the routines, see the exported symbols in [`rbcp.s`](rbcp.s).
 
 To configure the RBCP implementation's settings for a particular platform, you must provide an `rbcp_config.s` file with the appropriate definitions.  See [`sample_rbcp_config.s`](sample_rbcp_config.s).
 
+These routines must always be copied to and run from RAM because:
+- When not in command-response mode, retrieving instructions to execute from the ROM will cause the RBCP device to interpret those reads as commands, which will cause unpredictable behavior.
+- The routines use some self-modifying code which requires the code to be in RAM.
+
 ## Example Usage
 
 An example usage of this library is provided below.  This example is for a 6502 based platform, running as the device's primary firmware, loaded at the top of the 6502's address space.  It loads a new ROM image from flash to an unused RAM slot, enables it, then jumps to its reset vector.  This can be the basis for a firmware bootloader.
