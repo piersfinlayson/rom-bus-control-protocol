@@ -7,10 +7,13 @@
 ; For example, the C64 kernal ROM is mapped to $E000, hence $E0.
 CONFIG_ROM_BASE_HI = $E0
 
+; Set to the total size of this RBCP ROM image in bytes.  For a C64 kernal
+; ROM, this is 8KB = $2000 bytes.
+CONFIG_ROM_SIZE = $2000
+
 ; Set to the high byte to be used for RBCP command page.  If not required
 ; for other things, $E0xx is a good choice in which case the HI value is $E0.
 CONFIG_RBCP_CMD_PAGE = $E0
-.assert CONFIG_RBCP_CMD_PAGE >= CONFIG_ROM_BASE_HI, error, "The command page must be within the ROM space"
 
 ; The command page value relative to the start of the ROM image.  This is
 ; the value used to configure the device.
@@ -19,7 +22,15 @@ CONFIG_RBCP_CMD_PAGE_REL = CONFIG_RBCP_CMD_PAGE - CONFIG_ROM_BASE_HI
 ; Set to the base address of the back channel region, if used.  Should not
 ; conflict with the RBCP address read 
 CONFIG_RBCP_BCH_BASE = $E100
-.assert CONFIG_RBCP_BCH_BASE >= CONFIG_ROM_BASE_HI * $100, error, "The back-channel region must be within the ROM space"
+
+; Back-channel region start address, as a ROM-relative offset. Must be
+; 4-byte aligned. $0100 places it at $E100 in the C64 address space,
+; leaving the first 256 bytes of the ROM image unmodified for normal
+; ROM content, and also to be used as the command page.
+CONFIG_RBCP_BCH_START = (CONFIG_RBCP_BCH_BASE - (CONFIG_ROM_BASE_HI * $100))
+
+; Set to the size of the back-channel region, including the header, in bytes.
+CONFIG_RBCP_BCH_SIZE = 512
 
 ; Set these to values that are not used by the ROM image in the progress and
 ; response byte locations (Offsets +$04 and +$05 in the back channel region).

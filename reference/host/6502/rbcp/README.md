@@ -41,26 +41,8 @@ start_from_ram:
     ; before attempting to communicate.
     jsr rbcp_reset
 
-    ; Put the device into command-respond mode.
-    ; - Command page at start of ROM (0x0000 relative), A0/A1
-    ; - Back-channel region at 0x000100 relative, A2/A3
-    ; - Back-channel 512 bytes long (0x200), A4/A5/A6
-    ; You MUST also set up the appropriate values in rbcp_config.s for the
-    ; command page and back channel region.
-    lda #0                      ; Command page relative to start of RAM
-    sta rbcp_arg0
-    lda #0                      ; Top byte of command page
-    sta rbcp_arg1
-    lda #0                      ; Back-channel region relative to start of RAM
-    sta rbcp_arg2
-    lda #$01                    ; Back-channel region mid byte
-    sta rbcp_arg3
-    lda #0                      ; Back-channel region top byte
-    sta rbcp_arg4
-    lda #0                      ; Back-channel region size, low byte
-    sta rbcp_arg5
-    lda #2                      ; Back-channel region size, top byte
-    sta rbcp_arg6
+    ; Put the device into command-respond mode.  Uses configuration from
+    ; rbcp_config.s
     jsr rbcp_cmd_enter_cmd_resp
     bcc @ok_enter
     jmp halt        ; Hit error entering command response mode

@@ -194,25 +194,7 @@ boot_ram_entry:
     ; Spec defined reset sequence.
     jsr rbcp_reset
 
-    ; Enter command-response mode. The command page ($0000) tells the device
-    ; to treat only address reads where the upper bits (above A7) equal $00 ($E000)
-    ; as command bytes — matching the ROM's base address high byte. The
-    ; back-channel region sits at RBCP_BCH_START ($0100) within the slot,
-    ; immediately above the command page, for RBCP_BCH_SIZE (512) bytes.
-    lda #CONFIG_RBCP_CMD_PAGE_REL
-    sta rbcp_arg0
-    lda #0
-    sta rbcp_arg1
-    lda #<RBCP_BCH_START
-    sta rbcp_arg2
-    lda #>RBCP_BCH_START
-    sta rbcp_arg3
-    lda #0
-    sta rbcp_arg4
-    lda #<RBCP_BCH_SIZE
-    sta rbcp_arg5
-    lda #>RBCP_BCH_SIZE
-    sta rbcp_arg6
+    ; Enter command-response mode using the settings in rbcp_config.s
     jsr rbcp_cmd_enter_cmd_resp
     bcc @ok_enter
     jmp err_no_cmd_resp

@@ -20,7 +20,13 @@
 ; into the lo byte, giving LDA $E0XX, which reads from the ROM address that
 ; encodes XX on A0-A7. The value read is discarded.
 
-    .include "rbcp_defs.s"
+.include "rbcp_defs.s"
+
+; Check the configuration values for validity
+.assert CONFIG_RBCP_CMD_PAGE >= CONFIG_ROM_BASE_HI, error, "The command page must be within the ROM space"
+.assert CONFIG_RBCP_BCH_BASE >= CONFIG_ROM_BASE_HI * $100, error, "The back-channel region must be within the ROM space"
+.assert (CONFIG_RBCP_BCH_START >= (CONFIG_RBCP_CMD_PAGE_REL + 1) * $100) .or (CONFIG_RBCP_BCH_START + CONFIG_RBCP_BCH_SIZE <= CONFIG_RBCP_CMD_PAGE_REL * $100), error, "The back-channel region must not overlap with the command page"
+.assert CONFIG_RBCP_BCH_START + CONFIG_RBCP_BCH_SIZE <= CONFIG_ROM_SIZE, error, "The back-channel region must fit within the ROM image size"
 
 ; RBCP_READ — compile-time constant only. No leading '(' or ca65 sees indirect.
 .macro RBCP_READ byte_val
@@ -323,13 +329,7 @@ rbcp_reset_stage_3:
 ; ---------------------------------------------------------------------------
 ; rbcp_cmd_enter_cmd_resp — issues ENTER_CMD_RESP with a preceding knock.
 ;
-; Caller must set before JSR:
-;   rbcp_arg0/1 = command page (16-bit LE)
-;   rbcp_arg2/3/4 = back-channel start address (24-bit LE, 4-byte aligned)
-;   rbcp_arg5/6 = back-channel size in bytes (16-bit LE)
-;
-; This function sets rbcp_arg7 = RBCP_COMPLETE and rbcp_arg8 = RBCP_STATUS_OK
-; from the protocol defaults defined in rbcp_defs.s.
+; This function sets the arguments based on the rbcp_config.s configuration.
 ;
 ; If the token LSB does not increment within the poll timeout the command
 ; was silently discarded by the device (e.g. misaligned address, out-of-range
@@ -351,6 +351,21 @@ rbcp_cmd_enter_cmd_resp:
     sta rbcp_zp_0
     lda #RBCP_CMD_ENTER_CMD_RESP
     sta rbcp_zp_1
+
+    lda #CONFIG_RBCP_CMD_PAGE_REL
+    sta rbcp_arg0
+    lda #0
+    sta rbcp_arg1
+    lda #<CONFIG_RBCP_BCH_START
+    sta rbcp_arg2
+    lda #>CONFIG_RBCP_BCH_START
+    sta rbcp_arg3
+    lda #0
+    sta rbcp_arg4
+    lda #<CONFIG_RBCP_BCH_SIZE
+    sta rbcp_arg5
+    lda #>CONFIG_RBCP_BCH_SIZE
+    sta rbcp_arg6
     lda #RBCP_COMPLETE
     sta rbcp_arg7
     lda #RBCP_STATUS_OK

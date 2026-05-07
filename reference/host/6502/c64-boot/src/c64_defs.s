@@ -137,18 +137,3 @@ ZP_TMP2    = $D4
 ZP_TMP3    = $D5
 ZP_TMP4    = $D6
 
-; ---------------------------------------------------------------------------
-; RBCP session configuration
-; ---------------------------------------------------------------------------
-
-; Back-channel region start address, as a ROM-relative offset. Must be
-; 4-byte aligned. $0100 places it at $E100 in the C64 address space,
-; leaving the first 256 bytes of the ROM image unmodified for normal
-; ROM content.
-RBCP_BCH_START  = (CONFIG_RBCP_BCH_BASE - (CONFIG_ROM_BASE_HI * $100))
-
-; Back-channel region size in bytes.
-RBCP_BCH_SIZE   = 512
-
-.assert RBCP_BCH_START >= $0100, error, "The back-channel region must lie above the command page region"
-.assert RBCP_BCH_START + RBCP_BCH_SIZE <= $2000, error, "The back-channel region must fit within the ROM image size"
