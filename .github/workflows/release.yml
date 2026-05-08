@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'spec/v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      - name: Build c64-boot
+        working-directory: reference/host/6502/c64-boot
+        run: make
+
+      - name: Build vic20-boot
+        working-directory: reference/host/6502/vic20-boot
+        run: make
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#spec/}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RBCP ${{ steps.version.outputs.version }}
+          files: |
+            spec/rbcp.md
+            reference/host/6502/c64-boot/build/c64_boot.bin
+            reference/host/6502/vic20-boot/build/vic20_boot_pal.bin
+            reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
