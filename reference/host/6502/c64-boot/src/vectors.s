@@ -4,11 +4,11 @@
     .import boot_entry
 
 ; ---------------------------------------------------------------------------
-; FILL segment — back-channel region ($E000-$E207, 520 bytes of $00)
+; FILL segment — back-channel region ($E000-$E2FF, 768 bytes of $00)
 ; ---------------------------------------------------------------------------
 
 .segment "FILL"
-    .res 520, $00
+    .res 768, $00
 
 ; ---------------------------------------------------------------------------
 ; BOOT segment — irq_nmi_stub runs from ROM

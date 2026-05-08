@@ -38,8 +38,7 @@ brew install cc65
 make
 ```
 
-Output: `build/c64_boot.bin` — 8192 bytes, ready to flash as slot 0 on
-a One ROM or other RBCP capable ROM emulator.
+Output: `build/c64_boot.bin` — 8192 bytes, ready to flash as slot 0 on a One ROM or other RBCP capable ROM emulator.
 
 To clean:
 
