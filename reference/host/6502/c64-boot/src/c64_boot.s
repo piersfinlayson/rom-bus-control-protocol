@@ -465,7 +465,14 @@ path_menu:
 
     jsr draw_menu
 
-    lda #0
+    ; Highlight the auto-booting slot if configured
+    lda var_boot_flash
+    sec
+    sbc #1                  ; convert 1-based flash slot to 0-based index
+    cmp var_num_display     ; out of displayable range?
+    bcc @sel_ok
+    lda #0                  ; fall back to first entry
+@sel_ok:
     sta var_selection
     jsr highlight_selection
 
