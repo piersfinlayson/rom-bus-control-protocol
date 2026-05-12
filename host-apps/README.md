@@ -1,0 +1,1 @@
+This directory contains host application developed using the ROM Bus Control Protocol.  These are intended to run on real hardware, against a real RBCP device such as [One ROM](https://onerom.org/).
