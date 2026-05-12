@@ -16,6 +16,21 @@ Presents a selection menu listing all available kernal images (flash slots 1 and
 
 On any RBCP error the bootloader displays a message and halts; power-cycle to recover.
 
+## Usage
+
+Install the built binary as the first ROM image slot, followed by the kernal images you wish to switch between.
+
+For example, using One ROM and the pre-built bootloader binary:
+
+```
+onerom program  --plugin usb --plugin host-control \
+                --slot https://images.onerom.org/roms/host-control/v0.1.0/vic20_pal_boot.bin,type=2364,cs1=0 \
+                --slot kernal1.bin,type=2364,cs1=0 \
+                --slot kernal2.bin,type=2364,cs1=0
+```
+
+For NTSC, modify `vic20_pal_boot.bin` to `vic20_ntsc_boot.bin` in the above command.
+
 ## Dependencies
 
 - [cc65](https://cc65.github.io/) — provides `ca65` (assembler) and `ld65` (linker).
