@@ -16,7 +16,7 @@ For example, using One ROM and the pre-built bootloader binary:
 
 ```
 onerom program  --plugin usb --plugin host-control \
-                --slot file=rom.bin,type=2364,cs1=0 \
+                --slot file=https://images.onerom.org/roms/host-control/v0.1.0/c64_bootloader.bin,type=2364,cs1=0 \
                 --slot file=kernal1.bin,type=2364,cs1=0 \
                 --slot file=kernal2.bin,type=2364,cs1=0
 ``` 
