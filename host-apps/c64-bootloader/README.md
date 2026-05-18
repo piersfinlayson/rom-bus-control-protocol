@@ -8,6 +8,14 @@ Auto-boots the last booted kernal (or the first kernal) if no key is pressed dur
 
 This bootloader is compatible with cartridges such as Kung Fu Flash.
 
+## Pre-built Binary
+
+https://images.onerom.org/roms/host-control/v0.1.0/c64_bootloader.bin
+
+## Source Code
+
+https://github.com/r107sl/c64-bootloader
+
 ## Usage
 
 Install the built binary as the first ROM image slot, followed by the kernal images you wish to switch between.
@@ -26,10 +34,12 @@ onerom program  --plugin usb --plugin host-control \
 Requires ca65/cc65/ld65.
 
 ```bash
+git clone https://github.com/r107sl/c64-bootloader
+cd c64-bootloader
 make
 ```
 
-Creates `./c64_bootloader.bin`.
+Creates `./rom.bin`.
 
 ## License
 
