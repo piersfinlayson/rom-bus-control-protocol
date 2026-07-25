@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-Version: 0.1.0
+Version: 0.1.1
 
 This specification may be freely implemented without restriction.
 
@@ -483,7 +483,7 @@ and [GET_RAM_SLOT_INFO](#get_ram_slot_info-response-format) responses.
 | 0x0C | 27256 |
 | 0x0D | 27512 |
 | 0x0E | 231024 |
-| 0x0F | 27C010 / 23C1010 |
+| 0x0F | 27C010 |
 | 0x10 | 27C020 |
 | 0x11 | 27C040 |
 | 0x12 | 27C080 |
@@ -496,7 +496,14 @@ and [GET_RAM_SLOT_INFO](#get_ram_slot_info-response-format) responses.
 | 0x1B | 28C64 |
 | 0x1C | 28C256 |
 | 0x1D | 28C512 |
-| 0x1E–0x7F | Reserved |
+| 0x1E | 23QL512 |
+| 0x1F | 23QL384 |
+| 0x20 | 23C1001 |
+| 0x21 | 27C200 |
+| 0x22 | HM7641 |
+| 0x23 | 62256 |
+| 0x24 | 23C1010 |
+| 0x25–0x7F | Reserved |
 | 0x80–0xFE | Reserved for implementation-specific use |
 | 0xFF | Invalid/ROM not being served |
 
