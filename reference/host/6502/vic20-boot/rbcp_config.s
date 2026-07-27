@@ -60,7 +60,7 @@ CONFIG_RBCP_TIMEOUT_RETRIES = $00
 ; mode, to ensure the device has time to process it (as no back-channel is
 ; available to detect when the device is ready for the next command).  This is
 ; an arbitrary value with no fixed unit.  $00 = no pause.  Depending on your
-; host system and device, you may need to experiemnt with this value to find
+; host system and device, you may need to experiment with this value to find
 ; the optimal setting.
 ; - $04 works using One ROM host-control plugin and a C64 bootloader kernal
 ; - $10 works with logging enabled with the One ROM host-control plugin

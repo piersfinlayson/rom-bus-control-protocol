@@ -60,7 +60,7 @@ CONFIG_RBCP_TIMEOUT_RETRIES = $03
 ; mode, to ensure the device has time to process it (as no back-channel is
 ; available to detect when the device is ready for the next command).  This is
 ; an arbitrary value with no fixed unit.  $00 = no pause.  Depending on your
-; host system and device, you may need to experiemnt with this value to find
+; host system and device, you may need to experiment with this value to find
 ; the optimal setting.
 CONFIG_RBCP_CMD_PAUSE = $10
 
