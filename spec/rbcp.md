@@ -89,7 +89,7 @@ A host should query the device version using GET_PROTOCOL_VERSION and reject a d
 
 RBCP operates over the ROM bus. The relevant lines are:
 
-- **Address lines:** carry host-to-device data. The host encodes commands as sequences of ROM address reads. The device captures these by monitoring the address bus. The least significant 8 bits of the address lines (A0–A7) carry RBCP command data. In command mode, upper address bits are ignored by the protocol. In command-response mode, the device uses the upper address bits to filter command bytes: only address reads whose upper address bits match the configured [command page](#command-page-1) are treated as command bytes. This ensures compatibility with the smallest ROM types — the 2704 (4Kbit, 512 bytes) has only 9 address lines. Future versions of the protocol may utilise additional address bits.
+- **Address lines:** carry host-to-device data. The host encodes commands as sequences of ROM address reads. The device captures these by monitoring the address bus. The least significant 8 bits of the address lines (A0–A7) carry RBCP command data. The mapping from a host's read address to these command lines varies by ROM and device; see [Address Line Presentation](#address-line-presentation). In command mode, upper address bits are ignored by the protocol. In command-response mode, the device uses the upper address bits to filter command bytes: only address reads whose upper address bits match the configured [command page](#command-page-1) are treated as command bytes. This ensures compatibility with the smallest ROM types — the 2704 (4Kbit, 512 bytes) has only 9 address lines. Future versions of the protocol may utilise additional address bits.
 - **Data lines:** carry device-to-host data. The device writes response data into a designated region of ROM address space; the host reads this back as ordinary ROM data reads.
 - **CS (Chip Select):** defines valid bus cycles. The device captures address values only when all CS lines are active. The exact CS lines present depend on the ROM socket standard in use — for example /CE and /OE on a 27C512, or /CS on a 2364. Devices should implement a debounce algorithm to avoid false triggering on noisy or poorly behaved bus implementations.
 
@@ -98,6 +98,61 @@ Future versions of the protocol may utilise additional ROM bus lines for signali
 The electrical characteristics of all bus lines are defined by the ROM socket standard in use. RBCP inherits these definitions and does not redefine them.
 
 All multi-byte values in RBCP are little-endian.
+
+### Address Line Presentation
+
+RBCP command data — the knock, command bytes, and the command page — is carried
+on the address lines the device observes at the ROM socket. In this document,
+A0–A7 denotes the eight least-significant of those *observed* lines: to send a
+command byte the host reads at an address whose observed A0–A7 equal the byte's
+value, and successive command bytes advance the least-significant observed line
+(A0) by one. How that maps onto the host's own read address depends on the ROM
+and the device:
+
+- **Byte-organised ROM, all address lines observed.** A0 is the ROM's
+  least-significant address line; the host advances its read address by one per
+  command byte.
+- **Word-organised (×16) ROM, addressed as words.** The observed lines are the
+  ROM's word address lines and A0 is the least-significant word line; the host
+  advances its read address by one word per command byte.
+- **A ROM whose least-significant address line the device does not observe.**
+  The observed A0 is the ROM's *next* address line up, the ROM's
+  least-significant line carries no command information, and the host advances
+  its read address by two per command byte. This arises where that line is not
+  observable at command-capture rate — for example the byte-select of a ×16 ROM
+  the host reads a byte at a time (it is not a word address line), or a byte
+  ROM whose least-significant line is routed, on a given device, to a pin the
+  device cannot sample.
+
+Which case applies is a static property of the device for a given emulated ROM
+type. It cannot be discovered through RBCP — the knock must already be framed
+correctly to begin any session — so, like the knock sequence, it must be agreed
+in advance between the device and every host implementation targeting it.
+
+This affects only the host-to-device (command) direction. The back-channel is
+read as ordinary ROM data, defined as a region of bytes, and is unaffected.
+
+#### Examples (non-normative)
+
+- A **2364** (8 KB, 8-bit) is a byte ROM: the device observes all of A0–A12,
+  A0 is its least-significant line, and command bytes are one byte apart.
+- A **27C400** (512 KB, ×16) **read as 16-bit words** — as a 68000-based system
+  reads it — presents word lines A0–A17; A0 is the least-significant word line
+  and command bytes are one word apart.
+- The same **27C400 read one byte at a time**, the host asserting `/BYTE`,
+  presents a byte-select (A-1) below word A0. A device that observes only the
+  word lines does not see A-1, so command bytes are two byte-addresses apart and
+  A-1 carries no command data.
+- An **8-bit 40-pin mask ROM** whose least-significant address line is routed,
+  on a given device, to a pin it cannot sample at command-capture rate: the
+  device observes from the ROM's second line up, so command bytes are two
+  byte-addresses apart and the ROM's A0 carries no command data.
+
+**Device example (non-normative).** On its 40-pin hardware variant, the One ROM
+host-control plugin does not observe the least-significant address line of the
+8-bit ROMs it serves, so a host advances its read address by two per command
+byte for those ROMs. A 16-bit ROM on the same hardware is addressed by word and
+uses the word address lines directly.
 
 ---
 

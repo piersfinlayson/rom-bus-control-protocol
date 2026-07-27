@@ -12,6 +12,13 @@ Substantive changes to the specification are documented in this file.
   gracefully
 - Correct the reserved-range row (was `0x1E–0x7F`, overlapping the assigned
   0x1E/0x1F) to `0x25–0x7F`
+- Clarify address-line presentation: command signalling (knock, command bytes,
+  command page) is carried on the address lines the device observes at the ROM
+  socket. For word-organised (×16) ROMs these are the word address lines. An
+  implementation may additionally be unable to observe a ROM's least-significant
+  address line, in which case the host omits it and advances its read address by
+  two per command byte — a per-ROM-type property, known in advance like the knock.
+  Backwards compatible.
 
 ## v0.1.0 - 2026-05-08
 
