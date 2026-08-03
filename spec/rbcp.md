@@ -130,7 +130,30 @@ correctly to begin any session — so, like the knock sequence, it must be agree
 in advance between the device and every host implementation targeting it.
 
 This affects only the host-to-device (command) direction. The back-channel is
-read as ordinary ROM data, defined as a region of bytes, and is unaffected.
+read as ordinary ROM data and is unaffected by which address lines the device
+observes; how its bytes are presented on a word-organised ROM is covered under
+[Back-Channel on a Word-Organised ROM](#back-channel-on-a-word-organised-rom).
+
+#### Back-Channel on a Word-Organised ROM
+
+The back-channel region is always a region of bytes at a byte offset within the
+active RAM slot, whatever the organisation of the ROM being served.
+
+On a byte-organised ROM, or on a word-organised ROM the host reads a byte at a
+time, the host reads back-channel byte N at the ROM address carrying that byte.
+
+On a word-organised (×16) ROM read as words, each word carries two consecutive
+bytes of the region: the byte at an even offset on D0–D7, and the byte at the
+next, odd offset on D8–D15. To read back-channel byte N the host therefore reads
+word N/2, taking D0–D7 if N is even and D8–D15 if N is odd.
+
+The 4-byte alignment required of the back-channel start address guarantees that
+offset 0 of the region — and therefore every even offset — falls on D0–D7.
+
+The data lines are named here, rather than "the low byte of the word", because
+those are not the same statement on every host: a host whose word byte ordering
+differs from the ROM's data pin ordering must account for that difference
+itself. The pin assignment above is normative.
 
 #### Examples (non-normative)
 
@@ -229,6 +252,8 @@ In command mode there is no back-channel and therefore no confirmation. If the h
 
 The maximum argument count for any command defined by this version of the protocol is 9 (ENTER_CMD_RESP). For future extensibility, a host recovering from desync in command mode need transmit at most 10 additional address reads before a knock can re-establish framing. Future versions of the protocol will not exceed this maximum without incrementing the protocol version.
 
+A command refused because it is not valid in the current mode is nonetheless framed like any other: the device consumes its argument bytes before discarding it. A device that discarded such a command without taking its arguments off the wire would leave those bytes to be read as the next command frame, desynchronising a host that had done nothing malformed. The command has no other effect.
+
 ---
 
 ## Command Groups
@@ -252,7 +277,7 @@ Commands in this group manage the session and mode of the device. All commands i
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
 | 0x00 | NOP | 0 | No operation. In command-response mode the device acknowledges via the standard header sequence, allowing the host to verify the device is alive and processing commands. |
-| 0x01 | ENTER_CMD_RESP | 9: A0/A1=command page (16-bit LE), A2/A3/A4=back-channel start address (24-bit LE), A5/A6=back-channel size in bytes (16-bit LE), A7=complete, A8=status-OK | Configures command-response mode parameters and enters command-response mode. A0/A1 specify the command page: during command-response mode the device treats only address reads whose upper address bits match this value as command bytes. A2/A3/A4 specify the start address of the back-channel region within the active RAM slot; this address must be 4-byte aligned — if it is not, the device silently discards the command. A5/A6 specify the size of the back-channel region in bytes; if the requested size exceeds the available space in the RAM slot, the device returns failure. A7 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A8 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. Neither A7 nor A8 may be 0xAA — if either is, the device silently discards the command. If the command page is out of range for the ROM type currently being served, the device silently discards the command. Not supported when in command-response mode — the device returns failure. |
+| 0x01 | ENTER_CMD_RESP | 9: A0/A1=command page (16-bit LE), A2/A3/A4=back-channel start address (24-bit LE), A5/A6=back-channel size in bytes (16-bit LE), A7=complete, A8=status-OK | Configures command-response mode parameters and enters command-response mode. A0/A1 specify the command page: during command-response mode the device treats only address reads whose upper address bits match this value as command bytes. A2/A3/A4 specify the start address of the back-channel region within the active RAM slot; this address must be 4-byte aligned, and must leave room for at least the 8-byte [response header](#response-header) within the RAM slot — if it is not aligned, or if it does not leave that room (including where it lies outside the slot entirely), the device silently discards the command. A5/A6 specify the size of the back-channel region in bytes; if the requested size exceeds the available space in the RAM slot, the device returns failure. A7 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A8 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. Neither A7 nor A8 may be 0xAA — if either is, the device silently discards the command. If the command page is out of range for the ROM type currently being served, the device silently discards the command. Not supported when in command-response mode — the device returns failure. The division between the two outcomes above follows from what the device can do: it returns failure where it has a back-channel to report one in, and silently discards the command where it does not. |
 | 0x02 | EXIT_CMD_RESP_ACK | 0 | Exits command-response mode. The device completes the full command processing sequence, including setting progress = complete, before exiting command-response mode. The host should poll progress for complete as normal. Once complete is observed, the device has exited command-response mode and the back-channel region is no longer maintained.|
 | 0x03 | EXIT_CMD_RESP_SILENT | 0 | Exits command-response mode without updating the [response header](#response-header). |
 | 0x04 | SWITCH_AND_EXIT | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. An A0 value of 0xAA is invalid.  If received the slot is NOT switched, but the exit DOES complete. |
@@ -329,7 +354,7 @@ This group defines a single, special command for resetting the device's RBCP imp
 
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
-| 0xAA | RBCP_RESET | 0 | Resets the device's RBCP implementation. This can be used to set the device implementation to a known good state before issuing subsequent commands. This command doesn't change any flash or RAM slot contents nor does it change the active RAM slot. There is never any respons from this command - if it is executed in command-response mode, the device immediately and silently exits from that mode. |
+| 0xAA | RBCP_RESET | 0 | Resets the device's RBCP implementation. This can be used to set the device implementation to a known good state before issuing subsequent commands. This command doesn't change any flash or RAM slot contents nor does it change the active RAM slot. There is never any response from this command - if it is executed in command-response mode, the device immediately and silently exits from that mode. |
 
 ---
 
@@ -448,6 +473,8 @@ Each complete record is 32 bytes:
 | 1 | 31 | name | Slot name as ASCII. Unused bytes are filled with 0x00. Null-terminated. A zero length name is a valid response where the device has no name associated with the slot. |
 
 Records follow the preamble in slot index order. `whole_count` complete records are returned first. If `partial_flag` is 0x01, a truncated record follows, containing as many bytes of that record as the data section (minus space for header) permits.
+
+Where the truncated record carries a name — that is, where two or more bytes are present — its final byte is set to 0x00, so the partial name is null-terminated as a complete record's name is. The name is therefore up to one character shorter than the byte count implies. This is deliberate: it means a host reads every name in the response the same way, and never needs the byte count to know where a name ends. Where only one byte is present it is the `rom_type`, and no name follows.
 
 The host can determine whether all slots were returned by comparing `whole_count` (plus `partial_flag`) against `total_count`.
 

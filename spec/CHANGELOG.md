@@ -12,6 +12,23 @@ Substantive changes to the specification are documented in this file.
   gracefully
 - Correct the reserved-range row (was `0x1E–0x7F`, overlapping the assigned
   0x1E/0x1F) to `0x25–0x7F`
+- Clarify ENTER_CMD_RESP's back-channel start address: it must leave room for at
+  least the 8-byte response header within the RAM slot, and a start address that
+  does not — including one outside the slot — is silently discarded, since the
+  device has nowhere to report a failure. Names the principle the entry's two
+  outcomes already followed: failure where there is a back-channel to report it
+  in, silent discard where there is not. Previously unspecified
+- Clarify that a command refused for being invalid in the current mode still has
+  its argument bytes consumed before being discarded, so a host that sent a
+  well-formed frame is not desynchronised by the refusal. Previously unspecified
+- Clarify the truncated record in GET_FLASH_SLOT_INFO_ALL: where it carries a
+  name its final byte is 0x00, so every name in the response is null-terminated
+  and a host never needs the byte count to find a name's end. The name is up to
+  one character shorter than that count implies. Previously unspecified
+- Specify how the back-channel is presented on a word-organised (×16) ROM read as
+  words: each word carries two consecutive region bytes, the even offset on
+  D0–D7 and the odd offset on D8–D15. Clarification only — the region was always
+  defined as a region of bytes
 - Clarify address-line presentation: command signalling (knock, command bytes,
   command page) is carried on the address lines the device observes at the ROM
   socket. For word-organised (×16) ROMs these are the word address lines. An
