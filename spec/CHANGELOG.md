@@ -36,6 +36,16 @@ Substantive changes to the specification are documented in this file.
   address line, in which case the host omits it and advances its read address by
   two per command byte — a per-ROM-type property, known in advance like the knock.
   Backwards compatible.
+- Add a non-normative section, "Using RBCP on a Host Wider Than the Device",
+  giving host implementers the two address mappings needed when the host bus is
+  wider than the device serving it — one for command signalling, one for reading
+  the back-channel — together with the parameters that distinguish the cases and
+  a worked 68000 example. Also covers a bus filled by several devices: commands
+  are broadcast to all of them, each maintains its own complete response header
+  with the headers interleaved rather than merged, completion is per-device and
+  must be polled per lane, and a host should not assume it can address one device
+  in isolation. Derived entirely from existing normative text; adds no
+  requirements and constrains no device
 
 ## v0.1.0 - 2026-05-08
 

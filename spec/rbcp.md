@@ -179,6 +179,169 @@ uses the word address lines directly.
 
 ---
 
+## Using RBCP on a Host Wider Than the Device (non-normative)
+
+This section is guidance for host implementers. It introduces no requirements.
+Everything in it is derived from [Address Line
+Presentation](#address-line-presentation), [Back-Channel on a Word-Organised
+ROM](#back-channel-on-a-word-organised-rom) and the [Response
+Header](#response-header). A device cannot observe how wide the host's bus is,
+nor how many other devices share it, so nothing here constrains a device
+implementation.
+
+Where the host's bus is the same width as the device — an 8-bit CPU reading an
+8-bit ROM — the protocol's terms and the host's own terms coincide: the lines
+the device observes are the host's address lines, and a byte offset within the
+device's slot is a byte offset in the host's address space. Neither coincidence
+survives a host whose bus is wider than the device serving it. A 16-bit host
+reading a word-organised ROM, a 16-bit host reading a pair of 8-bit ROMs, and a
+32-bit host reading two word-organised ROMs are all in this position.
+
+Two mappings are then required, and they are not the same mapping. Both can be
+expressed in terms of four properties of the installation, all of them static:
+
+| Property | Meaning |
+|----------|---------|
+| `BUS_STRIDE` | Host address bytes spanned by one device bus cycle |
+| `DEV_BYTES` | Bytes the device supplies per bus cycle (1 for an 8-bit device, 2 for ×16) |
+| `LANE_OFFSET` | Host byte offset, within one bus cycle, of the lane this device drives |
+| `ENDIAN_SWAP` | Whether the host's byte ordering within a bus cycle opposes the data-line assignment |
+
+### Sending a command byte
+
+The device's observed A0 is the host address line immediately above whatever
+lines select a byte within a bus cycle. One command byte therefore advances the
+host's read address by one full bus cycle:
+
+```
+host_address(command_byte) = command_page_base + command_byte * BUS_STRIDE
+```
+
+The same conversion applies to the command page itself. The command page is the
+observed address bits above A7, and the observed lines are the device's — so a
+host holding a host-relative offset must divide by `BUS_STRIDE` before taking
+the page number. Using the host's own byte-address page instead is a common
+error, and on a device with few enough address lines it produces a page value
+outside the range the ROM type permits, which ENTER_CMD_RESP silently discards.
+
+### Reading the back-channel
+
+The back-channel is a region of device bytes. Region byte N appears at:
+
+```
+host_address(N) = back_channel_base
+                + (N / DEV_BYTES) * BUS_STRIDE      // which bus cycle
+                + LANE_OFFSET                        // which device on the bus
+                + swap(N mod DEV_BYTES)              // which byte within it
+```
+
+where `swap(k)` is `k` when `ENDIAN_SWAP` is false, and `DEV_BYTES - 1 - k`
+when it is true.
+
+`ENDIAN_SWAP` exists because the pin assignment is normative while host byte
+ordering is not. The specification places the even region offset on D0–D7 and
+the odd offset on D8–D15; a big-endian host reads the byte at an even address
+from the *upper* half of the bus, so on such a host the two bytes of every
+device word appear at the opposite host addresses to their region offsets. A
+little-endian host of the same width needs no swap. This is the difference the
+[back-channel section](#back-channel-on-a-word-organised-rom) requires the host
+to account for; naming it as a parameter is simply a way of accounting for it
+once.
+
+A consequence worth stating plainly: a linear index into the response data
+section is not a linear host address offset. Reading a name, a version string
+or a block of peeked bytes with a simple incrementing pointer is correct only
+where `DEV_BYTES` is 1 and `LANE_OFFSET` is 0.
+
+### Parameters by installation
+
+Assuming a big-endian host:
+
+| Installation | `BUS_STRIDE` | `DEV_BYTES` | `LANE_OFFSET` | `ENDIAN_SWAP` |
+|--------------|--------------|-------------|---------------|---------------|
+| 8-bit host, 8-bit device | 1 | 1 | 0 | no |
+| 16-bit host, one ×16 device | 2 | 2 | 0 | yes |
+| 16-bit host, two 8-bit devices — upper lane | 2 | 1 | 0 | no |
+| …lower lane | 2 | 1 | 1 | no |
+| 32-bit host, two ×16 devices — upper word | 4 | 2 | 0 | yes |
+| …lower word | 4 | 2 | 2 | yes |
+| 32-bit host, four 8-bit devices — lane L | 4 | 1 | L | no |
+
+### Worked example
+
+A 68000-based system reads a 256 KB word-organised Kickstart ROM mapped at
+`$FC0000`, with the command page and a 512-byte back-channel placed in the last
+1 KB of the image. `BUS_STRIDE` is 2, `DEV_BYTES` is 2, `LANE_OFFSET` is 0, and
+`ENDIAN_SWAP` is true.
+
+The command page is at host address `$FFFE00`, a host-relative offset of
+`$3FE00`. Dividing by `BUS_STRIDE` gives device bus cycle `$1FF00`, so the
+command page sent in ENTER_CMD_RESP is `$1FF` — not `$3FE`, which is what the
+host-relative offset alone would suggest, and which exceeds the range a ROM with
+17 word address lines permits.
+
+The back-channel is at host address `$FFFC00`, host-relative `$3FC00`, giving a
+device byte offset of `$3FC00` — the same number here only because `BUS_STRIDE`
+and `DEV_BYTES` are equal.
+
+The response header then appears at these host addresses:
+
+| Field | Region offset | Host offset |
+|-------|---------------|-------------|
+| Last command GROUP | 0 | +1 |
+| Last command CMD | 1 | +0 |
+| Token LSB | 2 | +3 |
+| Token MSB | 3 | +2 |
+| Progress | 4 | +5 |
+| Response | 5 | +4 |
+
+Note that the two token bytes are not adjacent, and that the pair is
+transposed. A host that reads the token as a single 16-bit big-endian value
+obtains the correct little-endian result by coincidence — and must still not do
+so, because the [response header](#response-header) guarantees atomicity only
+for individual byte writes.
+
+### Several devices on one bus
+
+Where the host's bus is filled by more than one device, the address lines are
+shared between them. This has consequences a host must design for.
+
+**Commands are broadcast.** Every device whose chip select is asserted decodes
+the same knock, the same GROUP and CMD, and the same argument bytes, and acts on
+all of them. For a ROM image split across devices this is usually what is
+wanted: one LOAD_SLOT loads the corresponding image into every half, and one
+SWITCH_AND_EXIT switches them together.
+
+**Each device maintains its own complete back-channel.** The back-channel is a
+region within the device's own slot, so every device writes a full 8-byte
+response header, and those headers interleave in host address space at
+`BUS_STRIDE` — they are neither split across devices nor merged. A host reads
+one device's header by holding that device's `LANE_OFFSET` throughout; mixing
+lanes within a single header reads fields from different devices.
+
+**Completion is per-device and unsynchronised.** Each device runs its own copy
+of the [command processing sequence](#command-processing-sequence) on its own
+schedule. A host that polls one lane learns only that one device has finished. A
+host on such a bus should poll every lane's token and progress, and treat a
+command as complete only when the last of them reports completion.
+
+**SWITCH_AND_EXIT has no completion to poll.** On a split ROM the halves
+therefore become active at slightly different instants, and there is an interval
+during which the host would fetch from a partly-switched image. Host code
+running across that interval must already be resident in RAM and must not touch
+the ROM until every device has settled.
+
+**A host should not assume it can address one device in isolation.** It is
+tempting to reach a single lane with a narrower access, but whether that works
+is a property of the installation rather than of the host architecture. A single
+word-organised device is selected by an address decode and drives its full width
+on every cycle, so a narrower read is indistinguishable to it. Several narrow
+devices may or may not have their chip selects gated per lane, depending on how
+the board is wired. Some host architectures provide no per-lane strobes at all.
+Treating commands as broadcast is the assumption that holds in every case.
+
+---
+
 ## Modes
 
 RBCP defines five operational modes. Two are currently specified; three are reserved for future definition.
