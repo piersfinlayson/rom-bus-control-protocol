@@ -2,7 +2,7 @@
 
 Substantive changes to the specification are documented in this file.
 
-## v0.1.1 - 2026-??-??
+## v0.1.1 - 2026-08-09
 
 - Add 23QL512 ROM type
 - Add 23C1001 (0x20), 27C200 (0x21), HM7641 (0x22) and 62256 (0x23) ROM types
