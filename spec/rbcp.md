@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-Version: 0.1.1
+Version: 0.1.2
 
 This specification may be freely implemented without restriction.
 
@@ -417,6 +417,16 @@ The maximum argument count for any command defined by this version of the protoc
 
 A command refused because it is not valid in the current mode is nonetheless framed like any other: the device consumes its argument bytes before discarding it. A device that discarded such a command without taking its arguments off the wire would leave those bytes to be read as the next command frame, desynchronising a host that had done nothing malformed. The command has no other effect.
 
+### Unknown GROUP and CMD
+
+The rule above applies to a command the device knows but cannot accept. A device that receives a GROUP or CMD it does not implement at all is in a different position: argument counts are defined per GROUP+CMD pair, so a device with no definition for the pair cannot know how many argument bytes follow. It therefore consumes **no** argument bytes. In command-response mode it completes the normal [command processing sequence](#command-processing-sequence) with response = failed. In command mode it has no means of reporting anything.
+
+The consequence for a host is that an unknown command taking no argument bytes fails cleanly — the token increments, response = failed, and the session remains correctly framed — while an unknown command taking one or more argument bytes desynchronises the session, the host's argument bytes being consumed as the following frame's GROUP, CMD and arguments. The host has no way to detect this, and the frames it sends afterwards are decoded as commands it did not issue.
+
+Every command group introduced by a version of this specification later than 0.1.1 must therefore include a discovery command that takes zero argument bytes, and that command must be assigned the lowest CMD value in the group. A host must issue that discovery command, and observe success, before issuing any argument-taking command from the group. This allows a host written against a later version of the specification to probe a device implementing an earlier one without desynchronising it. Placing the command at the lowest CMD value makes the probe mechanical — CMD 0x00 of any group is the safe one to issue — rather than something a host must look up per group.
+
+A host may instead establish which groups a device implements from the version reported by GET_PROTOCOL_VERSION. In command mode there is no response of any kind, so no discovery is possible at all, and a host must rely on a version obtained during an earlier command-response session, or on knowledge held out of band.
+
 ---
 
 ## Command Groups
@@ -427,6 +437,7 @@ A command refused because it is not valid in the current mode is nonetheless fra
 | 0x01 | Read | Command-Response only | Query the device for information |
 | 0x02 | Modify | Command, Command-Response | Change device state |
 | 0x03 | NV Storage | Command-Response only | Query and modify dedicated non-volatile storage on the device |
+| 0x04 | Pipes | Command-Response only | Transfer bytes from the host to a device pipe |
 | 0xAA | Reset | Command, Command-Response | Reset the device's RBCP implementation |
 
 ---
@@ -511,6 +522,28 @@ Care should be taken when running timers to police a response from the device fo
  
 CMD 0xAA is reserved and must never be assigned.
  
+### Group 0x04 — Pipes
+
+Commands in this group transfer bytes from the host to a pipe on the device. All commands in this group are valid in command-response mode only.
+
+A pipe is an ordered sequence of bytes, written by the host at one end and drained at the other by the device. What the device does with the bytes it drains is a device matter and is not described by this protocol beyond the pipe's [type](#pipe-types) — a pipe may reach a USB interface, a serial port, a file, or nothing at all. The host cannot observe the far end, and no command in this group reports on it.
+
+Pipes are an optional device feature. The host should query GET_PIPE_CAPABILITY before issuing any other command in this group. A device that exposes no pipes reports a count of zero from GET_PIPE_CAPABILITY. All other commands in this group return failure on such a device.
+
+A pipe is addressed by a single byte. Pipe numbering is dense and 0-based: a device exposing n pipes numbers them 0 to n-1 with no gaps. A pipe number is not a final argument in any command in this group, so 0xAA is a valid pipe number and a device may expose 256 pipes.
+
+This version of the protocol defines the host-to-device direction only. A device-to-host direction is reserved in the [pipe flags](#get_pipe_info-response-format) but has no commands defined, and a device must report it as unsupported.
+
+PIPE_WRITE transfers all of the bytes offered or none of them. Where the device cannot accept them all it returns failure and transfers nothing, leaving the host to retry or to discard the bytes. A device must not delay its response waiting for space to become available — the host is blocked for the duration of the [command processing sequence](#command-processing-sequence), and a pipe whose far end has stalled would otherwise stall the host indefinitely. GET_PIPE_INFO reports the space currently available, allowing a host that has been refused to decide whether to retry immediately or to back off.
+
+| CMD | Name | Args | Description |
+|-----|------|------|-------------|
+| 0x00 | GET_PIPE_CAPABILITY | 0 | Requests the device to report how many pipes it exposes. See [GET_PIPE_CAPABILITY Response Format](#get_pipe_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
+| 0x01 | GET_PIPE_INFO | 1: A0=pipe | Requests the device to report what the specified pipe is and how much space it currently has. See [GET_PIPE_INFO Response Format](#get_pipe_info-response-format). Fails if the pipe is not one the device exposes, or if the response data section is smaller than 8 bytes. |
+| 0x02 | PIPE_WRITE | 6: A0/A1/A2/A3=data, A4=pipe, A5=count | Transfers count bytes, taken from A0 onwards, to the specified pipe. A5 must be in the range 0x01 to 0x04 — any other value is invalid and the device rejects the command. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A3. Either all count bytes are transferred or none are: the device returns failure if it cannot accept them all, and in that case transfers nothing. Fails if the pipe is not one the device exposes, or if the pipe does not support the host-to-device direction. |
+
+CMD 0xAA is reserved and must never be assigned.
+
 ### Group 0xAA - Reset
 
 This group defines a single, special command for resetting the device's RBCP implementation. This is a non-standard command that does not follow the normal command processing sequence, and is designed to be reliably detectable even if issued mid-command or mid-knock, making it suitable for recovering from desynchronization or other error states.
@@ -703,6 +736,43 @@ The response data section begins immediately after the [response header](#respon
 |--------|------|-------|-------------|
 | 0 | count | data | The requested bytes read directly from NV storage. A count of zero in the command corresponds to 256 bytes here. | 
  
+## GET_PIPE_CAPABILITY Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | count | Number of pipes this device exposes. A value of zero indicates the device exposes no pipes. Pipes are numbered 0 to count-1. |
+| 1 | 7 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+No per-pipe records follow. Pipe numbering is dense, so the count alone gives the host every valid pipe number. The properties of each are obtained with GET_PIPE_INFO.
+
+## GET_PIPE_INFO Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | type | What kind of pipe this is. See [Pipe Types](#pipe-types). |
+| 1 | 1 | flags | Bit 0: the pipe supports the host-to-device direction. Bit 1: the pipe supports the device-to-host direction, reserved in this version of the protocol and must be set to zero by the device. Bits 2–7 reserved, and must be set to zero by the device. |
+| 2 | 1 | free | Number of bytes the device is able to accept for this pipe at the instant the command was processed, saturating at 0xFF. A PIPE_WRITE of no more than this many bytes is not guaranteed to succeed: the value may be stale by the time the host acts on it. |
+| 3 | 5 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+## Pipe Types
+
+The following pipe type identifiers are defined by the protocol. A single byte is used to identify the pipe type in [GET_PIPE_INFO](#get_pipe_info-response-format) responses.
+
+| Value | Pipe Type |
+|-------|-----------|
+| 0x00 | Log |
+| 0x01–0x7F | Reserved |
+| 0x80–0xFE | Reserved for implementation-specific use |
+| 0xFF | Invalid |
+
+A pipe of type Log carries a free-running sequence of bytes with no framing imposed by the protocol, and is the type a host writes to when it has no requirement beyond the bytes arriving somewhere. A host that requires no particular type should use the lowest-numbered pipe of type 0x00.
+
+Host implementations must handle reserved values gracefully, as new pipe types may be defined in future protocol versions without a non-backwards compatible version increase.
+
 ---
 
 ## ROM Types

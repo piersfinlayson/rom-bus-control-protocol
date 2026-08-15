@@ -2,6 +2,25 @@
 
 Substantive changes to the specification are documented in this file.
 
+## v0.1.2 - unreleased
+
+- Specify device behaviour on an unknown GROUP or CMD: argument counts are defined
+  per GROUP+CMD pair, so a device with no definition for the pair cannot know how
+  many argument bytes follow and consumes none. An unknown zero-argument command
+  therefore fails cleanly in command-response mode, while an unknown command with
+  arguments desynchronises the session undetectably. Requires every group
+  introduced after v0.1.1 to carry a zero-argument discovery command at its lowest
+  CMD value, so a host written against a later version can probe an earlier device
+  safely. Previously unspecified
+- Add group 0x04, Pipes: transfer bytes from the host to a device pipe, for hosts
+  that need to get data off the machine without a serial port or a display. A pipe
+  is an ordered byte sequence addressed by a single byte, with a type describing
+  what kind of pipe it is. Where the bytes go beyond that is a device matter.
+  PIPE_WRITE carries up to four bytes per command and transfers all of them or
+  none, so a host is never left guessing how much was taken. Only the
+  host-to-device direction is defined. The device-to-host direction is reserved in
+  the pipe flags. Additive
+
 ## v0.1.1 - 2026-08-09
 
 - Add 23QL512 ROM type
