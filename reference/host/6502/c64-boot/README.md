@@ -16,6 +16,10 @@ Presents a selection menu listing all available kernal images (flash slots 1 and
 
 On any RBCP error the bootloader displays a message and halts; power-cycle to recover.
 
+Either path sends `SWITCHING TO SLOT $XX` out through the device on pipe 0 immediately before switching, naming the flash slot being booted. Where the device has a pipe, that line reaches whatever the device has at the far end — on a One ROM, a terminal on its USB serial port. It is sent last because the switch ends the command-response session, and the image that follows need not have a back-channel at all.
+
+A device with no pipe, or one whose protocol version predates the Pipes group, is left to boot exactly as before: the bootloader asks once with `GET_PIPE_CAPABILITY` and sends nothing if the answer is no. A pipe that will not take the line is not retried and does not stop the boot.
+
 ## Dependencies
 
 - [cc65](https://cc65.github.io/) — provides `ca65` (assembler) and `ld65` (linker).

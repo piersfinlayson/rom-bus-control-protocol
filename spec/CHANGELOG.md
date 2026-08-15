@@ -21,6 +21,14 @@ Substantive changes to the specification are documented in this file.
   host-to-device direction is defined. The device-to-host direction is reserved in
   the pipe flags. Additive
 
+To test (on hardware):
+
+- The 6502 reference library's pipe routines and the C64 bootloader's
+  `SWITCHING TO SLOT $XX` line. Both assemble and link, and the generated code
+  has been read, but nothing has executed either — there is no 6502 emulator in
+  this repository, and the conformance tester drives a device rather than
+  running host code. Needs a C64 and a device exposing a pipe.
+
 ## v0.1.1 - 2026-08-09
 
 - Add 23QL512 ROM type

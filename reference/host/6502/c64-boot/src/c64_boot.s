@@ -25,6 +25,8 @@
 .import rbcp_cmd_get_nv_capability
 .import rbcp_cmd_nv_peek
 .import rbcp_cmd_nv_poke_commit_byte
+.import rbcp_cmd_get_pipe_capability
+.import rbcp_cmd_pipe_write
 
 .import row_off_lo
 .import row_scr_hi
@@ -73,6 +75,7 @@ var_num_display:.res 1
 var_selection:  .res 1
 var_cbm_held:   .res 1      ; $00 = C= held; non-zero = not held
 var_nv_present: .res 1      ; 0 = absent or not writable, 1 = writable
+var_pipe_present: .res 1    ; 0 = device has no pipe, 1 = pipe 0 is available
 var_boot_flash: .res 1      ; resolved flash slot to boot
 
 ; ===========================================================================
@@ -269,6 +272,22 @@ boot_ram_entry:
     sta var_boot_flash              ; valid, use it
 @nv_skip:
 
+    ; Pipe query — is there anywhere to send a log line?
+    ;
+    ; GET_PIPE_CAPABILITY takes no argument bytes, so this doubles as the
+    ; version check: a device whose protocol version predates the Pipes group
+    ; consumes nothing, fails the command and stays in step.  Carry set and a
+    ; count of zero lead to the same place, so neither is told from the other.
+    lda #0
+    sta var_pipe_present
+    jsr rbcp_cmd_get_pipe_capability
+    bcs @pipe_skip
+    lda RBCP_DATA_ADDR + RBCP_PIPE_CAP_COUNT
+    beq @pipe_skip                  ; count == 0, no pipes
+    lda #1
+    sta var_pipe_present
+@pipe_skip:
+
     ; ------------------------------------------------------------------
     ; Branch on C= state
     ; ------------------------------------------------------------------
@@ -286,6 +305,9 @@ boot_ram_entry:
     bcc @ok_load_auto
     jmp err_load
 @ok_load_auto:
+
+    lda var_boot_flash
+    jsr log_switch
 
     lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
@@ -545,6 +567,9 @@ do_boot:
     bcc @ok_load_menu
     jmp err_load
 @ok_load_menu:
+    lda var_selection           ; 1-based flash slot, as passed to LOAD_SLOT
+    jsr log_switch
+
     lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
 
@@ -683,6 +708,93 @@ halt_with_msg:
 @halt:
     jmp @halt
 
+.macro set_ptr addr
+    lda #<addr
+    sta ZP_PTR_LO
+    lda #>addr
+    sta ZP_PTR_HI
+.endmacro
+
+; ---------------------------------------------------------------------------
+; log_switch — sends "SWITCHING TO SLOT $XX" out through the device.
+;
+; The last thing the bootloader does before SWITCH_AND_EXIT, which is the last
+; moment it can send anything: the switch ends the command-response session,
+; and the newly served image need not have a back-channel at all.
+;
+; A = flash slot, the image the user is booting.  Each path holds that in a
+; variable of its own, so the caller loads it rather than this routine picking
+; between them.  It is the flash slot rather than the RAM slot because the
+; flash slot is the thing a reader chose - the RAM slot is only where it was
+; put.
+;
+; Clobbers A, X, Y, ZP_PTR_LO/HI, ZP_TMP0/1, ZP_TMP2 and the RBCP arguments.
+; ---------------------------------------------------------------------------
+log_switch:
+    sta ZP_TMP2                 ; flash slot, wanted once the string is set up
+    lda var_pipe_present
+    beq @done
+
+    lda #<status_line_buf       ; the menu is finished with this by now
+    sta ZP_TMP0
+    lda #>status_line_buf
+    sta ZP_TMP1
+
+    set_ptr msg_switching
+    jsr buf_puts
+    lda ZP_TMP2                 ; done with it before pipe_log wants it back
+    jsr byte_to_hex
+    lda #13                     ; the device's log is CRLF terminated
+    jsr buf_putc
+    lda #10
+    jsr buf_putc
+    lda #0
+    jsr buf_putc                ; terminator, not sent
+
+    set_ptr status_line_buf
+    jmp pipe_log
+@done:
+    rts
+
+; ---------------------------------------------------------------------------
+; pipe_log — sends the null-terminated string at (ZP_PTR_LO/HI) to pipe 0.
+;
+; PIPE_WRITE carries at most four bytes, so the string goes out in chunks.  A
+; chunk the device will not take ends the whole thing: waiting for room would
+; mean a C64 that hangs because nothing on the other end is reading, and a log
+; line is never worth not booting for.  The library reports the refusal and
+; leaves that choice here, which is what this is.
+;
+; Clobbers A, X, Y, ZP_PTR_LO/HI, ZP_TMP2 and the RBCP arguments.
+; ---------------------------------------------------------------------------
+pipe_log:
+@chunk:
+    ldy #0                      ; rbcp_cmd_pipe_write clobbers Y
+    ldx #0                      ; bytes gathered so far
+@gather:
+    lda (ZP_PTR_LO), y
+    beq @flush                  ; terminator, send what we have
+    sta rbcp_arg0, x
+    inc ZP_PTR_LO
+    bne @next
+    inc ZP_PTR_HI
+@next:
+    inx
+    cpx #RBCP_PIPE_WRITE_MAX
+    bne @gather
+@flush:
+    txa                         ; A = count, and sets Z when none
+    beq @done                   ; nothing gathered, the string is finished
+    stx ZP_TMP2                 ; count, to tell a full chunk from a short one
+    ldx #0                      ; pipe 0
+    jsr rbcp_cmd_pipe_write
+    bcs @done                   ; refused, or the device is gone — give up
+    lda ZP_TMP2
+    cmp #RBCP_PIPE_WRITE_MAX
+    beq @chunk                  ; a full chunk, so there may be more
+@done:
+    rts
+
 ; ---------------------------------------------------------------------------
 ; buf_putc — writes A to (ZP_TMP0/1), advances ZP_TMP0/1. Clobbers Y.
 ; ---------------------------------------------------------------------------
@@ -738,13 +850,6 @@ byte_to_hex:
 ;
 ; Accesses RBCP library zero page addresses
 ; ---------------------------------------------------------------------------
-
-.macro set_ptr addr
-    lda #<addr
-    sta ZP_PTR_LO
-    lda #>addr
-    sta ZP_PTR_HI
-.endmacro
 
 build_status_line:
     lda #<status_line_buf
@@ -1020,3 +1125,4 @@ msg_err_nv_commit:      .byte "RBCP ERROR: NV COMMIT FAILED", 0
 msg_err_no_kernals:     .byte "NO KERNALS FOUND TO BOOT", 0
 msg_err_load:           .byte "RBCP ERROR: LOAD FAILED", 0
 msg_halt:               .byte "HALTING", 0
+msg_switching:          .byte "SWITCHING TO SLOT $", 0

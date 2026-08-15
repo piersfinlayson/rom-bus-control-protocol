@@ -58,8 +58,11 @@ rbcp_knock:
 ; Caller sets before JSR:
 ;   rbcp_zp_0   = GROUP byte
 ;   rbcp_zp_1   = CMD byte
-;   A           = argument count (0-5)
-;   rbcp_arg0..rbcp_arg4 populated as needed
+;   A           = argument count (0-9)
+;   rbcp_arg0..rbcp_arg8 populated as needed
+;
+; Nine is the protocol's maximum for any command (ENTER_CMD_RESP), and is the
+; size of the argument buffer in rbcp_defs.s.
 ;
 ; Clobbers: A, X
 ; ---------------------------------------------------------------------------
@@ -473,6 +476,76 @@ rbcp_cmd_get_protocol_version:
     lda #RBCP_CMD_GET_PROTOCOL_VERSION
     sta rbcp_zp_1
     lda #0
+    jmp rbcp_issue_cmd
+
+; ---------------------------------------------------------------------------
+; Pipes — group $04
+;
+; A pipe carries bytes from the host out through the device, to whatever the
+; device has at the far end. The host cannot observe that end: PIPE_WRITE says
+; only whether the bytes were taken.
+;
+; No routine here waits or retries. A write that cannot be taken reports and
+; returns, and the caller decides what to do about it — rbcp_zp_5 tells the two
+; cases apart:
+;   1 or 2 = the device did not answer, so retrying is pointless
+;   3      = the pipe is full, so retrying may work once something drains it
+;
+; There is deliberately no routine for sending a whole string. The chunking
+; loop belongs to the caller, which already holds the buffer and a pointer to
+; it: putting it here would need library zero page that survives across
+; rbcp_issue_cmd, and the ZP block ends at $100 with no room to grow.
+; ---------------------------------------------------------------------------
+
+; rbcp_cmd_get_pipe_capability: no input.
+; On success RBCP_DATA_ADDR + RBCP_PIPE_CAP_COUNT holds the pipe count, which
+; is zero on a device with no pipes.
+;
+; This is also the version check. The command takes no argument bytes, so a
+; device implementing a protocol version without the Pipes group consumes
+; nothing, fails it, and stays in step — carry set therefore means "no pipes
+; here" whether the device is old or merely has none, and both answers lead the
+; caller to the same place.
+.export rbcp_cmd_get_pipe_capability
+rbcp_cmd_get_pipe_capability:
+    lda #RBCP_GRP_PIPES
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_PIPE_CAPABILITY
+    sta rbcp_zp_1
+    lda #0
+    jmp rbcp_issue_cmd
+
+; rbcp_cmd_get_pipe_info: A = pipe.
+; On success RBCP_DATA_ADDR holds type, flags and free — see the
+; RBCP_PIPE_INFO_* offsets. free saturates at $FF, so it only carries a real
+; count once the pipe is nearly full.
+.export rbcp_cmd_get_pipe_info
+rbcp_cmd_get_pipe_info:
+    sta rbcp_arg0
+    lda #RBCP_GRP_PIPES
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_PIPE_INFO
+    sta rbcp_zp_1
+    lda #1
+    jmp rbcp_issue_cmd
+
+; rbcp_cmd_pipe_write: A = count (1-4), X = pipe.
+; Caller populates rbcp_arg0..rbcp_arg3 with the payload first — the arguments
+; are the payload's home, so nothing is copied.
+;
+; All or nothing: on carry set the device took none of the bytes, so the caller
+; resends the same ones rather than working out how far it got. Every value is
+; legal in the payload, $AA included, because count is the final argument and
+; its range excludes $AA.
+.export rbcp_cmd_pipe_write
+rbcp_cmd_pipe_write:
+    sta rbcp_arg5           ; count
+    stx rbcp_arg4           ; pipe
+    lda #RBCP_GRP_PIPES
+    sta rbcp_zp_0
+    lda #RBCP_CMD_PIPE_WRITE
+    sta rbcp_zp_1
+    lda #6
     jmp rbcp_issue_cmd
 
 .export rbcp_check_protocol_version

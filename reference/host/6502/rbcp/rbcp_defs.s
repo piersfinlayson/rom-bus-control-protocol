@@ -131,6 +131,14 @@ RBCP_CMD_NV_POKE_COMMIT             = $04
 RBCP_CMD_NV_POKE_DISCARD            = $05
 RBCP_CMD_NV_POKE_COMMIT_BYTE        = $06
 
+RBCP_GRP_PIPES                      = $04
+RBCP_CMD_GET_PIPE_CAPABILITY        = $00
+RBCP_CMD_GET_PIPE_INFO              = $01
+RBCP_CMD_PIPE_WRITE                 = $02
+
+; Largest payload PIPE_WRITE carries, and so the largest valid count.
+RBCP_PIPE_WRITE_MAX                 = 4
+
 RBCP_GRP_RESET                      = $AA
 RBCP_CMD_RESET                      = $AA
 
@@ -154,3 +162,18 @@ RBCP_DATA_ADDR       = CONFIG_RBCP_BCH_BASE + $08
 RBCP_NV_CAP_SIZE_LO  = 0
 RBCP_NV_CAP_SIZE_HI  = 1
 RBCP_NV_CAP_WRITABLE = 2
+
+; GET_PIPE_CAPABILITY response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_PIPE_CAP_COUNT  = 0
+
+; GET_PIPE_INFO response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_PIPE_INFO_TYPE  = 0
+RBCP_PIPE_INFO_FLAGS = 1
+RBCP_PIPE_INFO_FREE  = 2
+
+; GET_PIPE_INFO flag bits
+RBCP_PIPE_FLAG_H2D   = $01      ; pipe carries host-to-device
+RBCP_PIPE_FLAG_D2H   = $02      ; reserved by the protocol, always clear
+
+; Pipe types
+RBCP_PIPE_TYPE_LOG   = $00
