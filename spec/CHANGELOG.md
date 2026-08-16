@@ -20,6 +20,18 @@ Substantive changes to the specification are documented in this file.
   none, so a host is never left guessing how much was taken. Only the
   host-to-device direction is defined. The device-to-host direction is reserved in
   the pipe flags. Additive
+- Add group 0x05, Auxiliary I/O: drive and read device pins that are not part of
+  the ROM interface. The protocol makes no claim about what is attached to such a
+  pin — a wire may reach a host reset, a disk drive, a printer, a relay or an LED —
+  so the commands describe only what a pin is made to do, and there is no reset
+  command. A pin is addressed by a dense group and pin number, with the group's
+  type saying what kind of pins it holds. Groups are alternative namings rather
+  than a partition, so one pin may be reachable several ways. Whether the host may
+  drive a pin is the device's decision, reported per pin, with no host override,
+  because a forced pin may be one serving the image the host is executing from.
+  SET_AUX_AND_EXIT and SET_AUX_SWITCH_EXIT let a host act where it expects to be
+  unable to observe a response. The latter exists because a host cannot rely on
+  signalling the device once a slot switch has happened. Additive
 
 To test (on hardware):
 

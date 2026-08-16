@@ -89,7 +89,7 @@ A host should query the device version using GET_PROTOCOL_VERSION and reject a d
 
 RBCP operates over the ROM bus. The relevant lines are:
 
-- **Address lines:** carry host-to-device data. The host encodes commands as sequences of ROM address reads. The device captures these by monitoring the address bus. The least significant 8 bits of the address lines (A0–A7) carry RBCP command data. The mapping from a host's read address to these command lines varies by ROM and device; see [Address Line Presentation](#address-line-presentation). In command mode, upper address bits are ignored by the protocol. In command-response mode, the device uses the upper address bits to filter command bytes: only address reads whose upper address bits match the configured [command page](#command-page-1) are treated as command bytes. This ensures compatibility with the smallest ROM types — the 2704 (4Kbit, 512 bytes) has only 9 address lines. Future versions of the protocol may utilise additional address bits.
+- **Address lines:** carry host-to-device data. The host encodes commands as sequences of ROM address reads. The device captures these by monitoring the address bus. The least significant 8 bits of the address lines (A0–A7) carry RBCP command data. The mapping from a host's read address to these command lines varies by ROM and device; see [Address Line Presentation](#address-line-presentation). In command mode, upper address bits are ignored by the protocol. In command-response mode, the device uses the upper address bits to filter command bytes: only address reads whose upper address bits match the configured [command page](#command-page) are treated as command bytes. This ensures compatibility with the smallest ROM types — the 2704 (4Kbit, 512 bytes) has only 9 address lines. Future versions of the protocol may utilise additional address bits.
 - **Data lines:** carry device-to-host data. The device writes response data into a designated region of ROM address space; the host reads this back as ordinary ROM data reads.
 - **CS (Chip Select):** defines valid bus cycles. The device captures address values only when all CS lines are active. The exact CS lines present depend on the ROM socket standard in use — for example /CE and /OE on a 27C512, or /CS on a 2364. Devices should implement a debounce algorithm to avoid false triggering on noisy or poorly behaved bus implementations.
 
@@ -438,6 +438,7 @@ A host may instead establish which groups a device implements from the version r
 | 0x02 | Modify | Command, Command-Response | Change device state |
 | 0x03 | NV Storage | Command-Response only | Query and modify dedicated non-volatile storage on the device |
 | 0x04 | Pipes | Command-Response only | Transfer bytes from the host to a device pipe |
+| 0x05 | Auxiliary I/O | Command-Response only | Drive and read device pins that are not part of the ROM interface |
 | 0xAA | Reset | Command, Command-Response | Reset the device's RBCP implementation |
 
 ---
@@ -512,7 +513,7 @@ Care should be taken when running timers to police a response from the device fo
  
 | CMD | Name | Args | Description |
 |-----|------|------|-------------|
-| 0x00 | GET_NV_CAPABILITY | 0 | Requests the device to report its NV storage capabilities. See [GET_NV_CAPABILITY Response Format](#GET_NV_CAPABILITY-response-format). |
+| 0x00 | GET_NV_CAPABILITY | 0 | Requests the device to report its NV storage capabilities. See [GET_NV_CAPABILITY Response Format](#get_nv_capability-response-format). |
 | 0x01 | NV_PEEK | 3: A0=count, A1=location_LSB, A2=location_MSB | Reads one or more bytes directly from NV storage at the specified location and writes them into the response data section. A count of zero indicates 256 bytes should be read. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Always reads from NV storage, regardless of whether a write transaction is in progress. Fails if there is insufficient space in the response data section to accommodate the requested bytes, or if the requested range exceeds the NV storage size. |
 | 0x02 | NV_POKE_BEGIN | 1: A0=RAM slot | Initiates a write transaction by loading the current NV storage contents into a RAM staging buffer, using the RAM slot specified. Fails if NV storage is not writable, if a write transaction is already in progress or if the RAM slot specified is invalid, active or too small. An A0 value of 0xAA is invalid and rejected. |
 | 0x03 | NV_POKE | 3: A0=byte, A1=location_LSB, A2=location_MSB | Writes a single byte into a staging buffer using the specified RAM slotat the specified location. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Fails if no write transaction is in progress, or if the location exceeds the NV storage size. |
@@ -530,7 +531,7 @@ A pipe is an ordered sequence of bytes, written by the host at one end and drain
 
 Pipes are an optional device feature. The host should query GET_PIPE_CAPABILITY before issuing any other command in this group. A device that exposes no pipes reports a count of zero from GET_PIPE_CAPABILITY. All other commands in this group return failure on such a device.
 
-A pipe is addressed by a single byte. Pipe numbering is dense and 0-based: a device exposing n pipes numbers them 0 to n-1 with no gaps. A pipe number is not a final argument in any command in this group, so 0xAA is a valid pipe number and a device may expose 256 pipes.
+A pipe is addressed by a single byte. Pipe numbering is contiguous and starts from zero. A device exposing n pipes numbers them 0 to n-1 with no gaps. A pipe number is not a final argument in any command in this group, so 0xAA is a valid pipe number and a device may expose 256 pipes.
 
 This version of the protocol defines the host-to-device direction only. A device-to-host direction is reserved in the [pipe flags](#get_pipe_info-response-format) but has no commands defined, and a device must report it as unsupported.
 
@@ -543,6 +544,47 @@ PIPE_WRITE transfers all of the bytes offered or none of them. Where the device 
 | 0x02 | PIPE_WRITE | 6: A0/A1/A2/A3=data, A4=pipe, A5=count | Transfers count bytes, taken from A0 onwards, to the specified pipe. A5 must be in the range 0x01 to 0x04 — any other value is invalid and the device rejects the command. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A3. Either all count bytes are transferred or none are: the device returns failure if it cannot accept them all, and in that case transfers nothing. Fails if the pipe is not one the device exposes, or if the pipe does not support the host-to-device direction. |
 
 CMD 0xAA is reserved and must never be assigned.
+
+### Group 0x05 — Auxiliary I/O
+
+Commands in this group drive and read device pins that may not be part of the ROM interface. All commands in this group are valid in command-response mode only.
+
+An auxiliary pin is a pin the device exposes to the host — a header pad, a spare device pin, a pad whose jumper has been removed. **This protocol makes no claim about what is attached to such a pin.** The device may not know: a wire may reach a host reset line, a disk drive, a printer, a relay, an indicator LED, or a jumper being sensed. The commands in this group are therefore simple GPIO-style primitives.
+
+Auxiliary I/O is an optional device feature. The host should query GET_AUX_CAPABILITY before issuing any other command in this group. A device that exposes no auxiliary pins reports a group count of zero from GET_AUX_CAPABILITY. All other commands in this group return failure on such a device, except SET_AUX_AND_EXIT and SET_AUX_SWITCH_EXIT, which have no response header to report it in. Neither sets a pin nor switches a slot, but the exit DOES complete.
+
+A pin is addressed by two bytes: a pin group and a pin number within that group. Both are contiguous and start from zero. A device exposing n groups numbers them 0 to n-1, and a group holding n pins numbers them 0 to n-1, with no gaps in either. A group is a final argument in several commands in this group, so 0xAA is not a valid group number and a device may expose at most 170 groups. A pin number is not a final argument in any command, so 0xAA is a valid pin number and a group may hold 256 pins.
+
+Each group has a [type](#auxiliary-pin-group-types) describing what kind of pins it holds.
+
+The same pin may appear in more than one group. Groups are alternative ways of naming a device's pins, not a partition of them. Where a pin appears in several groups, every group reports the same properties for it, and driving it through one group is indistinguishable from driving it through another.
+
+A pin's state persists across the end of a command-response session and across RBCP_RESET. Only a device reset restores a pin to its power-on state.
+
+| CMD | Name | Args | Description |
+|-----|------|------|-------------|
+| 0x00 | GET_AUX_CAPABILITY | 0 | Requests the device to report how many auxiliary pin groups it exposes and the limits that apply to them. See [GET_AUX_CAPABILITY Response Format](#get_aux_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
+| 0x01 | GET_AUX_GROUP_INFO | 1: A0=group | Requests the device to report what kind of pins the specified group holds and how many of them there are. See [GET_AUX_GROUP_INFO Response Format](#get_aux_group_info-response-format). Fails if the group is not one the device exposes, or if the response data section is smaller than 8 bytes. An A0 value of 0xAA is invalid and rejected. |
+| 0x02 | GET_AUX_PIN_INFO | 2: A0=pin, A1=group | Requests the device to report what the specified pin may be used for and the level currently present on it. See [GET_AUX_PIN_INFO Response Format](#get_aux_pin_info-response-format). Fails if the group or the pin is not one the device exposes, or if the response data section is smaller than 8 bytes. An A1 value of 0xAA is invalid and rejected. |
+| 0x03 | SET_AUX | 5: A0=state, A1=after, A2=hold, A3=pin, A4=group | Places the specified pin in the specified [state](#auxiliary-pin-states). Where hold is non-zero the device holds that state for the requested duration and then applies after. The device times the hold, and does not complete the command until it has elapsed and after has been applied. Fails if the group or the pin is not one the device exposes, if the pin is not drivable, if state is not a defined value, if hold is non-zero and after is not a defined value, or if hold exceeds the maximum reported by GET_AUX_CAPABILITY. An A4 value of 0xAA is invalid and rejected. |
+| 0x04 | SET_AUX_AND_EXIT | 5: as SET_AUX | As SET_AUX, but exits command-response mode without updating the [response header](#response-header). This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. A host uses this where it expects to be unable to observe a response. An A4 value of 0xAA is invalid and rejected. |
+| 0x05 | SET_AUX_SWITCH_EXIT | 7: A0=state, A1=after, A2=hold, A3=flags, A4=pin, A5=group, A6=slot | Sets the specified pin and activates the specified RAM slot, in the order given by flags, then exits command-response mode without updating the [response header](#response-header). This command is terminal to the current command-response session. See [SET_AUX_SWITCH_EXIT Ordering](#set_aux_switch_exit-ordering). An A6 value of 0xAA is invalid. If received, neither the pin is set nor the slot switched, but the exit DOES complete. |
+
+CMD 0xAA is reserved and must never be assigned.
+
+SET_AUX_AND_EXIT and SET_AUX_SWITCH_EXIT never update the response header, as EXIT_CMD_RESP_SILENT, SWITCH_AND_EXIT and RBCP_RESET do not. As with any exit from command-response mode, an in-progress NV write transaction is silently discarded.
+
+#### SET_AUX_SWITCH_EXIT Ordering
+
+The flags argument of SET_AUX_SWITCH_EXIT selects the order of its two operations. Bit 0 is the least significant bit of the byte.
+
+| Bit | Value | Meaning |
+|-----|-------|---------|
+| 0 | 0 | Set the pin first, then activate the slot |
+| 0 | 1 | Activate the slot first, then set the pin |
+| 7:1 | — | Reserved. Must be zero. If any reserved bit is set, neither the pin is set nor the slot switched, but the exit DOES complete. |
+
+Under set-first ordering the device does not apply after until the slot switch has completed. The effective hold is therefore the greater of the requested hold and the time the switch takes.
 
 ### Group 0xAA - Reset
 
@@ -745,7 +787,7 @@ The response data section begins immediately after the [response header](#respon
 | 0 | 1 | count | Number of pipes this device exposes. A value of zero indicates the device exposes no pipes. Pipes are numbered 0 to count-1. |
 | 1 | 7 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
 
-No per-pipe records follow. Pipe numbering is dense, so the count alone gives the host every valid pipe number. The properties of each are obtained with GET_PIPE_INFO.
+No per-pipe records follow. Pipe numbering is contiguous and starts from zero, so the count alone gives the host every valid pipe number. The properties of each are obtained with GET_PIPE_INFO.
 
 ## GET_PIPE_INFO Response Format
 
@@ -757,6 +799,66 @@ The response data section begins immediately after the [response header](#respon
 | 1 | 1 | flags | Bit 0: the pipe supports the host-to-device direction. Bit 1: the pipe supports the device-to-host direction, reserved in this version of the protocol and must be set to zero by the device. Bits 2–7 reserved, and must be set to zero by the device. |
 | 2 | 1 | free | Number of bytes the device is able to accept for this pipe at the instant the command was processed, saturating at 0xFF. A PIPE_WRITE of no more than this many bytes is not guaranteed to succeed: the value may be stale by the time the host acts on it. |
 | 3 | 5 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+## GET_AUX_CAPABILITY Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | group_count | Number of auxiliary pin groups this device exposes. A value of zero indicates the device exposes no auxiliary pins. Groups are numbered 0 to group_count-1. |
+| 1 | 1 | max_hold | The largest hold duration the device accepts, in units of 10ms. A value of zero indicates the device does not support timed holds, and rejects any SET_AUX with a non-zero hold. A host wanting a pulse from such a device must time it itself with two commands. |
+| 2 | 6 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+## GET_AUX_GROUP_INFO Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | type | What kind of pins this group holds. See [Auxiliary Pin Group Types](#auxiliary-pin-group-types). |
+| 1 | 1 | pin_count | Number of pins in this group. Pins are numbered 0 to pin_count-1. A value of zero indicates 256 pins. A group is never empty. |
+| 2 | 6 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+## GET_AUX_PIN_INFO Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | flags | Bit 0: the host may drive this pin with SET_AUX. Bit 1: level and driven below are meaningful. Bits 2–7 reserved, and must be set to zero by the device. |
+| 1 | 1 | level | The level present on the pin at the instant the command was processed, 0 or 1. Must be set to zero by the device where bit 1 of flags is clear. |
+| 2 | 1 | driven | 1 if the device is driving the pin, 0 if it is not. Must be set to zero by the device where bit 1 of flags is clear. |
+| 3 | 5 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+## Auxiliary Pin Group Types
+
+The following auxiliary pin group type identifiers are defined by the protocol. A single byte is used to identify the pin group type in [GET_AUX_GROUP_INFO](#get_aux_group_info-response-format) responses.
+
+| Value | Group Type |
+|-------|------------|
+| 0x00 | None |
+| 0x01 | GPIO |
+| 0x02–0x7F | Reserved |
+| 0x80–0xFE | Reserved for implementation-specific use |
+| 0xFF | Invalid |
+
+A group of type None holds pins the device does not categorise. A group of type GPIO holds the device's own general-purpose I/O pins, numbered as the device's documentation numbers them.
+
+Host implementations must handle reserved values gracefully, as new group types may be defined in future protocol versions without a non-backwards compatible version increase.
+
+## Auxiliary Pin States
+
+The following states are defined by the protocol for the state and after arguments of [SET_AUX](#group-0x05--auxiliary-io) and its variants.
+
+| Value | State |
+|-------|-------|
+| 0x00 | Drive low |
+| 0x01 | Drive high |
+| 0x02 | Release to high impedance |
+| 0x03–0xFF | Invalid |
+
+The hold argument is expressed in units of 10ms. A value of zero holds the state until a subsequent SET_AUX changes it. A non-zero value must not exceed the maximum reported by [GET_AUX_CAPABILITY](#get_aux_capability-response-format).
 
 ## Pipe Types
 
@@ -850,6 +952,8 @@ All items in this section, including future modes, are subject to change and sho
 
 - SLOT_POKE_MULT: write a stream of consecutive bytes in a single command
 - Pagination for GET_FLASH_SLOT_INFO when slot count or name lengths exceed the response region
+- Labels for auxiliary pins, naming the role a pin plays in an installation rather than its identity, so that a host with a user interface can present something better than a pin number without being built for the installation
+- A device-to-host pipe direction, reserved in the pipe flags but with no commands defined
 - Out-Stream, In-Stream and Bi-Stream mode definitions
 - Utilisation of additional ROM bus lines (R/W, /WE, /BYTE, /AS) in future protocol versions
 
