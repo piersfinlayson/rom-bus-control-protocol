@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Read the RBCP pipe throughput test's stream and measure it.
+
+The stream is passed through to stdout, so the same window is both the camera
+shot and the measurement.  Redirecting stdout gives a measurement run with no
+passthrough, which is why there is no quiet option.
+
+Once a second a status line goes to stderr with the rate and what the stream
+looks like.  This side is the authoritative figure — the C64 measures itself
+too, but it is the thing being measured.
+
+Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
+"""
+
+import sys
+import time
+
+try:
+    import serial
+except ImportError:
+    sys.exit("pipe_rx needs pyserial: pip install pyserial")
+
+LINE_LEN = 64          # 62 characters and CRLF
+STATUS_EVERY = 1.0
+
+
+class Check:
+    """Everything the eye cannot do reliably: gaps, repeats, malformed lines."""
+
+    def __init__(self):
+        self.expect = None      # next sequence number, None until a run starts
+        self.lines = 0
+        self.gaps = 0
+        self.missing = 0        # sequence values skipped, not gap events
+        self.repeats = 0
+        self.bad = 0
+        self.runs = 0
+
+    def line(self, raw):
+        self.lines += 1
+
+        if len(raw) != LINE_LEN - 2:
+            self.bad += 1
+            return
+
+        if raw.startswith(b"####"):
+            # A run boundary.  The sequence restarts at 0000 on the next line.
+            self.runs += 1
+            self.expect = 0
+            return
+
+        try:
+            seq = int(raw[:4], 16)
+        except ValueError:
+            self.bad += 1
+            return
+
+        if raw[4:5] != b" ":
+            self.bad += 1
+            return
+
+        if self.expect is not None:
+            if seq == (self.expect - 1) & 0xFFFF:
+                self.repeats += 1
+            elif seq != self.expect:
+                self.gaps += 1
+                self.missing += (seq - self.expect) & 0xFFFF
+        self.expect = (seq + 1) & 0xFFFF
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("usage: pipe_rx <port>")
+
+    port = serial.Serial(sys.argv[1], timeout=0.2)
+    check = Check()
+    pending = b""
+    window_bytes = 0
+    total = 0
+    next_status = time.monotonic() + STATUS_EVERY
+
+    try:
+        while True:
+            chunk = port.read(4096)
+            if chunk:
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+                window_bytes += len(chunk)
+                total += len(chunk)
+
+                pending += chunk
+                while True:
+                    end = pending.find(b"\r\n")
+                    if end < 0:
+                        break
+                    check.line(pending[:end])
+                    pending = pending[end + 2:]
+
+            now = time.monotonic()
+            if now >= next_status:
+                rate = window_bytes / (STATUS_EVERY + (now - next_status))
+                print(
+                    "%7.0f B/s  total %-10d lines %-9d runs %-3d "
+                    "gaps %-4d missing %-6d repeats %-4d bad %d"
+                    % (rate, total, check.lines, check.runs, check.gaps,
+                       check.missing, check.repeats, check.bad),
+                    file=sys.stderr,
+                )
+                window_bytes = 0
+                next_status = now + STATUS_EVERY
+    except KeyboardInterrupt:
+        pass
+    finally:
+        port.close()
+
+
+if __name__ == "__main__":
+    main()

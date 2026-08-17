@@ -115,6 +115,7 @@ RBCP_CMD_GET_RAM_SLOT_INFO_ALL      = $03
 RBCP_CMD_GET_DEVICE_TYPE            = $04
 RBCP_CMD_GET_DEVICE_VERSION         = $05
 RBCP_CMD_GET_PROTOCOL_VERSION       = $06
+RBCP_CMD_SLOT_PEEK                  = $07
 
 RBCP_GRP_MODIFY                     = $02
 RBCP_CMD_SLOT_POKE                  = $00
