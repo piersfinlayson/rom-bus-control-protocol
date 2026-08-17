@@ -4,34 +4,36 @@ Substantive changes to the specification are documented in this file.
 
 ## v0.1.2 - unreleased
 
-- Specify device behaviour on an unknown GROUP or CMD: argument counts are defined
-  per GROUP+CMD pair, so a device with no definition for the pair cannot know how
-  many argument bytes follow and consumes none. An unknown zero-argument command
-  therefore fails cleanly in command-response mode, while an unknown command with
-  arguments desynchronises the session undetectably. Requires every group
-  introduced after v0.1.1 to carry a zero-argument discovery command at its lowest
-  CMD value, so a host written against a later version can probe an earlier device
-  safely. Previously unspecified
-- Add group 0x04, Pipes: transfer bytes from the host to a device pipe, for hosts
-  that need to get data off the machine without a serial port or a display. A pipe
-  is an ordered byte sequence addressed by a single byte, with a type describing
-  what kind of pipe it is. Where the bytes go beyond that is a device matter.
-  PIPE_WRITE carries up to four bytes per command and transfers all of them or
-  none, so a host is never left guessing how much was taken. Only the
-  host-to-device direction is defined. The device-to-host direction is reserved in
-  the pipe flags. Additive
-- Add group 0x05, Auxiliary I/O: drive and read device pins that are not part of
-  the ROM interface. The protocol makes no claim about what is attached to such a
-  pin — a wire may reach a host reset, a disk drive, a printer, a relay or an LED —
-  so the commands describe only what a pin is made to do, and there is no reset
-  command. A pin is addressed by a dense group and pin number, with the group's
-  type saying what kind of pins it holds. Groups are alternative namings rather
-  than a partition, so one pin may be reachable several ways. Whether the host may
-  drive a pin is the device's decision, reported per pin, with no host override,
-  because a forced pin may be one serving the image the host is executing from.
-  SET_AUX_AND_EXIT and SET_AUX_SWITCH_EXIT let a host act where it expects to be
-  unable to observe a response. The latter exists because a host cannot rely on
-  signalling the device once a slot switch has happened. Additive
+- Add group 0x04, Pipes: transfer bytes from the host to a device pipe, for a host
+  with no serial port or display. PIPE_WRITE carries up to four bytes and takes
+  all or none. Host-to-device only, the other direction reserved in the pipe
+  flags. Additive
+- Add group 0x05, Auxiliary I/O: drive and read device pins outside the ROM
+  interface, addressed by group and pin number. Whether the host may drive a pin
+  is the device's decision, because a forced pin may be one serving the image the
+  host is executing from. SET_AUX_AND_EXIT and SET_AUX_SWITCH_EXIT act where the
+  host expects no observable response. Additive
+- Add LOAD_AND_EXIT and EXIT_CMD_RESP_RESTORE, to put back the bytes the
+  back-channel displaces in the served image. A host could read those bytes but
+  not write them back, as whatever command carries the write updates the header
+  after it. LOAD_AND_EXIT is LOAD_SLOT with a silent exit. Restore takes the bytes
+  from the host and covers what a reload cannot — no flash source, or a patch
+  worth keeping — with count last, as only a final argument bans 0xAA. Additive
+- Add GET_ACTIVE_SLOT_SOURCE, the flash slot the active RAM slot was last loaded
+  from, which is what LOAD_AND_EXIT needs named. Last loaded rather than booted,
+  because a host's own LOAD_SLOT changes the answer. Additive
+- Require a device to present either the previous or the new byte at every address
+  throughout a load into the active RAM slot. Write order unspecified. Previously
+  unspecified
+- Specify device behaviour on an unknown GROUP or CMD: no argument bytes are
+  consumed, the count being defined per GROUP+CMD pair. A zero-argument unknown
+  command therefore fails cleanly, one with arguments desynchronises the session
+  undetectably. Every group added after v0.1.1 carries a zero-argument discovery
+  command at its lowest CMD value. Previously unspecified
+- Add a Since column to every group and command, and require a host not to issue
+  one newer than the device reports. The discovery command protects a new group,
+  nothing protects a new command in a group that already exists. Previously
+  unspecified
 
 To test (on hardware):
 
@@ -45,46 +47,33 @@ To test (on hardware):
 
 - Add 23QL512 ROM type
 - Add 23C1001 (0x20), 27C200 (0x21), HM7641 (0x22) and 62256 (0x23) ROM types
-- Separate 23C1010 from 27C010: 0x0F now denotes 27C010 only, and 23C1010 has its
-  own value (0x24).  Previously the two shared 0x0F.  Backwards compatible — the
+- Separate 23C1010 (0x24) from 27C010 (0x0F), which previously shared 0x0F. The
   new value falls in the previously-reserved range, which hosts already handle
   gracefully
 - Correct the reserved-range row (was `0x1E–0x7F`, overlapping the assigned
   0x1E/0x1F) to `0x25–0x7F`
-- Clarify ENTER_CMD_RESP's back-channel start address: it must leave room for at
-  least the 8-byte response header within the RAM slot, and a start address that
-  does not — including one outside the slot — is silently discarded, since the
-  device has nowhere to report a failure. Names the principle the entry's two
-  outcomes already followed: failure where there is a back-channel to report it
-  in, silent discard where there is not. Previously unspecified
-- Clarify that a command refused for being invalid in the current mode still has
-  its argument bytes consumed before being discarded, so a host that sent a
-  well-formed frame is not desynchronised by the refusal. Previously unspecified
-- Clarify the truncated record in GET_FLASH_SLOT_INFO_ALL: where it carries a
-  name its final byte is 0x00, so every name in the response is null-terminated
-  and a host never needs the byte count to find a name's end. The name is up to
-  one character shorter than that count implies. Previously unspecified
-- Specify how the back-channel is presented on a word-organised (×16) ROM read as
-  words: each word carries two consecutive region bytes, the even offset on
-  D0–D7 and the odd offset on D8–D15. Clarification only — the region was always
-  defined as a region of bytes
-- Clarify address-line presentation: command signalling (knock, command bytes,
-  command page) is carried on the address lines the device observes at the ROM
-  socket. For word-organised (×16) ROMs these are the word address lines. An
-  implementation may additionally be unable to observe a ROM's least-significant
-  address line, in which case the host omits it and advances its read address by
-  two per command byte — a per-ROM-type property, known in advance like the knock.
-  Backwards compatible.
-- Add a non-normative section, "Using RBCP on a Host Wider Than the Device",
-  giving host implementers the two address mappings needed when the host bus is
-  wider than the device serving it — one for command signalling, one for reading
-  the back-channel — together with the parameters that distinguish the cases and
-  a worked 68000 example. Also covers a bus filled by several devices: commands
-  are broadcast to all of them, each maintains its own complete response header
-  with the headers interleaved rather than merged, completion is per-device and
-  must be polled per lane, and a host should not assume it can address one device
-  in isolation. Derived entirely from existing normative text; adds no
-  requirements and constrains no device
+- ENTER_CMD_RESP's back-channel start address must leave room for the 8-byte
+  response header within the RAM slot. One that does not is silently discarded,
+  the device having nowhere to report a failure. Previously unspecified
+- A command refused as invalid in the current mode still has its argument bytes
+  consumed, so a host that sent a well-formed frame is not desynchronised by the
+  refusal. Previously unspecified
+- The truncated record in GET_FLASH_SLOT_INFO_ALL ends in 0x00 where it carries a
+  name, so every name is null-terminated and is up to one character shorter than
+  the byte count implies. Previously unspecified
+- Specify the back-channel on a word-organised (×16) ROM read as words: each word
+  carries two consecutive region bytes, the even offset on D0–D7 and the odd
+  offset on D8–D15. Clarification only
+- Clarify address-line presentation: command signalling is carried on the address
+  lines the device observes, which for ×16 ROMs are the word address lines. A
+  device may not observe a ROM's least-significant line, in which case the host
+  advances its read address by two per command byte — a per-ROM-type property
+  known in advance, like the knock. Backwards compatible
+- Add a non-normative section, "Using RBCP on a Host Wider Than the Device": the
+  two address mappings a wider host needs, one for command signalling and one for
+  the back-channel, with a worked 68000 example. Also covers several devices on
+  one bus — commands are broadcast, each device keeps its own response header,
+  and completion must be polled per device. Adds no requirements
 
 ## v0.1.0 - 2026-05-08
 

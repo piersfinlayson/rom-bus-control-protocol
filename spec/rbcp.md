@@ -83,6 +83,10 @@ Patch increments are backwards-compatible. A device implementing version X.Y.w i
 
 A host should query the device version using GET_PROTOCOL_VERSION and reject a device whose version falls outside the bounds it was written for.
 
+Every command group, and every command within a group, carries the version that introduced it in the Since column of the [command groups](#command-groups) table and of each group's command table. A host must not issue a command whose Since value exceeds the version the device reports.
+
+The two cases behave differently if it does. A group the device does not implement at all can be probed, because every group introduced after 0.1.1 carries a zero-argument discovery command at its lowest CMD value. A command added to a group the device does implement cannot — see [Unknown GROUP and CMD](#unknown-group-and-cmd).
+
 ---
 
 ## Physical Medium
@@ -425,21 +429,25 @@ The consequence for a host is that an unknown command taking no argument bytes f
 
 Every command group introduced by a version of this specification later than 0.1.1 must therefore include a discovery command that takes zero argument bytes, and that command must be assigned the lowest CMD value in the group. A host must issue that discovery command, and observe success, before issuing any argument-taking command from the group. This allows a host written against a later version of the specification to probe a device implementing an earlier one without desynchronising it. Placing the command at the lowest CMD value makes the probe mechanical — CMD 0x00 of any group is the safe one to issue — rather than something a host must look up per group.
 
+The discovery command covers a group added by a later version, not a command added to a group that already exists. The group's own discovery command succeeds on a device that lacks the newer command, so it distinguishes nothing, and an argument-taking command the device does not know desynchronises the session as described above. The version check in [Versioning and Compatibility](#versioning-and-compatibility) is the only protection.
+
 A host may instead establish which groups a device implements from the version reported by GET_PROTOCOL_VERSION. In command mode there is no response of any kind, so no discovery is possible at all, and a host must rely on a version obtained during an earlier command-response session, or on knowledge held out of band.
 
 ---
 
 ## Command Groups
 
-| Group | Name | Valid Modes | Description |
-|-------|------|-------------|-------------|
-| 0x00 | Control | Command, Command-Response | Session and mode management |
-| 0x01 | Read | Command-Response only | Query the device for information |
-| 0x02 | Modify | Command, Command-Response | Change device state |
-| 0x03 | NV Storage | Command-Response only | Query and modify dedicated non-volatile storage on the device |
-| 0x04 | Pipes | Command-Response only | Transfer bytes from the host to a device pipe |
-| 0x05 | Auxiliary I/O | Command-Response only | Drive and read device pins that are not part of the ROM interface |
-| 0xAA | Reset | Command, Command-Response | Reset the device's RBCP implementation |
+| Group | Name | Since | Valid Modes | Description |
+|-------|------|-------|-------------|-------------|
+| 0x00 | Control | 0.1.0 | Command, Command-Response | Session and mode management |
+| 0x01 | Read | 0.1.0 | Command-Response only | Query the device for information |
+| 0x02 | Modify | 0.1.0 | Command, Command-Response | Change device state |
+| 0x03 | NV Storage | 0.1.0 | Command-Response only | Query and modify dedicated non-volatile storage on the device |
+| 0x04 | Pipes | 0.1.2 | Command-Response only | Transfer bytes from the host to a device pipe |
+| 0x05 | Auxiliary I/O | 0.1.2 | Command-Response only | Drive and read device pins that are not part of the ROM interface |
+| 0xAA | Reset | 0.1.0 | Command, Command-Response | Reset the device's RBCP implementation |
+
+The Since column gives the specification version in which a group was introduced. The command tables below carry the same column per command.
 
 ---
 
@@ -449,13 +457,15 @@ A host may instead establish which groups a device implements from the version r
 
 Commands in this group manage the session and mode of the device. All commands in this group are valid in both command and command-response modes, except where noted.
 
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0x00 | NOP | 0 | No operation. In command-response mode the device acknowledges via the standard header sequence, allowing the host to verify the device is alive and processing commands. |
-| 0x01 | ENTER_CMD_RESP | 9: A0/A1=command page (16-bit LE), A2/A3/A4=back-channel start address (24-bit LE), A5/A6=back-channel size in bytes (16-bit LE), A7=complete, A8=status-OK | Configures command-response mode parameters and enters command-response mode. A0/A1 specify the command page: during command-response mode the device treats only address reads whose upper address bits match this value as command bytes. A2/A3/A4 specify the start address of the back-channel region within the active RAM slot; this address must be 4-byte aligned, and must leave room for at least the 8-byte [response header](#response-header) within the RAM slot — if it is not aligned, or if it does not leave that room (including where it lies outside the slot entirely), the device silently discards the command. A5/A6 specify the size of the back-channel region in bytes; if the requested size exceeds the available space in the RAM slot, the device returns failure. A7 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A8 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. Neither A7 nor A8 may be 0xAA — if either is, the device silently discards the command. If the command page is out of range for the ROM type currently being served, the device silently discards the command. Not supported when in command-response mode — the device returns failure. The division between the two outcomes above follows from what the device can do: it returns failure where it has a back-channel to report one in, and silently discards the command where it does not. |
-| 0x02 | EXIT_CMD_RESP_ACK | 0 | Exits command-response mode. The device completes the full command processing sequence, including setting progress = complete, before exiting command-response mode. The host should poll progress for complete as normal. Once complete is observed, the device has exited command-response mode and the back-channel region is no longer maintained.|
-| 0x03 | EXIT_CMD_RESP_SILENT | 0 | Exits command-response mode without updating the [response header](#response-header). |
-| 0x04 | SWITCH_AND_EXIT | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. An A0 value of 0xAA is invalid.  If received the slot is NOT switched, but the exit DOES complete. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0x00 | NOP | 0.1.0 | 0 | No operation. In command-response mode the device acknowledges via the standard header sequence, allowing the host to verify the device is alive and processing commands. |
+| 0x01 | ENTER_CMD_RESP | 0.1.0 | 9: A0/A1=command page (16-bit LE), A2/A3/A4=back-channel start address (24-bit LE), A5/A6=back-channel size in bytes (16-bit LE), A7=complete, A8=status-OK | Configures command-response mode parameters and enters command-response mode. A0/A1 specify the command page: during command-response mode the device treats only address reads whose upper address bits match this value as command bytes. A2/A3/A4 specify the start address of the back-channel region within the active RAM slot; this address must be 4-byte aligned, and must leave room for at least the 8-byte [response header](#response-header) within the RAM slot — if it is not aligned, or if it does not leave that room (including where it lies outside the slot entirely), the device silently discards the command. A5/A6 specify the size of the back-channel region in bytes; if the requested size exceeds the available space in the RAM slot, the device returns failure. A7 is the boolean value the device will write to the progress field to indicate completion; its bitwise inverse indicates pending. A8 is the boolean value the device will write to the response field to indicate success; its bitwise inverse indicates failure. Neither A7 nor A8 may be 0xAA — if either is, the device silently discards the command. If the command page is out of range for the ROM type currently being served, the device silently discards the command. Not supported when in command-response mode — the device returns failure. The division between the two outcomes above follows from what the device can do: it returns failure where it has a back-channel to report one in, and silently discards the command where it does not. |
+| 0x02 | EXIT_CMD_RESP_ACK | 0.1.0 | 0 | Exits command-response mode. The device completes the full command processing sequence, including setting progress = complete, before exiting command-response mode. The host should poll progress for complete as normal. Once complete is observed, the device has exited command-response mode and the back-channel region is no longer maintained.|
+| 0x03 | EXIT_CMD_RESP_SILENT | 0.1.0 | 0 | Exits command-response mode without updating the [response header](#response-header). |
+| 0x04 | SWITCH_AND_EXIT | 0.1.0 | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. An A0 value of 0xAA is invalid.  If received the slot is NOT switched, but the exit DOES complete. |
+| 0x05 | LOAD_AND_EXIT | 0.1.2 | 2: A0=RAM slot, A1=flash slot | As LOAD_SLOT, but exits command-response mode without updating the [response header](#response-header). Where the RAM slot named is the active one, this restores the whole of the served image, including the bytes the back-channel region occupies — see [Loading the Active Slot](#loading-the-active-slot). This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. A0 or A1 values of 0xAA are invalid. If received the slot is NOT loaded, but the exit DOES complete. |
+| 0x06 | EXIT_CMD_RESP_RESTORE | 0.1.2 | 9: A0-A7=bytes, A8=count | Writes count bytes, taken from A0 onwards, from the start of the back-channel region and exits command-response mode without further updating the [response header](#response-header). This lets the host put back the bytes the response header displaced. Bytes of the region beyond those this command writes are the host's to put back first, with SLOT_POKE — each such write dirties only the header, which this command then covers. This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A7. A8 must be in the range 0x01 to 0x08. If it is not, no bytes are written, but the exit DOES complete. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -463,16 +473,17 @@ CMD 0xAA is reserved and must never be assigned.
 
 Commands in this group query the device for information. All commands in this group are valid in command-response mode only.
 
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0x00 | GET_FLASH_SLOT_COUNT | 0 | Requests the device to write the total number of available (populated, non plugin or other special) flash slots available on the device into the first byte of the command-response region. See [GET_FLASH_SLOT_COUNT Response Format](#get_flash_slot_count-response-format). |
-| 0x01 | GET_FLASH_SLOT_INFO | 1: A0=slot | Requests the device to populate the command-response region with information about the specified flash ROM slot. See [GET_FLASH_SLOT_INFO Response Format](#get_flash_slot_info-response-format). Only succeeds if there is sufficient space, which means a back channel size of at least 64 bytes. An A0 value of 0xAA is invalid and rejected. |
-| 0x02 | GET_FLASH_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available (populated, non plugin or other special) flash ROM slots. This provides the entirety of the information exposed by GET_FLASH_SLOT_COUNT and GET_FLASH_SLOT_INFO in a single request response. See [GET_FLASH_SLOT_INFO_ALL Response Format](#get_flash_slot_info_all-response-format). |
-| 0x03 | GET_RAM_SLOT_INFO_ALL | 0 | Requests the device to populate the command-response region with information about available RAM slots. See [GET_RAM_SLOT_INFO Response Format](#get_ram_slot_info-response-format). |
-| 0x04 | GET_DEVICE_TYPE | 0 | Requests the device to write its type (e.g. One ROM) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. See [GET_DEVICE_TYPE Response Format](#get_device_type-response-format). |
-| 0x05 | GET_DEVICE_VERSION | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
-| 0x06 | GET_PROTOCOL_VERSION | 0 | Requests the device to write the RBCP protocol version it implements into the response data section. See [GET_PROTOCOL_VERSION Response Format](#get_protocol_version-response-format). |
-| 0x07 | SLOT_PEEK | 5: A0=count, A1/A2/A3=24-bit address (little-endian), A4=slot | Requests the device to read one or more bytes from the specified RAM slot at the specified address and write them into the response data section. A count of zero indicates 256 bytes should be read. This command fails if there is insufficient space in the response data section to accommodate the requested bytes.  An A4 value of 0xAA is invalid and rejected. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0x00 | GET_FLASH_SLOT_COUNT | 0.1.0 | 0 | Requests the device to write the total number of available (populated, non plugin or other special) flash slots available on the device into the first byte of the command-response region. See [GET_FLASH_SLOT_COUNT Response Format](#get_flash_slot_count-response-format). |
+| 0x01 | GET_FLASH_SLOT_INFO | 0.1.0 | 1: A0=slot | Requests the device to populate the command-response region with information about the specified flash ROM slot. See [GET_FLASH_SLOT_INFO Response Format](#get_flash_slot_info-response-format). Only succeeds if there is sufficient space, which means a back channel size of at least 64 bytes. An A0 value of 0xAA is invalid and rejected. |
+| 0x02 | GET_FLASH_SLOT_INFO_ALL | 0.1.0 | 0 | Requests the device to populate the command-response region with information about available (populated, non plugin or other special) flash ROM slots. This provides the entirety of the information exposed by GET_FLASH_SLOT_COUNT and GET_FLASH_SLOT_INFO in a single request response. See [GET_FLASH_SLOT_INFO_ALL Response Format](#get_flash_slot_info_all-response-format). |
+| 0x03 | GET_RAM_SLOT_INFO_ALL | 0.1.0 | 0 | Requests the device to populate the command-response region with information about available RAM slots. See [GET_RAM_SLOT_INFO Response Format](#get_ram_slot_info-response-format). |
+| 0x04 | GET_DEVICE_TYPE | 0.1.0 | 0 | Requests the device to write its type (e.g. One ROM) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a type. See [GET_DEVICE_TYPE Response Format](#get_device_type-response-format). |
+| 0x05 | GET_DEVICE_VERSION | 0.1.0 | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
+| 0x06 | GET_PROTOCOL_VERSION | 0.1.0 | 0 | Requests the device to write the RBCP protocol version it implements into the response data section. See [GET_PROTOCOL_VERSION Response Format](#get_protocol_version-response-format). |
+| 0x07 | SLOT_PEEK | 0.1.0 | 5: A0=count, A1/A2/A3=24-bit address (little-endian), A4=slot | Requests the device to read one or more bytes from the specified RAM slot at the specified address and write them into the response data section. A count of zero indicates 256 bytes should be read. This command fails if there is insufficient space in the response data section to accommodate the requested bytes.  An A4 value of 0xAA is invalid and rejected. |
+| 0x08 | GET_ACTIVE_SLOT_SOURCE | 0.1.2 | 0 | Requests the device to report the flash slot the active RAM slot was last loaded from. See [GET_ACTIVE_SLOT_SOURCE Response Format](#get_active_slot_source-response-format). |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -480,14 +491,22 @@ CMD 0xAA is reserved and must never be assigned.
 
 Commands in this group change the state of the device. All commands in this group are valid in both command and command-response modes, except where noted.
 
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0x00 | SLOT_POKE | 5: A0=byte, A1/A2/A3=24-bit address (little-endian), A4=slot | Writes a single byte into the specified RAM slot at the specified address. May be used for patching vectors or other known locations prior to activating that slot or entering command-response mode. The target slot need not be active. In fact, patching multi-byte values such as interrupt vectors should only be done to inactive slots. Because SLOT_POKE writes one byte at a time, there is no atomic write of a 16-bit value — a vector partially written to an active slot will be transiently inconsistent and will corrupt any interrupt that occurs between the two writes. The safe pattern is: LOAD_SLOT the target image into an inactive RAM slot, issue SLOT_POKE commands to patch any vectors in that inactive slot, then issue SWITCH_AND_EXIT to make it active. The vector bytes are consistent at the instant the slot becomes active.  An A4 value of 0xAA is invalid and rejected. |
-| 0x01 | SWITCH_SLOT | 1: A0=slot | Activates the specified RAM slot. An A0 value of 0xAA is invalid and rejected. |
-| 0x02 | LOAD_SLOT | 2: A0=RAM slot, A1=flash slot | Copies the specified ROM image from the slot on the ROM into the specified RAM slot. Does not activate the slot. A0 or A1 values of 0xAA are invalid and rejected. |
-| 0x03 | SLOT_POKE_ALL_BYTE | 2: A0=byte, A1=RAM slot | Fills the specified RAM slot with the specified byte. Does not activate the slot. An A1 value of 0xAA is invalid and rejected. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0x00 | SLOT_POKE | 0.1.0 | 5: A0=byte, A1/A2/A3=24-bit address (little-endian), A4=slot | Writes a single byte into the specified RAM slot at the specified address. May be used for patching vectors or other known locations prior to activating that slot or entering command-response mode. The target slot need not be active. In fact, patching multi-byte values such as interrupt vectors should only be done to inactive slots. Because SLOT_POKE writes one byte at a time, there is no atomic write of a 16-bit value — a vector partially written to an active slot will be transiently inconsistent and will corrupt any interrupt that occurs between the two writes. The safe pattern is: LOAD_SLOT the target image into an inactive RAM slot, issue SLOT_POKE commands to patch any vectors in that inactive slot, then issue SWITCH_AND_EXIT to make it active. The vector bytes are consistent at the instant the slot becomes active.  An A4 value of 0xAA is invalid and rejected. |
+| 0x01 | SWITCH_SLOT | 0.1.0 | 1: A0=slot | Activates the specified RAM slot. An A0 value of 0xAA is invalid and rejected. |
+| 0x02 | LOAD_SLOT | 0.1.0 | 2: A0=RAM slot, A1=flash slot | Copies the specified ROM image from the slot on the ROM into the specified RAM slot. Does not activate the slot. Where the RAM slot named is the active one, see [Loading the Active Slot](#loading-the-active-slot). A0 or A1 values of 0xAA are invalid and rejected. |
+| 0x03 | SLOT_POKE_ALL_BYTE | 0.1.0 | 2: A0=byte, A1=RAM slot | Fills the specified RAM slot with the specified byte. Does not activate the slot. An A1 value of 0xAA is invalid and rejected. |
 
 CMD 0xAA is reserved and must never be assigned.
+
+#### Loading the Active Slot
+
+LOAD_SLOT and LOAD_AND_EXIT may name the active RAM slot, which the device continues to serve while the copy runs. Throughout the copy every address must present either its previous byte or its new byte, and never a third value. A device that clears the slot before copying into it does not meet this requirement.
+
+The order in which the device writes the bytes is not specified, and a host must not rely on one. Only the value present at each address is constrained.
+
+The host cannot detect a device that breaks this. It may read any address at any time, for any purpose, and a transient value it reads is indistinguishable from ROM content.
 
 ### Group 0x03 — NV Storage
  
@@ -511,15 +530,15 @@ Before having been written by any host, the entire NV storage on any device is i
 
 Care should be taken when running timers to police a response from the device for NV_POKE_COMMIT and NV_POKE_COMMIT_BYTE, as both of these commands is likely to involve the device erasing flash - which is a long (ms) operation.
  
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0x00 | GET_NV_CAPABILITY | 0 | Requests the device to report its NV storage capabilities. See [GET_NV_CAPABILITY Response Format](#get_nv_capability-response-format). |
-| 0x01 | NV_PEEK | 3: A0=count, A1=location_LSB, A2=location_MSB | Reads one or more bytes directly from NV storage at the specified location and writes them into the response data section. A count of zero indicates 256 bytes should be read. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Always reads from NV storage, regardless of whether a write transaction is in progress. Fails if there is insufficient space in the response data section to accommodate the requested bytes, or if the requested range exceeds the NV storage size. |
-| 0x02 | NV_POKE_BEGIN | 1: A0=RAM slot | Initiates a write transaction by loading the current NV storage contents into a RAM staging buffer, using the RAM slot specified. Fails if NV storage is not writable, if a write transaction is already in progress or if the RAM slot specified is invalid, active or too small. An A0 value of 0xAA is invalid and rejected. |
-| 0x03 | NV_POKE | 3: A0=byte, A1=location_LSB, A2=location_MSB | Writes a single byte into a staging buffer using the specified RAM slotat the specified location. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Fails if no write transaction is in progress, or if the location exceeds the NV storage size. |
-| 0x04 | NV_POKE_COMMIT | 0 | Commits the staging buffer to NV storage and frees the staging buffer. Fails if no write transaction is in progress, or if the write to NV storage fails. In the event of failure the staging buffer is retained, allowing the host to retry or discard. The protocol does not guarantee that a failed commit leaves NV storage in either its pre- or post-commit state — the degree of atomicity is implementation-defined. Device implementations should document their atomicity guarantees. |
-| 0x05 | NV_POKE_DISCARD | 0 | Discards the staging buffer without writing to NV storage and frees the staging buffer. Fails if no write transaction is in progress. |
-| 0x06 | NV_POKE_COMMIT_BYTE | 4: A0=byte, A1=location_LSB, A2=location_MSB, A3=RAM slot | Performs a complete single-byte write transaction: loads NV storage into a staging buffer using the specified RAM slot, writes the specified byte at the specified location, commits to NV storage, and frees the staging buffer. Fails if NV storage if not writable, if a write transaction is already in progress, or if the RAM slot specified is invalid, active or too small. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Atomicity guarantees are the same as for NV_POKE_COMMIT. An A3 value of 0xAA is invalid and rejected. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0x00 | GET_NV_CAPABILITY | 0.1.0 | 0 | Requests the device to report its NV storage capabilities. See [GET_NV_CAPABILITY Response Format](#get_nv_capability-response-format). |
+| 0x01 | NV_PEEK | 0.1.0 | 3: A0=count, A1=location_LSB, A2=location_MSB | Reads one or more bytes directly from NV storage at the specified location and writes them into the response data section. A count of zero indicates 256 bytes should be read. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Always reads from NV storage, regardless of whether a write transaction is in progress. Fails if there is insufficient space in the response data section to accommodate the requested bytes, or if the requested range exceeds the NV storage size. |
+| 0x02 | NV_POKE_BEGIN | 0.1.0 | 1: A0=RAM slot | Initiates a write transaction by loading the current NV storage contents into a RAM staging buffer, using the RAM slot specified. Fails if NV storage is not writable, if a write transaction is already in progress or if the RAM slot specified is invalid, active or too small. An A0 value of 0xAA is invalid and rejected. |
+| 0x03 | NV_POKE | 0.1.0 | 3: A0=byte, A1=location_LSB, A2=location_MSB | Writes a single byte into a staging buffer using the specified RAM slotat the specified location. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Fails if no write transaction is in progress, or if the location exceeds the NV storage size. |
+| 0x04 | NV_POKE_COMMIT | 0.1.0 | 0 | Commits the staging buffer to NV storage and frees the staging buffer. Fails if no write transaction is in progress, or if the write to NV storage fails. In the event of failure the staging buffer is retained, allowing the host to retry or discard. The protocol does not guarantee that a failed commit leaves NV storage in either its pre- or post-commit state — the degree of atomicity is implementation-defined. Device implementations should document their atomicity guarantees. |
+| 0x05 | NV_POKE_DISCARD | 0.1.0 | 0 | Discards the staging buffer without writing to NV storage and frees the staging buffer. Fails if no write transaction is in progress. |
+| 0x06 | NV_POKE_COMMIT_BYTE | 0.1.0 | 4: A0=byte, A1=location_LSB, A2=location_MSB, A3=RAM slot | Performs a complete single-byte write transaction: loads NV storage into a staging buffer using the specified RAM slot, writes the specified byte at the specified location, commits to NV storage, and frees the staging buffer. Fails if NV storage if not writable, if a write transaction is already in progress, or if the RAM slot specified is invalid, active or too small. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Atomicity guarantees are the same as for NV_POKE_COMMIT. An A3 value of 0xAA is invalid and rejected. |
  
 CMD 0xAA is reserved and must never be assigned.
  
@@ -537,11 +556,11 @@ This version of the protocol defines the host-to-device direction only. A device
 
 PIPE_WRITE transfers all of the bytes offered or none of them. Where the device cannot accept them all it returns failure and transfers nothing, leaving the host to retry or to discard the bytes. A device must not delay its response waiting for space to become available — the host is blocked for the duration of the [command processing sequence](#command-processing-sequence), and a pipe whose far end has stalled would otherwise stall the host indefinitely. GET_PIPE_INFO reports the space currently available, allowing a host that has been refused to decide whether to retry immediately or to back off.
 
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0x00 | GET_PIPE_CAPABILITY | 0 | Requests the device to report how many pipes it exposes. See [GET_PIPE_CAPABILITY Response Format](#get_pipe_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
-| 0x01 | GET_PIPE_INFO | 1: A0=pipe | Requests the device to report what the specified pipe is and how much space it currently has. See [GET_PIPE_INFO Response Format](#get_pipe_info-response-format). Fails if the pipe is not one the device exposes, or if the response data section is smaller than 8 bytes. |
-| 0x02 | PIPE_WRITE | 6: A0/A1/A2/A3=data, A4=pipe, A5=count | Transfers count bytes, taken from A0 onwards, to the specified pipe. A5 must be in the range 0x01 to 0x04 — any other value is invalid and the device rejects the command. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A3. Either all count bytes are transferred or none are: the device returns failure if it cannot accept them all, and in that case transfers nothing. Fails if the pipe is not one the device exposes, or if the pipe does not support the host-to-device direction. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0x00 | GET_PIPE_CAPABILITY | 0.1.2 | 0 | Requests the device to report how many pipes it exposes. See [GET_PIPE_CAPABILITY Response Format](#get_pipe_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
+| 0x01 | GET_PIPE_INFO | 0.1.2 | 1: A0=pipe | Requests the device to report what the specified pipe is and how much space it currently has. See [GET_PIPE_INFO Response Format](#get_pipe_info-response-format). Fails if the pipe is not one the device exposes, or if the response data section is smaller than 8 bytes. |
+| 0x02 | PIPE_WRITE | 0.1.2 | 6: A0/A1/A2/A3=data, A4=pipe, A5=count | Transfers count bytes, taken from A0 onwards, to the specified pipe. A5 must be in the range 0x01 to 0x04 — any other value is invalid and the device rejects the command. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A3. Either all count bytes are transferred or none are: the device returns failure if it cannot accept them all, and in that case transfers nothing. Fails if the pipe is not one the device exposes, or if the pipe does not support the host-to-device direction. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -561,14 +580,14 @@ The same pin may appear in more than one group. Groups are alternative ways of n
 
 A pin's state persists across the end of a command-response session and across RBCP_RESET. Only a device reset restores a pin to its power-on state.
 
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0x00 | GET_AUX_CAPABILITY | 0 | Requests the device to report how many auxiliary pin groups it exposes and the limits that apply to them. See [GET_AUX_CAPABILITY Response Format](#get_aux_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
-| 0x01 | GET_AUX_GROUP_INFO | 1: A0=group | Requests the device to report what kind of pins the specified group holds and how many of them there are. See [GET_AUX_GROUP_INFO Response Format](#get_aux_group_info-response-format). Fails if the group is not one the device exposes, or if the response data section is smaller than 8 bytes. An A0 value of 0xAA is invalid and rejected. |
-| 0x02 | GET_AUX_PIN_INFO | 2: A0=pin, A1=group | Requests the device to report what the specified pin may be used for and the level currently present on it. See [GET_AUX_PIN_INFO Response Format](#get_aux_pin_info-response-format). Fails if the group or the pin is not one the device exposes, or if the response data section is smaller than 8 bytes. An A1 value of 0xAA is invalid and rejected. |
-| 0x03 | SET_AUX | 5: A0=state, A1=after, A2=hold, A3=pin, A4=group | Places the specified pin in the specified [state](#auxiliary-pin-states). Where hold is non-zero the device holds that state for the requested duration and then applies after. The device times the hold, and does not complete the command until it has elapsed and after has been applied. Fails if the group or the pin is not one the device exposes, if the pin is not drivable, if state is not a defined value, if hold is non-zero and after is not a defined value, or if hold exceeds the maximum reported by GET_AUX_CAPABILITY. An A4 value of 0xAA is invalid and rejected. |
-| 0x04 | SET_AUX_AND_EXIT | 5: as SET_AUX | As SET_AUX, but exits command-response mode without updating the [response header](#response-header). This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. A host uses this where it expects to be unable to observe a response. An A4 value of 0xAA is invalid and rejected. |
-| 0x05 | SET_AUX_SWITCH_EXIT | 7: A0=state, A1=after, A2=hold, A3=flags, A4=pin, A5=group, A6=slot | Sets the specified pin and activates the specified RAM slot, in the order given by flags, then exits command-response mode without updating the [response header](#response-header). This command is terminal to the current command-response session. See [SET_AUX_SWITCH_EXIT Ordering](#set_aux_switch_exit-ordering). An A6 value of 0xAA is invalid. If received, neither the pin is set nor the slot switched, but the exit DOES complete. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0x00 | GET_AUX_CAPABILITY | 0.1.2 | 0 | Requests the device to report how many auxiliary pin groups it exposes and the limits that apply to them. See [GET_AUX_CAPABILITY Response Format](#get_aux_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
+| 0x01 | GET_AUX_GROUP_INFO | 0.1.2 | 1: A0=group | Requests the device to report what kind of pins the specified group holds and how many of them there are. See [GET_AUX_GROUP_INFO Response Format](#get_aux_group_info-response-format). Fails if the group is not one the device exposes, or if the response data section is smaller than 8 bytes. An A0 value of 0xAA is invalid and rejected. |
+| 0x02 | GET_AUX_PIN_INFO | 0.1.2 | 2: A0=pin, A1=group | Requests the device to report what the specified pin may be used for and the level currently present on it. See [GET_AUX_PIN_INFO Response Format](#get_aux_pin_info-response-format). Fails if the group or the pin is not one the device exposes, or if the response data section is smaller than 8 bytes. An A1 value of 0xAA is invalid and rejected. |
+| 0x03 | SET_AUX | 0.1.2 | 5: A0=state, A1=after, A2=hold, A3=pin, A4=group | Places the specified pin in the specified [state](#auxiliary-pin-states). Where hold is non-zero the device holds that state for the requested duration and then applies after. The device times the hold, and does not complete the command until it has elapsed and after has been applied. Fails if the group or the pin is not one the device exposes, if the pin is not drivable, if state is not a defined value, if hold is non-zero and after is not a defined value, or if hold exceeds the maximum reported by GET_AUX_CAPABILITY. An A4 value of 0xAA is invalid and rejected. |
+| 0x04 | SET_AUX_AND_EXIT | 0.1.2 | 5: as SET_AUX | As SET_AUX, but exits command-response mode without updating the [response header](#response-header). This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. A host uses this where it expects to be unable to observe a response. An A4 value of 0xAA is invalid and rejected. |
+| 0x05 | SET_AUX_SWITCH_EXIT | 0.1.2 | 7: A0=state, A1=after, A2=hold, A3=flags, A4=pin, A5=group, A6=slot | Sets the specified pin and activates the specified RAM slot, in the order given by flags, then exits command-response mode without updating the [response header](#response-header). This command is terminal to the current command-response session. See [SET_AUX_SWITCH_EXIT Ordering](#set_aux_switch_exit-ordering). An A6 value of 0xAA is invalid. If received, neither the pin is set nor the slot switched, but the exit DOES complete. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -590,9 +609,9 @@ Under set-first ordering the device does not apply after until the slot switch h
 
 This group defines a single, special command for resetting the device's RBCP implementation. This is a non-standard command that does not follow the normal command processing sequence, and is designed to be reliably detectable even if issued mid-command or mid-knock, making it suitable for recovering from desynchronization or other error states.
 
-| CMD | Name | Args | Description |
-|-----|------|------|-------------|
-| 0xAA | RBCP_RESET | 0 | Resets the device's RBCP implementation. This can be used to set the device implementation to a known good state before issuing subsequent commands. This command doesn't change any flash or RAM slot contents nor does it change the active RAM slot. There is never any response from this command - if it is executed in command-response mode, the device immediately and silently exits from that mode. |
+| CMD | Name | Since | Args | Description |
+|-----|------|-------|------|-------------|
+| 0xAA | RBCP_RESET | 0.1.0 | 0 | Resets the device's RBCP implementation. This can be used to set the device implementation to a known good state before issuing subsequent commands. This command doesn't change any flash or RAM slot contents nor does it change the active RAM slot. There is never any response from this command - if it is executed in command-response mode, the device immediately and silently exits from that mode. |
 
 ---
 
@@ -759,6 +778,15 @@ The response data section begins immediately after the [response header](#respon
 | 1 | 1 | minor | Minor version number |
 | 2 | 1 | patch | Patch version number |
 | 3 | 1 | Reserved | Must be zero |
+
+## GET_ACTIVE_SLOT_SOURCE Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | flash_slot | Flash slot the active RAM slot was last loaded from, or 0xFF where it was not loaded from one or the device does not know. The device maintains this per RAM slot, setting it when it loads a slot at boot and on every LOAD_SLOT and LOAD_AND_EXIT. |
+| 1 | 3 | Reserved | Must be zero |
 
 ## GET_NV_CAPABILITY Response Format
  
