@@ -5,7 +5,7 @@ FLAGS_FILE = build/.flags
 CURRENT_FLAGS = PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
 AS      = ca65
 LD      = ld65
-ASFLAGS = --cpu 6502 -I . -D PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
+ASFLAGS = --cpu 6502 -I . -I ../common -D PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
 LDFLAGS = -C c64_boot.cfg
 
 BUILD   = build
@@ -31,14 +31,14 @@ $(BUILD):
 $(BUILD)/rbcp.o: ../rbcp/rbcp.s ../rbcp/rbcp_defs.s rbcp_config.s $(FLAGS_FILE)
 	$(AS) $(ASFLAGS) ../rbcp/rbcp.s -o $@
 
-$(BUILD)/c64_hw.o: src/c64_hw.s src/c64_defs.s $(FLAGS_FILE)
-	$(AS) $(ASFLAGS) src/c64_hw.s -o $@
+$(BUILD)/c64_hw.o: ../common/c64_hw.s ../common/c64_defs.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) ../common/c64_hw.s -o $@
 
-$(BUILD)/c64_boot.o: src/c64_boot.s ../rbcp/rbcp_defs.s src/c64_defs.s $(FLAGS_FILE)
+$(BUILD)/c64_boot.o: src/c64_boot.s ../rbcp/rbcp_defs.s ../common/c64_defs.s $(FLAGS_FILE)
 	$(AS) $(ASFLAGS) src/c64_boot.s -o $@
 
-$(BUILD)/vectors.o: src/vectors.s $(FLAGS_FILE)
-	$(AS) $(ASFLAGS) src/vectors.s -o $@
+$(BUILD)/vectors.o: ../common/vectors.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) ../common/vectors.s -o $@
 
 $(TARGET): $(OBJS) c64_boot.cfg $(FLAGS_FILE)
 	$(LD) $(LDFLAGS) $(OBJS) -o $@

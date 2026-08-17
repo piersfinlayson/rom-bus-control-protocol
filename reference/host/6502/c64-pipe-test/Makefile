@@ -4,7 +4,7 @@
 AS       = ca65
 LD       = ld65
 C1541    = c1541
-ASFLAGS  = --cpu 6502 -I . -I src -I ../c64-boot/src
+ASFLAGS  = --cpu 6502 -I . -I src -I ../common
 LDFLAGS  = -C pipe_test.cfg
 
 BUILD    = build
@@ -34,8 +34,8 @@ $(BUILD):
 $(BUILD)/rbcp.o: ../rbcp/rbcp.s ../rbcp/rbcp_defs.s rbcp_config.s | $(BUILD)
 	$(AS) $(ASFLAGS) ../rbcp/rbcp.s -o $@
 
-$(BUILD)/c64_hw.o: ../c64-boot/src/c64_hw.s ../c64-boot/src/c64_defs.s | $(BUILD)
-	$(AS) $(ASFLAGS) ../c64-boot/src/c64_hw.s -o $@
+$(BUILD)/c64_hw.o: ../common/c64_hw.s ../common/c64_defs.s | $(BUILD)
+	$(AS) $(ASFLAGS) ../common/c64_hw.s -o $@
 
 $(BUILD)/pipe_test.o: src/pipe_test.s src/pipe_defs.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/pipe_test.s -o $@

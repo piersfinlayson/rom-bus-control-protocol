@@ -51,6 +51,11 @@ CONFIG_RBCP_POLL_TIMEOUT = $FF
 ; maximum is $FFFF
 CONFIG_RBCP_NV_POLL_TIMEOUT = $FFFF
 
+; SET_AUX with a hold waits on its own timeout, not the NV one: they bound
+; unrelated things.  The largest hold this buys is capped by the poll loop's
+; two counter bytes at about 0.86 seconds on a PAL C64, whatever is set here.
+CONFIG_RBCP_AUX_POLL_TIMEOUT = $FFFF
+
 ; Set to the number of times to retry a command in command-response mode, if
 ; the device fails to acknowledge it within the timeout via a token increment.
 ; $00 = no retries.

@@ -17,6 +17,7 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/rbcp/`](reference/host/6502/rbcp/README.md) — Generic 6502 RBCP routines which can be used on any 6502 based system
   - [`6502/c64-boot/`](reference/host/6502/c64-boot/README.md) — A sample C64 kernal bootloader using RBCP
   - [`6502/c64-pipe-test/`](reference/host/6502/c64-pipe-test/README.md) — A C64 pipe throughput test, measuring how fast a C64 can push bytes through an RBCP pipe
+  - [`6502/c64-aux-test/`](reference/host/6502/c64-aux-test/README.md) — A C64 auxiliary I/O tester, driving and reading a device's pins and showing every one of them on screen
   - [`68k/rbcp/`](reference/host/68k/rbcp/README.md) — Generic 68K RBCP routines, including the bus mapping needed where the device is narrower than the host's bus
   - [`68k/amiga-boot/`](reference/host/68k/amiga-boot/README.md) — A sample Amiga Kickstart bootloader using RBCP
 - [`reference/device/`](reference/device/README.md) — Reference device implementations (i.e. emulated ROMs supporting RBCP)

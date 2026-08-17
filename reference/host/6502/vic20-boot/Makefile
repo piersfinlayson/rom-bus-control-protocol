@@ -3,7 +3,7 @@
 
 AS           = ca65
 LD           = ld65
-ASFLAGS_BASE = --cpu 6502 -I . -D PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
+ASFLAGS_BASE = --cpu 6502 -I . -I ../common -D PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
 LDFLAGS      = -C vic20_boot.cfg
 
 BUILD       = build
@@ -59,8 +59,8 @@ $(BUILD_PAL)/vic20_hw.o: src/vic20_hw.s src/vic20_defs.s $(FLAGS_PAL)
 $(BUILD_PAL)/vic20_boot.o: src/vic20_boot.s ../rbcp/rbcp_defs.s src/vic20_defs.s $(FLAGS_PAL)
 	$(AS) $(ASFLAGS_BASE) -DPAL=1 src/vic20_boot.s -o $@
 
-$(BUILD_PAL)/vectors.o: src/vectors.s $(FLAGS_PAL)
-	$(AS) $(ASFLAGS_BASE) -DPAL=1 src/vectors.s -o $@
+$(BUILD_PAL)/vectors.o: ../common/vectors.s $(FLAGS_PAL)
+	$(AS) $(ASFLAGS_BASE) -DPAL=1 ../common/vectors.s -o $@
 
 $(TARGET_PAL): $(OBJS_PAL) vic20_boot.cfg $(FLAGS_PAL)
 	$(LD) $(LDFLAGS) $(OBJS_PAL) -o $@
@@ -79,8 +79,8 @@ $(BUILD_NTSC)/vic20_hw.o: src/vic20_hw.s src/vic20_defs.s $(FLAGS_NTSC)
 $(BUILD_NTSC)/vic20_boot.o: src/vic20_boot.s ../rbcp/rbcp_defs.s src/vic20_defs.s $(FLAGS_NTSC)
 	$(AS) $(ASFLAGS_BASE) -DNTSC=1 src/vic20_boot.s -o $@
 
-$(BUILD_NTSC)/vectors.o: src/vectors.s $(FLAGS_NTSC)
-	$(AS) $(ASFLAGS_BASE) -DNTSC=1 src/vectors.s -o $@
+$(BUILD_NTSC)/vectors.o: ../common/vectors.s $(FLAGS_NTSC)
+	$(AS) $(ASFLAGS_BASE) -DNTSC=1 ../common/vectors.s -o $@
 
 $(TARGET_NTSC): $(OBJS_NTSC) vic20_boot.cfg $(FLAGS_NTSC)
 	$(LD) $(LDFLAGS) $(OBJS_NTSC) -o $@

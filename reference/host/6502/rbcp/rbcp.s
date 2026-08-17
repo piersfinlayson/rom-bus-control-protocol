@@ -165,21 +165,40 @@ rbcp_poll_progress_long:
 .if RBCP_NV_POLL_TIMEOUT > 0
     ldx #<RBCP_NV_POLL_TIMEOUT
     ldy #>RBCP_NV_POLL_TIMEOUT
+    jmp rbcp_ppl_timed
+.else
+    jmp rbcp_ppl_forever
 .endif
-rbcp_ppl_loop:
+
+; rbcp_poll_progress_aux — as rbcp_poll_progress_long, on its own timeout.
+.export rbcp_poll_progress_aux
+rbcp_poll_progress_aux:
+.if RBCP_AUX_POLL_TIMEOUT > 0
+    ldx #<RBCP_AUX_POLL_TIMEOUT
+    ldy #>RBCP_AUX_POLL_TIMEOUT
+    jmp rbcp_ppl_timed
+.else
+    jmp rbcp_ppl_forever
+.endif
+
+; The two loops both long polls share.  X and Y are the countdown, so the
+; longest wait either can express is 256 * 255 iterations of about 13 cycles —
+; roughly 0.86 seconds on a PAL C64, whatever its constant is set to.
+rbcp_ppl_timed:
     lda RBCP_PROGRESS_ADDR
     cmp #RBCP_COMPLETE
     beq rbcp_ppl_ok
-.if RBCP_NV_POLL_TIMEOUT > 0
     dex
-    bne rbcp_ppl_loop
+    bne rbcp_ppl_timed
     dey
-    bne rbcp_ppl_loop
+    bne rbcp_ppl_timed
     sec
     rts
-.else
-    jmp rbcp_ppl_loop
-.endif
+
+rbcp_ppl_forever:
+    lda RBCP_PROGRESS_ADDR
+    cmp #RBCP_COMPLETE
+    bne rbcp_ppl_forever
 rbcp_ppl_ok:
     clc
     rts
@@ -219,6 +238,15 @@ rbcp_issue_cmd_long_poll:
     txa
     jmp rbcp_issue_cmd_body
 
+; rbcp_issue_cmd_aux_poll: as rbcp_issue_cmd, waiting on RBCP_AUX_POLL_TIMEOUT.
+.export rbcp_issue_cmd_aux_poll
+rbcp_issue_cmd_aux_poll:
+    tax
+    lda #2
+    sta rbcp_zp_3
+    txa
+    jmp rbcp_issue_cmd_body
+
 .export rbcp_issue_cmd
 rbcp_issue_cmd:
     tax
@@ -250,7 +278,13 @@ rbcp_issue_cmd_body:
 @tok_ok:
     lda rbcp_zp_3
     beq @short_poll
+    cmp #2
+    beq @aux_poll
     jsr rbcp_poll_progress_long
+    jmp @poll_done
+@aux_poll:
+    jsr rbcp_poll_progress_aux
+@poll_done:
     bcs @prog_fail
     bcc @prog_ok
 @short_poll:
@@ -565,6 +599,140 @@ rbcp_cmd_pipe_write:
     sta rbcp_zp_1
     lda #6
     jmp rbcp_issue_cmd
+
+; ---------------------------------------------------------------------------
+; Auxiliary I/O — group $05
+;
+; Device pins the host can drive and read. The device does not know what is
+; wired to one, so nothing here names a purpose: a pin is a group and a number,
+; and what happens when it moves is the caller's business.
+;
+; Group and pin numbering is dense from zero and comes from the device, so a
+; caller reads the group count from GET_AUX_CAPABILITY and matches groups on
+; the type byte GET_AUX_GROUP_INFO returns. Group indices are not stable across
+; boards: a board with no pins of some kind exposes one fewer group, and the
+; groups after it move down.
+;
+; A pin's state outlives the session. Leaving command-response mode does not
+; put a driven pin back, and neither does RBCP_RESET — only a device reset.
+; ---------------------------------------------------------------------------
+
+; rbcp_cmd_get_aux_capability: no input.
+; On success RBCP_DATA_ADDR + RBCP_AUX_CAP_GROUPS holds the group count, which
+; is zero on a device with no auxiliary pins, and + RBCP_AUX_CAP_MAX_HOLD the
+; largest hold it will accept.
+;
+; This is also the version check. The command takes no argument bytes, so a
+; device implementing a protocol version without the Auxiliary I/O group
+; consumes nothing, fails it, and stays in step — carry set therefore means "no
+; auxiliary pins here" whether the device is old or merely has none, and both
+; answers lead the caller to the same place.
+.export rbcp_cmd_get_aux_capability
+rbcp_cmd_get_aux_capability:
+    lda #RBCP_GRP_AUX
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_AUX_CAPABILITY
+    sta rbcp_zp_1
+    lda #0
+    jmp rbcp_issue_cmd
+
+; rbcp_cmd_get_aux_group_info: A = group.
+; On success RBCP_DATA_ADDR holds the group type and its pin count — see the
+; RBCP_AUX_GROUP_* offsets. A pin count of zero means 256, and a group is never
+; empty.
+.export rbcp_cmd_get_aux_group_info
+rbcp_cmd_get_aux_group_info:
+    sta rbcp_arg0
+    lda #RBCP_GRP_AUX
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_AUX_GROUP_INFO
+    sta rbcp_zp_1
+    lda #1
+    jmp rbcp_issue_cmd
+
+; rbcp_cmd_get_aux_pin_info: A = pin, X = group.
+; On success RBCP_DATA_ADDR holds flags, level and driven — see the
+; RBCP_AUX_PIN_* offsets. Level and driven mean nothing unless
+; RBCP_AUX_FLAG_READABLE is set in flags.
+;
+; This is the one command here a caller issues in bulk: a host showing a whole
+; group calls it once per pin, every refresh.
+.export rbcp_cmd_get_aux_pin_info
+rbcp_cmd_get_aux_pin_info:
+    sta rbcp_arg0
+    stx rbcp_arg1
+    lda #RBCP_GRP_AUX
+    sta rbcp_zp_0
+    lda #RBCP_CMD_GET_AUX_PIN_INFO
+    sta rbcp_zp_1
+    lda #2
+    jmp rbcp_issue_cmd
+
+; rbcp_cmd_set_aux — drives a pin.
+; Caller sets: rbcp_arg0=state, rbcp_arg1=after, rbcp_arg2=hold,
+; rbcp_arg3=pin, rbcp_arg4=group. Hold is in units of 10ms, zero to hold the
+; state until something else changes it.
+;
+; Waits on CONFIG_RBCP_AUX_POLL_TIMEOUT rather than the ordinary poll, because
+; a hold does not complete until it has elapsed and the device does not answer
+; before then.
+;
+; What bounds the wait is the poll loop's two counter bytes, not the constant:
+; about 0.86 seconds on a PAL C64 however large the constant is set, against
+; the 2.55 seconds the protocol's hold argument can express. Ask for a longer
+; hold than that and this reports failure through rbcp_zp_5 = 2 while the
+; device carries on holding.
+.export rbcp_cmd_set_aux
+rbcp_cmd_set_aux:
+    lda #RBCP_GRP_AUX
+    sta rbcp_zp_0
+    lda #RBCP_CMD_SET_AUX
+    sta rbcp_zp_1
+    lda #5
+    jmp rbcp_issue_cmd_aux_poll
+
+; rbcp_cmd_set_aux_and_exit — as rbcp_cmd_set_aux, then leaves command-response
+; mode. Arguments as rbcp_cmd_set_aux. Send only, no polling.
+;
+; Terminal: the device writes no response header, so there is nothing to poll
+; and the caller must not try. It returns as soon as the bytes are out, which
+; is before the device has finished holding — the caller owns the wait, and
+; must not knock again until the hold has elapsed.
+.export rbcp_cmd_set_aux_and_exit
+rbcp_cmd_set_aux_and_exit:
+    lda #RBCP_GRP_AUX
+    sta rbcp_zp_0
+    lda #RBCP_CMD_SET_AUX_AND_EXIT
+    sta rbcp_zp_1
+    lda #5
+    jsr rbcp_send_cmd
+    jmp pause
+
+; rbcp_cmd_set_aux_switch_exit — drives a pin and activates a RAM slot, then
+; leaves command-response mode. Send only, no polling.
+; Caller sets: rbcp_arg0=state, rbcp_arg1=after, rbcp_arg2=hold,
+; rbcp_arg3=flags, rbcp_arg4=pin, rbcp_arg5=group, rbcp_arg6=slot.
+;
+; Flags picks the order — RBCP_AUX_PIN_FIRST or RBCP_AUX_SLOT_FIRST. Pin first
+; is what a caller wants when the pin stops the host: the machine is held while
+; the image underneath it changes. Under that ordering the device does not
+; apply after until the switch is done, so the hold is at least as long as the
+; switch takes however small a hold was asked for.
+;
+; Terminal, and returns before the device has finished, as
+; rbcp_cmd_set_aux_and_exit does. Anything that must follow a slot switch has
+; to be in the same command as the switch, which is what this command is for:
+; after a switch the caller can rely on neither the new image having a
+; back-channel region nor the observed addresses being unchanged.
+.export rbcp_cmd_set_aux_switch_exit
+rbcp_cmd_set_aux_switch_exit:
+    lda #RBCP_GRP_AUX
+    sta rbcp_zp_0
+    lda #RBCP_CMD_SET_AUX_SWITCH_EXIT
+    sta rbcp_zp_1
+    lda #7
+    jsr rbcp_send_cmd
+    jmp pause
 
 .export rbcp_check_protocol_version
 .export rbcp_check_protocol_version_min

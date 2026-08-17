@@ -1,4 +1,4 @@
-; rbcp_config.s — RBCP configuration for the C64 pipe throughput test
+; rbcp_config.s — RBCP configuration for the C64 auxiliary I/O tester
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
 ; The device sits in the C64's BASIC socket (U3, 2364), serving a stock BASIC

@@ -36,6 +36,19 @@ RBCP_CMD_HI     = CONFIG_RBCP_CMD_PAGE
 RBCP_POLL_TIMEOUT = CONFIG_RBCP_POLL_TIMEOUT
 RBCP_NV_POLL_TIMEOUT = CONFIG_RBCP_NV_POLL_TIMEOUT
 
+; SET_AUX with a hold does not answer until the hold has elapsed, so it waits
+; on its own timeout rather than the one an NV commit uses.  The two bound
+; unrelated things: how long a device takes to write flash, and how long a host
+; asked a pin to stay put.
+;
+; A config written before this constant existed does not have to be edited: it
+; falls back to what such a config already gave SET_AUX.
+.ifdef CONFIG_RBCP_AUX_POLL_TIMEOUT
+RBCP_AUX_POLL_TIMEOUT = CONFIG_RBCP_AUX_POLL_TIMEOUT
+.else
+RBCP_AUX_POLL_TIMEOUT = CONFIG_RBCP_NV_POLL_TIMEOUT
+.endif
+
 ; ---------------------------------------------------------------------------
 ; Command retries on failure (0 = no retries), max 255
 ; ---------------------------------------------------------------------------
@@ -140,6 +153,14 @@ RBCP_CMD_PIPE_WRITE                 = $02
 ; Largest payload PIPE_WRITE carries, and so the largest valid count.
 RBCP_PIPE_WRITE_MAX                 = 4
 
+RBCP_GRP_AUX                        = $05
+RBCP_CMD_GET_AUX_CAPABILITY         = $00
+RBCP_CMD_GET_AUX_GROUP_INFO         = $01
+RBCP_CMD_GET_AUX_PIN_INFO           = $02
+RBCP_CMD_SET_AUX                    = $03
+RBCP_CMD_SET_AUX_AND_EXIT           = $04
+RBCP_CMD_SET_AUX_SWITCH_EXIT        = $05
+
 RBCP_GRP_RESET                      = $AA
 RBCP_CMD_RESET                      = $AA
 
@@ -178,3 +199,33 @@ RBCP_PIPE_FLAG_D2H   = $02      ; reserved by the protocol, always clear
 
 ; Pipe types
 RBCP_PIPE_TYPE_LOG   = $00
+
+; GET_AUX_CAPABILITY response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_AUX_CAP_GROUPS   = 0
+RBCP_AUX_CAP_MAX_HOLD = 1       ; in units of 10ms, zero for no timed holds
+
+; GET_AUX_GROUP_INFO response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_AUX_GROUP_TYPE   = 0
+RBCP_AUX_GROUP_PINS   = 1       ; zero means 256
+
+; GET_AUX_PIN_INFO response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_AUX_PIN_FLAGS    = 0
+RBCP_AUX_PIN_LEVEL    = 1
+RBCP_AUX_PIN_DRIVEN   = 2
+
+; GET_AUX_PIN_INFO flag bits
+RBCP_AUX_FLAG_DRIVABLE = $01    ; SET_AUX may drive this pin
+RBCP_AUX_FLAG_READABLE = $02    ; level and driven carry a real answer
+
+; Auxiliary pin states, for the state and after arguments of SET_AUX
+RBCP_AUX_LOW         = $00
+RBCP_AUX_HIGH        = $01
+RBCP_AUX_RELEASE     = $02
+
+; Auxiliary pin group types
+RBCP_AUX_TYPE_NONE   = $00
+RBCP_AUX_TYPE_GPIO   = $01
+
+; SET_AUX_SWITCH_EXIT flags — bit 0 picks the order, the rest must be zero
+RBCP_AUX_PIN_FIRST   = $00
+RBCP_AUX_SLOT_FIRST  = $01
