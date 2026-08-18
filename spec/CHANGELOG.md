@@ -18,10 +18,16 @@ Substantive changes to the specification are documented in this file.
   not write them back, as whatever command carries the write updates the header
   after it. LOAD_AND_EXIT is LOAD_SLOT with a silent exit. Restore takes the bytes
   from the host and covers what a reload cannot — no flash source, or a patch
-  worth keeping — with count last, as only a final argument bans 0xAA. Additive
-- Add GET_ACTIVE_SLOT_SOURCE, the flash slot the active RAM slot was last loaded
-  from, which is what LOAD_AND_EXIT needs named. Last loaded rather than booted,
-  because a host's own LOAD_SLOT changes the answer. Additive
+  worth keeping — with count last, as only a final argument bans 0xAA. Restore
+  is command-response mode only: command mode has no region to write to and no
+  address to write it at. Additive
+- Add GET_BOOT_SLOT_INFO, the flash slot the device loaded at boot and the RAM
+  slot it loaded it into, which is what LOAD_AND_EXIT needs named. The boot
+  rather than the slot last loaded, because a host that loaded a slot itself
+  already knows what it put there — the boot is the only load a host cannot
+  account for, and reporting only it costs a device two bytes instead of one
+  per RAM slot. Just the two slots, so that what else a device might say about
+  its boot stays open. Additive
 - Require a device to present either the previous or the new byte at every address
   throughout a load into the active RAM slot. Write order unspecified. Previously
   unspecified

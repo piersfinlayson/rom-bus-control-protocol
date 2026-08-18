@@ -465,7 +465,7 @@ Commands in this group manage the session and mode of the device. All commands i
 | 0x03 | EXIT_CMD_RESP_SILENT | 0.1.0 | 0 | Exits command-response mode without updating the [response header](#response-header). |
 | 0x04 | SWITCH_AND_EXIT | 0.1.0 | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. An A0 value of 0xAA is invalid.  If received the slot is NOT switched, but the exit DOES complete. |
 | 0x05 | LOAD_AND_EXIT | 0.1.2 | 2: A0=RAM slot, A1=flash slot | As LOAD_SLOT, but exits command-response mode without updating the [response header](#response-header). Where the RAM slot named is the active one, this restores the whole of the served image, including the bytes the back-channel region occupies — see [Loading the Active Slot](#loading-the-active-slot). This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. A0 or A1 values of 0xAA are invalid. If received the slot is NOT loaded, but the exit DOES complete. |
-| 0x06 | EXIT_CMD_RESP_RESTORE | 0.1.2 | 9: A0-A7=bytes, A8=count | Writes count bytes, taken from A0 onwards, from the start of the back-channel region and exits command-response mode without further updating the [response header](#response-header). This lets the host put back the bytes the response header displaced. Bytes of the region beyond those this command writes are the host's to put back first, with SLOT_POKE — each such write dirties only the header, which this command then covers. This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A7. A8 must be in the range 0x01 to 0x08. If it is not, no bytes are written, but the exit DOES complete. |
+| 0x06 | EXIT_CMD_RESP_RESTORE | 0.1.2 | 9: A0-A7=bytes, A8=count | Writes count bytes, taken from A0 onwards, from the start of the back-channel region and exits command-response mode without further updating the [response header](#response-header). This lets the host put back the bytes the response header displaced. Bytes of the region beyond those this command writes are the host's to put back first, with SLOT_POKE — each such write dirties only the header, which this command then covers. This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A7. A8 must be in the range 0x01 to 0x08. If it is not, no bytes are written, but the exit DOES complete. Not supported in command mode, where there is no back-channel region to write to — the device consumes the arguments and discards the command. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -483,7 +483,7 @@ Commands in this group query the device for information. All commands in this gr
 | 0x05 | GET_DEVICE_VERSION | 0.1.0 | 0 | Requests the device to write its version (e.g. v1.0.0) into the command-response region as ASCII. Unused bytes are filled with 0x00. Null-terminated. A device must provide a version. See [GET_DEVICE_VERSION Response Format](#get_device_version-response-format). |
 | 0x06 | GET_PROTOCOL_VERSION | 0.1.0 | 0 | Requests the device to write the RBCP protocol version it implements into the response data section. See [GET_PROTOCOL_VERSION Response Format](#get_protocol_version-response-format). |
 | 0x07 | SLOT_PEEK | 0.1.0 | 5: A0=count, A1/A2/A3=24-bit address (little-endian), A4=slot | Requests the device to read one or more bytes from the specified RAM slot at the specified address and write them into the response data section. A count of zero indicates 256 bytes should be read. This command fails if there is insufficient space in the response data section to accommodate the requested bytes.  An A4 value of 0xAA is invalid and rejected. |
-| 0x08 | GET_ACTIVE_SLOT_SOURCE | 0.1.2 | 0 | Requests the device to report the flash slot the active RAM slot was last loaded from. See [GET_ACTIVE_SLOT_SOURCE Response Format](#get_active_slot_source-response-format). |
+| 0x08 | GET_BOOT_SLOT_INFO | 0.1.2 | 0 | Requests the device to report which flash slot it loaded at boot, and which RAM slot it loaded that image into. See [GET_BOOT_SLOT_INFO Response Format](#get_boot_slot_info-response-format). |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -779,14 +779,17 @@ The response data section begins immediately after the [response header](#respon
 | 2 | 1 | patch | Patch version number |
 | 3 | 1 | Reserved | Must be zero |
 
-## GET_ACTIVE_SLOT_SOURCE Response Format
+## GET_BOOT_SLOT_INFO Response Format
 
 The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
-| 0 | 1 | flash_slot | Flash slot the active RAM slot was last loaded from, or 0xFF where it was not loaded from one or the device does not know. The device maintains this per RAM slot, setting it when it loads a slot at boot and on every LOAD_SLOT and LOAD_AND_EXIT. |
-| 1 | 3 | Reserved | Must be zero |
+| 0 | 1 | flash_slot | Flash slot the device loaded at boot, or 0xFF where it loaded none or does not know. |
+| 1 | 1 | ram_slot | RAM slot it loaded that image into, or 0xFF on the same terms. |
+| 2 | 2 | Reserved | Must be zero |
+
+Both fields describe the boot, and the device does not update them. A host that has since loaded a slot or switched slots knows what it did, so the device reports only what the host has no other way to learn.
 
 ## GET_NV_CAPABILITY Response Format
  
