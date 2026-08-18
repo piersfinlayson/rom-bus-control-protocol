@@ -938,7 +938,7 @@ and [GET_RAM_SLOT_INFO](#get_ram_slot_info-response-format) responses.
 | 0x13 | 27C400 |
 | 0x14 | 6116 |
 | 0x15 | 27C301 |
-| 0x16–0x18 | Reserved |
+| 0x16–0x18 | Not available |
 | 0x19 | SST39SF040 |
 | 0x1A | 28C16 |
 | 0x1B | 28C64 |
@@ -954,6 +954,10 @@ and [GET_RAM_SLOT_INFO](#get_ram_slot_info-response-format) responses.
 | 0x25–0x7F | Reserved |
 | 0x80–0xFE | Reserved for implementation-specific use |
 | 0xFF | Invalid/ROM not being served |
+
+The values 0x16–0x18 were assigned by an implementation before the
+implementation-specific range existed. The protocol will not assign them. A host
+treats them as it treats a reserved value.
 
 Note that the ROM type values above are defined by the protocol independently of any specific device implementation. A device is not required to support all ROM types listed.  Host implementations must handle reserved values gracefully, as new ROM types may be defined in future protocol versions without a non-backwards compatible version increase.
 

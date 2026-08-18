@@ -36,6 +36,11 @@ Substantive changes to the specification are documented in this file.
   command therefore fails cleanly, one with arguments desynchronises the session
   undetectably. Every group added after v0.1.1 carries a zero-argument discovery
   command at its lowest CMD value. Previously unspecified
+- Take ROM type values 0x16–0x18 out of circulation. They read as Reserved, but
+  an implementation had assigned them before the implementation-specific range
+  existed, and its devices carry them in flashed metadata — so the protocol can
+  never use them without colliding. No host or device behaviour changes: a host
+  already handles them as reserved
 - Add a Since column to every group and command, and require a host not to issue
   one newer than the device reports. The discovery command protects a new group,
   nothing protects a new command in a group that already exists. Previously
