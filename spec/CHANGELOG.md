@@ -4,10 +4,27 @@ Substantive changes to the specification are documented in this file.
 
 ## v0.1.2 - unreleased
 
-- Add group 0x04, Pipes: transfer bytes from the host to a device pipe, for a host
-  with no serial port or display. PIPE_WRITE carries up to four bytes and takes
-  all or none. Host-to-device only, the other direction reserved in the pipe
-  flags. Additive
+- Add group 0x04, Pipes: transfer bytes between the host and a pipe on the device,
+  for a host whose own I/O is limited or absent. A pipe carries one direction or
+  both, both meaning the two form one exchange, which a host cannot otherwise
+  learn and a device must therefore state. PIPE_WRITE carries up to four bytes
+  and takes all or none. PIPE_READ returns what the device has, up to the count
+  asked for, and consumes it, an empty pipe succeeding with no data so that a host
+  polling an idle pipe never has to tell it from a broken one. Its response carries
+  a bit saying the device discarded bytes it could not hold, which is the only
+  loss the protocol reports at all. Additive
+- Define the far end — what a device relays a pipe to and from. GET_PIPE_INFO
+  reports what kind of far end a pipe has and whether it is attached. A device
+  knows its own far end and cannot know what a host and that far end use the pipe
+  for, so the field says what it is
+  rather than what it is for. Attachment is two flag bits, one saying the device
+  answers at all and one carrying the answer, because a single bit would make
+  every device that cannot tell indistinguishable from one whose far end has gone
+  away
+- Define Host, Device, Pipe, IN / OUT and Far end in Terminology. Host was used
+  throughout but never defined, leaving it to be read as any computer attached to
+  the device. IN and OUT are pipe directions named from the host's point of view,
+  as USB names its endpoint directions. Clarification only
 - Add group 0x05, Auxiliary I/O: drive and read device pins outside the ROM
   interface, addressed by group and pin number. Whether the host may drive a pin
   is the device's decision, because a forced pin may be one serving the image the

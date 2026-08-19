@@ -533,15 +533,17 @@ rbcp_cmd_slot_peek:
 ; ---------------------------------------------------------------------------
 ; Pipes — group $04
 ;
-; A pipe carries bytes from the host out through the device, to whatever the
-; device has at the far end. The host cannot observe that end: PIPE_WRITE says
-; only whether the bytes were taken.
+; A pipe runs from the host, through the device, to the pipe's far end, and
+; carries the OUT direction, the IN direction or both. This library sends on a
+; pipe and does not read from one. The host cannot observe the far end:
+; PIPE_WRITE says only whether the bytes were taken, not that they arrived.
 ;
 ; No routine here waits or retries. A write that cannot be taken reports and
 ; returns, and the caller decides what to do about it — rbcp_zp_5 tells the two
 ; cases apart:
 ;   1 or 2 = the device did not answer, so retrying is pointless
 ;   3      = the pipe is full, so retrying may work once something drains it
+;   4      = the library refused the arguments and sent nothing
 ;
 ; There is deliberately no routine for sending a whole string. The chunking
 ; loop belongs to the caller, which already holds the buffer and a pointer to
@@ -568,11 +570,17 @@ rbcp_cmd_get_pipe_capability:
     jmp rbcp_issue_cmd
 
 ; rbcp_cmd_get_pipe_info: A = pipe.
-; On success RBCP_DATA_ADDR holds type, flags and free — see the
-; RBCP_PIPE_INFO_* offsets. free saturates at $FF, so it only carries a real
-; count once the pipe is nearly full.
+; On success RBCP_DATA_ADDR holds type, flags, free, waiting and far end — see
+; the RBCP_PIPE_INFO_* offsets. free and waiting both saturate at $FF, so each
+; carries a real count only near its limit.
+;
+; The pipe number is this command's final argument byte, where $AA is the reset
+; marker, so sending it would desynchronise the session rather than being
+; rejected. This refuses it here and sends nothing, reporting rbcp_zp_5 = 4.
 .export rbcp_cmd_get_pipe_info
 rbcp_cmd_get_pipe_info:
+    cmp #$AA
+    beq @refuse
     sta rbcp_arg0
     lda #RBCP_GRP_PIPES
     sta rbcp_zp_0
@@ -580,6 +588,11 @@ rbcp_cmd_get_pipe_info:
     sta rbcp_zp_1
     lda #1
     jmp rbcp_issue_cmd
+@refuse:
+    lda #4
+    sta rbcp_zp_5
+    sec
+    rts
 
 ; rbcp_cmd_pipe_write: A = count (1-4), X = pipe.
 ; Caller populates rbcp_arg0..rbcp_arg3 with the payload first — the arguments

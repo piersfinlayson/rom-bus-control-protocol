@@ -143,7 +143,7 @@ session_start:
     jsr rbcp_cmd_get_pipe_info
     bcs @pipe_dir_bad
     lda RBCP_DATA_ADDR + RBCP_PIPE_INFO_FLAGS
-    and #RBCP_PIPE_FLAG_H2D
+    and #RBCP_PIPE_FLAG_OUT
     bne @pipe_ok
 @pipe_dir_bad:
     lda #STAT_PIPE_DIR

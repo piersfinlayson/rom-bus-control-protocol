@@ -10,7 +10,7 @@ Run `./pipe_rx <port>` on the machine the device's USB is plugged into, then `LO
 
 **Breadbin C64 only.** The device replaces the 8 KB BASIC ROM, a 2364 serving $A000–$BFFF. A combined 16 KB BASIC+KERNAL ROM needs the changes under [Other ROM types](#other-rom-types).
 
-Device also needs a pipe taking host-to-device, two RAM slots, and the stock BASIC image in a flash slot. All checked at startup and named on screen if missing.
+Device also needs a pipe carrying OUT, two RAM slots, and the stock BASIC image in a flash slot. All checked at startup and named on screen if missing.
 
 ## Send paths
 

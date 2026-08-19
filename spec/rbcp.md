@@ -43,6 +43,10 @@ RBCP is designed around the following principles:
 
 ## Terminology
 
+**Host:** The computer the device is fitted in, whose ROM socket the device occupies and whose address and data lines carry RBCP. The host initiates every session. Where this specification says host, it means this computer, and never a computer attached to the device by any other interface.
+
+**Device:** The implementation occupying the host's ROM socket, which decodes RBCP commands from the address lines and serves data on the data lines.
+
 **Session:** A single interaction between the host and device, initiated by a knock. In command mode, each command constitutes its own session. In command-response mode, a session spans from the knock through to the host exiting command-response mode.
 
 **Knock:** The sequence of ROM address reads that initiates a session. The device detects the knock by monitoring A0–A7 and uses it to establish framing.
@@ -68,6 +72,12 @@ RBCP is designed around the following principles:
 **Complete / Pending:** The two states of the progress field. The complete value and its bitwise inverse (pending) are either protocol defaults or configured by the host via ENTER_CMD_RESP.
 
 **Status-OK / Failed:** The two states of the response field. The status-OK value and its bitwise inverse (failed) are either protocol defaults or configured by the host via ENTER_CMD_RESP.
+
+**Pipe:** An ordered sequence of bytes between the host and a far end, relayed by the device. Carries one direction or both, and is addressed by a single-byte number.
+
+**IN / OUT:** The two directions a pipe may carry, named from the host's point of view, as USB names its endpoint directions. OUT is host to device — the host writes and the device drains. IN is device to host — the device fills and the host reads. The reference point is the host in both cases: an IN pipe carries bytes into the host, not into the device.
+
+**Far end:** What the device relays a pipe to and from. A pipe runs from the host, through the device, to its far end.
 
 ---
 
@@ -443,7 +453,7 @@ A host may instead establish which groups a device implements from the version r
 | 0x01 | Read | 0.1.0 | Command-Response only | Query the device for information |
 | 0x02 | Modify | 0.1.0 | Command, Command-Response | Change device state |
 | 0x03 | NV Storage | 0.1.0 | Command-Response only | Query and modify dedicated non-volatile storage on the device |
-| 0x04 | Pipes | 0.1.2 | Command-Response only | Transfer bytes from the host to a device pipe |
+| 0x04 | Pipes | 0.1.2 | Command-Response only | Transfer bytes between the host and a pipe on the device |
 | 0x05 | Auxiliary I/O | 0.1.2 | Command-Response only | Drive and read device pins that are not part of the ROM interface |
 | 0xAA | Reset | 0.1.0 | Command, Command-Response | Reset the device's RBCP implementation |
 
@@ -544,23 +554,43 @@ CMD 0xAA is reserved and must never be assigned.
  
 ### Group 0x04 — Pipes
 
-Commands in this group transfer bytes from the host to a pipe on the device. All commands in this group are valid in command-response mode only.
+Commands in this group transfer bytes between the host and a pipe on the device. All commands in this group are valid in command-response mode only.
 
-A pipe is an ordered sequence of bytes, written by the host at one end and drained at the other by the device. What the device does with the bytes it drains is a device matter and is not described by this protocol beyond the pipe's [type](#pipe-types) — a pipe may reach a USB interface, a serial port, a file, or nothing at all. The host cannot observe the far end, and no command in this group reports on it.
+A pipe carries an ordered sequence of bytes in each direction it supports, in the shape its [type](#pipe-types) describes, and runs from the host, through the device, to the pipe's far end. The device relays. In the OUT direction it drains what the host writes and passes it on to the far end. In the IN direction it takes bytes from the far end and fills the pipe for the host to read.
+
+The far end is whatever the device relays to and from — a USB interface, a serial port, a networked device, something inside the device itself, or nothing at all, where the bytes go no further.
+
+This protocol describes the far end in two respects:
+
+- what kind of thing it is
+- whether it is attached
+
+Nothing else identifies it to the host.
 
 Pipes are an optional device feature. The host should query GET_PIPE_CAPABILITY before issuing any other command in this group. A device that exposes no pipes reports a count of zero from GET_PIPE_CAPABILITY. All other commands in this group return failure on such a device.
 
-A pipe is addressed by a single byte. Pipe numbering is contiguous and starts from zero. A device exposing n pipes numbers them 0 to n-1 with no gaps. A pipe number is not a final argument in any command in this group, so 0xAA is a valid pipe number and a device may expose 256 pipes.
+A pipe is addressed by a single byte. Pipe numbering is contiguous and starts from zero. A device exposing n pipes numbers them 0 to n-1 with no gaps. A pipe number is a final argument in GET_PIPE_INFO and PIPE_READ, so 0xAA is not a valid pipe number and a device may expose at most 170 pipes.
 
-This version of the protocol defines the host-to-device direction only. A device-to-host direction is reserved in the [pipe flags](#get_pipe_info-response-format) but has no commands defined, and a device must report it as unsupported.
+A pipe supports one direction or both, as reported in the [pipe flags](#get_pipe_info-response-format). A device that sets both direction bits asserts that the pipe's two directions form one exchange: what receives the bytes the host writes is what supplies the bytes the host reads. It is not an echo — the bytes the host reads are not the bytes it wrote. The directions are independent in every other respect, each with its own buffering, and a host must test each flag bit rather than inferring one direction from the other.
 
-PIPE_WRITE transfers all of the bytes offered or none of them. Where the device cannot accept them all it returns failure and transfers nothing, leaving the host to retry or to discard the bytes. A device must not delay its response waiting for space to become available — the host is blocked for the duration of the [command processing sequence](#command-processing-sequence), and a pipe whose far end has stalled would otherwise stall the host indefinitely. GET_PIPE_INFO reports the space currently available, allowing a host that has been refused to decide whether to retry immediately or to back off.
+A device may report whether a pipe's far end is attached. Not every far end has such a concept, and a device with no way to tell declines to answer rather than guessing. Bit 2 of the pipe flags says the device reports attachment at all, and bit 3 carries the answer. A host must read bit 3 only where bit 2 is set, and must read both bits clear as the device declining to answer rather than as a negative one.
+
+Attachment says what the device believes about its far end, and what counts as attached is the device's own decision. It promises nothing either way: a write to an attached pipe may reach nothing, and a write to an unattached one may still arrive. Attachment is a property of the pipe rather than of a direction, so one answer covers both.
+
+PIPE_WRITE transfers all of the bytes offered or none of them. Where the device cannot accept them all it returns failure and transfers nothing, leaving the host to retry or to discard the bytes. A device never blocks waiting for space to become available. No further command can be issued until this one has run the [command processing sequence](#command-processing-sequence) to completion, so a device that blocked would stall the session for as long as the far end refused to drain. GET_PIPE_INFO reports the space currently available, allowing a host that has been refused to decide whether to retry immediately or to back off.
+
+Success means the device accepted the bytes, not that they reached the far end. A device may accept bytes and discard them afterwards, and there may be nothing at the far end to reach.
+
+PIPE_READ returns what the device has, up to the count asked for, and consumes it. Reading an empty pipe succeeds with no data rather than failing, so that a host polling an idle pipe never has to tell a quiet pipe from a broken one. A device answers with whatever it holds at that moment and never blocks waiting for more to arrive. No further command can be issued until this one completes, so a device that blocked would stall the session for as long as the far end stayed silent.
+
+Where the far end supplies bytes faster than the host reads them, a device with nowhere to put them discards them. The PIPE_READ response says that this has happened. It does not say where — the discarded bytes may fall anywhere in or adjacent to the data returned, and a host that must resynchronise does so on framing of its own.
 
 | CMD | Name | Since | Args | Description |
 |-----|------|-------|------|-------------|
 | 0x00 | GET_PIPE_CAPABILITY | 0.1.2 | 0 | Requests the device to report how many pipes it exposes. See [GET_PIPE_CAPABILITY Response Format](#get_pipe_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
-| 0x01 | GET_PIPE_INFO | 0.1.2 | 1: A0=pipe | Requests the device to report what the specified pipe is and how much space it currently has. See [GET_PIPE_INFO Response Format](#get_pipe_info-response-format). Fails if the pipe is not one the device exposes, or if the response data section is smaller than 8 bytes. |
-| 0x02 | PIPE_WRITE | 0.1.2 | 6: A0/A1/A2/A3=data, A4=pipe, A5=count | Transfers count bytes, taken from A0 onwards, to the specified pipe. A5 must be in the range 0x01 to 0x04 — any other value is invalid and the device rejects the command. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A3. Either all count bytes are transferred or none are: the device returns failure if it cannot accept them all, and in that case transfers nothing. Fails if the pipe is not one the device exposes, or if the pipe does not support the host-to-device direction. |
+| 0x01 | GET_PIPE_INFO | 0.1.2 | 1: A0=pipe | Requests the device to report what the specified pipe is, which directions it carries, how much each of them can move right now, and what its far end is. See [GET_PIPE_INFO Response Format](#get_pipe_info-response-format). Fails if the pipe is not one the device exposes, or if the response data section is smaller than 8 bytes. An A0 value of 0xAA is invalid and rejected. |
+| 0x02 | PIPE_WRITE | 0.1.2 | 6: A0/A1/A2/A3=data, A4=pipe, A5=count | Transfers count bytes, taken from A0 onwards, to the specified pipe. A5 must be in the range 0x01 to 0x04 — any other value is invalid and the device rejects the command. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A3. Either all count bytes are transferred or none are: the device returns failure if it cannot accept them all, and in that case transfers nothing. Fails if the pipe is not one the device exposes, or if the pipe does not support the OUT direction. |
+| 0x03 | PIPE_READ | 0.1.2 | 2: A0=count, A1=pipe | Reads up to count bytes from the specified pipe into the response data section, consuming what it returns. A count of zero indicates 256 bytes. The device returns as many bytes as it has, up to count, and an empty pipe is a success carrying no data. See [PIPE_READ Response Format](#pipe_read-response-format). Fails, consuming nothing, if the pipe is not one the device exposes, if the pipe does not support the IN direction, or if the response data section cannot hold 8 bytes plus the number of bytes requested. An A1 value of 0xAA is invalid and rejected. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -815,7 +845,7 @@ The response data section begins immediately after the [response header](#respon
 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
-| 0 | 1 | count | Number of pipes this device exposes. A value of zero indicates the device exposes no pipes. Pipes are numbered 0 to count-1. |
+| 0 | 1 | count | Number of pipes this device exposes. A value of zero indicates the device exposes no pipes. Pipes are numbered 0 to count-1, and count never exceeds 170. |
 | 1 | 7 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
 
 No per-pipe records follow. Pipe numbering is contiguous and starts from zero, so the count alone gives the host every valid pipe number. The properties of each are obtained with GET_PIPE_INFO.
@@ -827,9 +857,25 @@ The response data section begins immediately after the [response header](#respon
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | type | What kind of pipe this is. See [Pipe Types](#pipe-types). |
-| 1 | 1 | flags | Bit 0: the pipe supports the host-to-device direction. Bit 1: the pipe supports the device-to-host direction, reserved in this version of the protocol and must be set to zero by the device. Bits 2–7 reserved, and must be set to zero by the device. |
-| 2 | 1 | free | Number of bytes the device is able to accept for this pipe at the instant the command was processed, saturating at 0xFF. A PIPE_WRITE of no more than this many bytes is not guaranteed to succeed: the value may be stale by the time the host acts on it. |
+| 1 | 1 | flags | Bit 0: the pipe supports the OUT direction. Bit 1: the pipe supports the IN direction. Bit 2: the device reports whether the pipe's far end is attached. Bit 3: the far end is attached. Meaningful only where bit 2 is set, and must be set to zero by the device where bit 2 is clear. At least one of bits 0 and 1 is always set. Bits 4–7 reserved, and must be set to zero by the device. |
+| 2 | 1 | free | Number of bytes the device is able to accept in the OUT direction at the instant the command was processed, saturating at 0xFF. Zero where the pipe does not support OUT. A PIPE_WRITE of no more than this many bytes is not guaranteed to succeed: the value may be stale by the time the host acts on it. |
+| 3 | 1 | waiting | Number of bytes the device is able to return in the IN direction at the instant the command was processed, saturating at 0xFF. Zero where the pipe does not support IN. A PIPE_READ of no more than this many bytes is not guaranteed to return them all: the value may be stale by the time the host acts on it. |
+| 4 | 1 | far_end | What kind of far end this pipe has. See [Far End Types](#far-end-types). |
+| 5 | 3 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+## PIPE_READ Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | count | Number of bytes returned, where bit 1 of flags is clear. A zero then means the pipe was empty. Where bit 1 of flags is set the host already knows the number, having asked for it, and this field carries it as the command did — so a full 256-byte read reads as zero here. |
+| 1 | 1 | flags | Bit 0: bytes were discarded before the host could read them. Bit 1: the device returned the full count requested. Set on every read that returns it, not only on a read of 256 bytes. Bits 2–7 reserved, and must be set to zero by the device. |
+| 2 | 1 | waiting | Number of bytes the device is able to return in the IN direction on a further read, measured after this read has taken its own, saturating at 0xFF. A PIPE_READ of no more than this many bytes is not guaranteed to return them all: the value may be stale by the time the host acts on it. |
 | 3 | 5 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+| 8 | count | data | The bytes read from the pipe, in the order the device holds them. A count of zero with bit 1 of flags set is 256 bytes here, as it is in the command. |
+
+Bit 0 of flags says only that bytes were lost. It does not say where — see [Group 0x04](#group-0x04--pipes). A device sets it when it discards bytes and clears it when it reports it, so it always describes the interval since the host was last told. A read that fails reports nothing and clears nothing.
 
 ## GET_AUX_CAPABILITY Response Format
 
@@ -897,14 +943,32 @@ The following pipe type identifiers are defined by the protocol. A single byte i
 
 | Value | Pipe Type |
 |-------|-----------|
-| 0x00 | Log |
+| 0x00 | Raw |
 | 0x01–0x7F | Reserved |
 | 0x80–0xFE | Reserved for implementation-specific use |
 | 0xFF | Invalid |
 
-A pipe of type Log carries a free-running sequence of bytes with no framing imposed by the protocol, and is the type a host writes to when it has no requirement beyond the bytes arriving somewhere. A host that requires no particular type should use the lowest-numbered pipe of type 0x00.
+A pipe of type Raw carries a free-running sequence of bytes in each direction it supports, with no framing imposed by the protocol. It is the type to use where nothing is required beyond the bytes reaching the far end, or arriving from it. A host that requires no particular type should use the lowest-numbered pipe of type 0x00 that carries the direction it needs.
 
 Host implementations must handle reserved values gracefully, as new pipe types may be defined in future protocol versions without a non-backwards compatible version increase.
+
+## Far End Types
+
+The following far end identifiers are defined by the protocol. A single byte is used to identify the far end in [GET_PIPE_INFO](#get_pipe_info-response-format) responses.
+
+| Value | Far End |
+|-------|---------|
+| 0x00 | Unspecified |
+| 0x01 | USB CDC |
+| 0x02 | Network |
+| 0x03 | Physical serial port |
+| 0x04–0x7F | Reserved |
+| 0x80–0xFE | Reserved for implementation-specific use |
+| 0xFF | Invalid |
+
+A device may report Unspecified for any far end, including one a defined value describes, and including a pipe that reaches nothing at all.
+
+Host implementations must handle reserved values gracefully, as new far ends may be defined in future protocol versions without a non-backwards compatible version increase.
 
 ---
 
@@ -988,7 +1052,6 @@ All items in this section, including future modes, are subject to change and sho
 - SLOT_POKE_MULT: write a stream of consecutive bytes in a single command
 - Pagination for GET_FLASH_SLOT_INFO when slot count or name lengths exceed the response region
 - Labels for auxiliary pins, naming the role a pin plays in an installation rather than its identity, so that a host with a user interface can present something better than a pin number without being built for the installation
-- A device-to-host pipe direction, reserved in the pipe flags but with no commands defined
 - Out-Stream, In-Stream and Bi-Stream mode definitions
 - Utilisation of additional ROM bus lines (R/W, /WE, /BYTE, /AS) in future protocol versions
 

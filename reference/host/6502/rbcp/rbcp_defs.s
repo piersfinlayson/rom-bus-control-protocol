@@ -189,16 +189,26 @@ RBCP_NV_CAP_WRITABLE = 2
 RBCP_PIPE_CAP_COUNT  = 0
 
 ; GET_PIPE_INFO response field offsets (relative to RBCP_DATA_ADDR)
-RBCP_PIPE_INFO_TYPE  = 0
-RBCP_PIPE_INFO_FLAGS = 1
-RBCP_PIPE_INFO_FREE  = 2
+RBCP_PIPE_INFO_TYPE    = 0
+RBCP_PIPE_INFO_FLAGS   = 1
+RBCP_PIPE_INFO_FREE    = 2      ; OUT space, saturating at $FF
+RBCP_PIPE_INFO_WAITING = 3      ; IN bytes readable, saturating at $FF
+RBCP_PIPE_INFO_FAR_END = 4
 
-; GET_PIPE_INFO flag bits
-RBCP_PIPE_FLAG_H2D   = $01      ; pipe carries host-to-device
-RBCP_PIPE_FLAG_D2H   = $02      ; reserved by the protocol, always clear
+; GET_PIPE_INFO flag bits.  At least one direction bit is always set.
+RBCP_PIPE_FLAG_OUT          = $01   ; pipe carries OUT, host to device
+RBCP_PIPE_FLAG_IN           = $02   ; pipe carries IN, device to host
+RBCP_PIPE_FLAG_ATTACH_KNOWN = $04   ; device answers whether the far end is attached
+RBCP_PIPE_FLAG_ATTACHED     = $08   ; far end is attached; read only with ATTACH_KNOWN set
 
 ; Pipe types
-RBCP_PIPE_TYPE_LOG   = $00
+RBCP_PIPE_TYPE_RAW   = $00
+
+; Far end types
+RBCP_FAR_END_UNSPEC  = $00
+RBCP_FAR_END_USB_CDC = $01
+RBCP_FAR_END_NETWORK = $02
+RBCP_FAR_END_SERIAL  = $03      ; physical serial port
 
 ; GET_AUX_CAPABILITY response field offsets (relative to RBCP_DATA_ADDR)
 RBCP_AUX_CAP_GROUPS   = 0
