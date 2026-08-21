@@ -56,3 +56,66 @@ jobs:
           path: |
             reference/host/6502/vic20-boot/build/vic20_boot_pal.bin
             reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
+
+  build-apple2-boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      - name: Build apple2-boot
+        working-directory: reference/host/6502/apple2-boot
+        run: make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple2-boot
+          path: |
+            reference/host/6502/apple2-boot/build/apple2_boot_f8.bin
+            reference/host/6502/apple2-boot/build/apple2_boot_ef.bin
+
+  build-c64-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      # The .prg targets only.  Packaging them into a .d64 needs c1541 from
+      # VICE, which is not worth installing to prove they assemble.
+      - name: Build c64-pipe-test
+        working-directory: reference/host/6502/c64-pipe-test
+        run: make build/rbcp_pipe_test.prg
+
+      - name: Build c64-aux-test
+        working-directory: reference/host/6502/c64-aux-test
+        run: make build/rbcp_aux_test.prg build/rbcp_aux_demo.prg
+
+  build-amiga-boot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # vasm is not packaged, and upstream ships a tarball rather than a repo.
+      - name: Build vasm
+        run: |
+          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
+          tar xzf vasm.tar.gz
+          make -C vasm CPU=m68k SYNTAX=mot
+          echo "$PWD/vasm" >> "$GITHUB_PATH"
+
+      # onerom is absent here, so the byte-swapped image is skipped with a
+      # warning and only the 68K byte order image is built.
+      - name: Build amiga-boot
+        working-directory: reference/host/68k/amiga-boot
+        run: make
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amiga-boot
+          path: reference/host/68k/amiga-boot/build/amiga_boot.bin

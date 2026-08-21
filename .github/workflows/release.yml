@@ -24,6 +24,10 @@ jobs:
         working-directory: reference/host/6502/vic20-boot
         run: make
 
+      - name: Build apple2-boot
+        working-directory: reference/host/6502/apple2-boot
+        run: make
+
       - name: Extract version
         id: version
         run: echo "version=${GITHUB_REF_NAME#spec/}" >> $GITHUB_OUTPUT
@@ -37,3 +41,5 @@ jobs:
             reference/host/6502/c64-boot/build/c64_boot.bin
             reference/host/6502/vic20-boot/build/vic20_boot_pal.bin
             reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
+            reference/host/6502/apple2-boot/build/apple2_boot_f8.bin
+            reference/host/6502/apple2-boot/build/apple2_boot_ef.bin
