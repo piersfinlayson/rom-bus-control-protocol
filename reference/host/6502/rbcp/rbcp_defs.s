@@ -161,6 +161,12 @@ RBCP_CMD_SET_AUX                    = $03
 RBCP_CMD_SET_AUX_AND_EXIT           = $04
 RBCP_CMD_SET_AUX_SWITCH_EXIT        = $05
 
+RBCP_GRP_LEDS                       = $06
+RBCP_CMD_GET_LED_CAPABILITY         = $00
+RBCP_CMD_GET_LED_INFO               = $01
+RBCP_CMD_GET_LED_MODE_INFO          = $02
+RBCP_CMD_SET_LED                    = $03
+
 RBCP_GRP_RESET                      = $AA
 RBCP_CMD_RESET                      = $AA
 
@@ -239,3 +245,37 @@ RBCP_AUX_TYPE_GPIO   = $01
 ; SET_AUX_SWITCH_EXIT flags — bit 0 picks the order, the rest must be zero
 RBCP_AUX_PIN_FIRST   = $00
 RBCP_AUX_SLOT_FIRST  = $01
+
+; GET_LED_CAPABILITY response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_LED_CAP_COUNT      = 0
+RBCP_LED_CAP_MAX_PERIOD = 1     ; in units of 100ms, zero for no period
+RBCP_LED_CAP_MAX_HOLD   = 2     ; in units of 100ms, zero for no timed holds
+
+; GET_LED_INFO response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_LED_INFO_TYPE       = 0
+RBCP_LED_INFO_MODE       = 1
+RBCP_LED_INFO_RED        = 2
+RBCP_LED_INFO_GREEN      = 3
+RBCP_LED_INFO_BLUE       = 4
+RBCP_LED_INFO_BRIGHTNESS = 5    ; percentage, zero where the LED has none
+RBCP_LED_INFO_PERIOD     = 6    ; in units of 100ms, zero for none in force
+RBCP_LED_INFO_MODES      = 8    ; bit N set where mode N is supported
+
+; GET_LED_MODE_INFO response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_LED_MODE_FLAGS      = 0
+RBCP_LED_MODE_MIN_PERIOD = 1    ; in units of 100ms
+
+; GET_LED_MODE_INFO flag bits
+RBCP_LED_MODE_TAKES_PERIOD = $01
+
+; LED types
+RBCP_LED_TYPE_MONO   = $00
+RBCP_LED_TYPE_RGB    = $01
+
+; LED modes
+RBCP_LED_OFF         = $00
+RBCP_LED_ON          = $01
+RBCP_LED_BLINK       = $02
+RBCP_LED_BREATHE     = $03
+RBCP_LED_CYCLE       = $04
+RBCP_LED_BEACON      = $05

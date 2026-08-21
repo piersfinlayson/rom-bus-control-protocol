@@ -27,6 +27,11 @@
 .import rbcp_cmd_nv_poke_commit_byte
 .import rbcp_cmd_get_pipe_capability
 .import rbcp_cmd_pipe_write
+.if CONFIG_ROM_SIZE > $0800
+.import rbcp_cmd_get_led_capability
+.import rbcp_cmd_get_led_info
+.import rbcp_cmd_set_led
+.endif
 
 ; Linker-generated symbols for the CODE segment (load/run split)
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__
@@ -72,6 +77,9 @@ var_nv_stored:    .res 1    ; slot the device already has stored
 var_pipe_present: .res 1    ; 0 = device has no pipe, 1 = pipe 0 is available
 var_boot_flash:   .res 1    ; flash slot the countdown will boot
 var_count:        .res 1
+.if CONFIG_ROM_SIZE > $0800
+var_led:          .res 1    ; lowest RGB LED, or $FF where the device has none
+.endif
 
 ; ===========================================================================
 ; BOOT segment — runs from ROM, executes before relocation
@@ -215,6 +223,44 @@ boot_ram_entry:
     set_ptr str_header
     jsr log_line
 @pipe_done:
+
+.if CONFIG_ROM_SIZE > $0800
+    ; ------------------------------------------------------------------
+    ; Which LED can show a colour?
+    ;
+    ; LEDs are numbered per device, so the lowest-numbered RGB one is found
+    ; rather than assumed.  As with the pipe, a device whose protocol version
+    ; predates the LEDs group consumes nothing and fails the capability
+    ; command, which lands in the same place as a device with no LEDs.
+    ; ------------------------------------------------------------------
+
+    lda #$FF
+    sta var_led
+    jsr rbcp_cmd_get_led_capability
+    bcs @led_done
+    lda RBCP_DATA_ADDR + RBCP_LED_CAP_COUNT
+    beq @led_done
+    sta ZP_TMP3                     ; count
+    lda #0
+@led_scan:
+    pha
+    jsr rbcp_cmd_get_led_info
+    bcs @led_next
+    lda RBCP_DATA_ADDR + RBCP_LED_INFO_TYPE
+    cmp #RBCP_LED_TYPE_RGB
+    bne @led_next
+    pla
+    sta var_led
+    jmp @led_done
+@led_next:
+    pla
+    clc
+    adc #1
+    cmp ZP_TMP3
+    bcc @led_scan
+@led_done:
+    jsr led_cycle
+.endif
 
     ; ------------------------------------------------------------------
     ; How many images are there to choose between?
@@ -426,17 +472,82 @@ boot_slot:
 
     jmp (RESET_VECTOR)
 
-; ---------------------------------------------------------------------------
+;  --------------------------------------------------------------------------
 ; led_set_colour — A = the flash slot being booted.
 ;
-; RBCP has no command for the device's RGB LED, so this does nothing.  The
-; call sits here because the colour follows from the slot, and this is the
-; point at which the slot is settled.
+; Sets the device's RGB LED breathing a colour of its own per image, so the
+; machine says which one it is running without anything on screen.  An LED's state outlives
+; the session, which is what makes this worth doing here: the colour is still
+; showing long after the bootloader has handed over.
+;
+; The 2KB build leaves this out.  There is no room in an F8 ROM for the
+; capability query, the search for an RGB LED and a table of colours.
 ; ---------------------------------------------------------------------------
 
-led_set_colour:
-    and #$07                ; a colour per slot
+; led_cycle — puts the LED through the hues for as long as the bootloader is
+; up.  Booting an image replaces it with that image's colour, and a device
+; whose LED is still cycling is one that never got that far.
+.if CONFIG_ROM_SIZE > $0800
+led_cycle:
+    ldx var_led
+    bmi @none
+    lda #RBCP_LED_CYCLE
+    sta rbcp_arg0
+    lda #0
+    sta rbcp_arg1
+    sta rbcp_arg2
+    sta rbcp_arg3           ; colour, which Cycle does not take
+    sta rbcp_arg4           ; brightness, the device's to choose
+    sta rbcp_arg5           ; period, so the mode runs at its own rate
+    sta rbcp_arg6           ; hold, so it cycles until something stops it
+    txa
+    jmp rbcp_cmd_set_led
+@none:
     rts
+.endif
+
+led_set_colour:
+.if CONFIG_ROM_SIZE > $0800
+    ldx var_led
+    bmi @done               ; $FF, no RGB LED on this device
+    and #$07
+    sta ZP_TMP3
+    asl a
+    clc
+    adc ZP_TMP3             ; three bytes to a colour
+    tay
+    lda led_colours, y
+    sta rbcp_arg1           ; red
+    lda led_colours + 1, y
+    sta rbcp_arg2           ; green
+    lda led_colours + 2, y
+    sta rbcp_arg3           ; blue
+    lda #RBCP_LED_BREATHE
+    sta rbcp_arg0
+    lda #0
+    sta rbcp_arg4           ; brightness, the device's to choose
+    sta rbcp_arg5           ; period, so the mode breathes at its own rate
+    sta rbcp_arg6           ; hold, so the colour stays until something changes it
+    lda var_led
+    jmp rbcp_cmd_set_led
+@done:
+.endif
+    rts
+
+.if CONFIG_ROM_SIZE > $0800
+; A colour per flash slot, three bytes each, the slot number taken modulo eight.
+; Slot 0 is the bootloader and never boots, so its entry is the one a slot
+; number past the end of the table lands on.
+led_colours:
+    .byte $40, $40, $40     ; 0 — white, and what slot 8 gets
+    .byte $00, $FF, $00     ; 1 — green
+    .byte $00, $40, $FF     ; 2 — blue
+    .byte $FF, $00, $00     ; 3 — red
+    .byte $FF, $80, $00     ; 4 — orange
+    .byte $FF, $00, $FF     ; 5 — magenta
+    .byte $00, $FF, $FF     ; 6 — cyan
+    .byte $FF, $FF, $00     ; 7 — yellow
+.endif
 
 ; ===========================================================================
 ; Screen

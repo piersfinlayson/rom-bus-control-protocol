@@ -54,12 +54,18 @@ local dev = {
   switched = nil,
 }
 
+-- Two LEDs, the second of them the RGB one, so that finding the lowest RGB
+-- LED is actually exercised rather than assumed to be zero.
+local LED_TYPE = { [0] = 0x00, [1] = 0x01 }
+local MODE_NAME = { [0] = "off", "on", "blink", "breathe", "cycle", "beacon" }
+
 local ARGS = {                   -- [group][cmd] = argument count
   [0x00] = { [0x01] = 9, [0x04] = 1 },
   [0x01] = { [0x00] = 0, [0x01] = 1, [0x03] = 0, [0x06] = 0 },
   [0x02] = { [0x02] = 2 },
   [0x03] = { [0x00] = 0, [0x01] = 3, [0x06] = 4 },
   [0x04] = { [0x00] = 0, [0x02] = 6 },
+  [0x06] = { [0x00] = 0, [0x01] = 1, [0x02] = 2, [0x03] = 8 },
   [0xAA] = { [0xAA] = 0 },
 }
 
@@ -133,6 +139,27 @@ local function execute()
     answer(true)
   elseif g == 0x04 and c == 0x00 then             -- GET_PIPE_CAPABILITY
     put_data(0, 1)
+    answer(true)
+  elseif g == 0x06 and c == 0x00 then             -- GET_LED_CAPABILITY
+    put_data(0, 2)                                -- two LEDs
+    put_data(1, 100)                              -- max period
+    put_data(2, 100)                              -- max hold
+    answer(true)
+  elseif g == 0x06 and c == 0x01 then             -- GET_LED_INFO
+    local n = a[1]
+    if LED_TYPE[n] == nil then answer(false) return end
+    put_data(0, LED_TYPE[n])
+    for i = 1, 15 do put_data(i, 0) end
+    put_data(8, 0x3F)                             -- every defined mode
+    log("GET_LED_INFO %d = %s", n, LED_TYPE[n] == 1 and "RGB" or "monochrome")
+    answer(true)
+  elseif g == 0x06 and c == 0x02 then             -- GET_LED_MODE_INFO
+    put_data(0, 0) put_data(1, 0)
+    answer(true)
+  elseif g == 0x06 and c == 0x03 then             -- SET_LED
+    local mode, r, gr, b, led = a[1], a[2], a[3], a[4], a[8]
+    if LED_TYPE[led] == nil then answer(false) return end
+    log("SET_LED %d %s rgb %02X%02X%02X", led, MODE_NAME[mode] or mode, r, gr, b)
     answer(true)
   elseif g == 0x04 and c == 0x02 then             -- PIPE_WRITE
     local n, s = a[6], ""

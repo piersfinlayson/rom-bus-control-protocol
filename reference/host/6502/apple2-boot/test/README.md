@@ -4,7 +4,7 @@ A fake RBCP device written in [MAME](https://mamedev.org)'s Lua, so the real bin
 
 `rbcp_dev.lua` watches every read in the ROM's address range, decodes the RBCP command stream out of the addresses, and answers by substituting bytes on reads of the back-channel region — which is what a device does. It implements the commands this bootloader calls and no others. Pipe writes are printed, so the log lines can be read.
 
-The device it pretends to be has five flash slots, two RAM slots, one pipe and a byte of writable non-volatile storage.
+The device it pretends to be has five flash slots, two RAM slots, one pipe, a byte of writable non-volatile storage, and two LEDs of which the second is the RGB one — so the search for the lowest-numbered RGB LED is exercised rather than assumed to land on zero.
 
 ## Running
 

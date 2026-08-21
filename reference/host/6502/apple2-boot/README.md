@@ -31,6 +31,14 @@ Flash slot 0 is the bootloader itself and is never listed. Nine images are liste
 
 On any RBCP error it says what failed and stops. Power cycling starts again.
 
+## The device's LED
+
+The 8KB build drives an RGB LED on the device, where it has one. The LED cycles through the hues for as long as the bootloader is up, and settles to breathing a colour of its own for each image at the moment that image is booted — green for slot 1, blue for 2, red for 3, and so on. An LED's state outlives the command-response session, so the colour is still showing long after the bootloader has handed over, and a device still cycling is one that never got that far.
+
+It looks for the lowest-numbered LED of type RGB rather than assuming LED 0, since LEDs are numbered per device. A device with no LEDs, or one whose protocol version predates the LEDs group, is asked once and left alone.
+
+The 2KB build leaves all of this out. There is no room in an F8 ROM for the capability query, the search and a table of colours.
+
 Where the device has a pipe, two lines go out through it: one naming the bootloader as the session opens, and `SWITCHING TO SLOT $XX` immediately before the switch. The second is last because the switch ends the command-response session, and the image that follows need not have a back-channel at all. A device with no pipe, or one whose protocol version predates the Pipes group, is asked once and sent nothing.
 
 ## Working RAM is needed
