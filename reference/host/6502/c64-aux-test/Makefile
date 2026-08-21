@@ -13,6 +13,14 @@ ASFLAGS  = --cpu 6502 -I . -I src -I ../common
 LDFLAGS  = -C aux_test.cfg
 
 BUILD    = build
+
+# The RBCP library is an ar65 archive, so the linker takes only the command
+# modules this application refers to.
+RBCP_DIR  = ../rbcp
+RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
+RBCP_OBJS = $(patsubst $(RBCP_DIR)/%.s,$(BUILD)/rbcp/%.o,$(RBCP_SRCS))
+RBCP_LIB  = $(BUILD)/rbcp.lib
+
 BOARD   ?= 0
 SCRIPT  ?= 0
 
@@ -30,7 +38,6 @@ DISK_FN  = "rbcp aux test"
 COMMON_OBJS = $(BUILD)/aux_test.o \
               $(BUILD)/display.o \
               $(BUILD)/pins.o \
-              $(BUILD)/rbcp.o \
               $(BUILD)/c64_hw.o
 
 OBJS      = $(COMMON_OBJS) $(BUILD)/pins_dev.o
@@ -44,8 +51,13 @@ demo: $(DEMO)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/rbcp.o: ../rbcp/rbcp.s ../rbcp/rbcp_defs.s rbcp_config.s | $(BUILD)
-	$(AS) $(ASFLAGS) ../rbcp/rbcp.s -o $@
+$(BUILD)/rbcp/%.o: $(RBCP_DIR)/%.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(RBCP_LIB): $(RBCP_OBJS)
+	@rm -f $@
+	ar65 a $@ $(RBCP_OBJS)
 
 $(BUILD)/c64_hw.o: ../common/c64_hw.s ../common/c64_defs.s | $(BUILD)
 	$(AS) $(ASFLAGS) ../common/c64_hw.s -o $@
@@ -70,12 +82,12 @@ FORCE:
 $(BUILD)/pins_fake.o: src/pins_fake.s src/aux_defs.s $(BOARD_STAMP) | $(BUILD)
 	$(AS) $(ASFLAGS) -D BOARD=$(BOARD) src/pins_fake.s -o $@
 
-$(PRG): $(OBJS) aux_test.cfg
-	$(LD) $(LDFLAGS) $(OBJS) -o $@
+$(PRG): $(OBJS) $(RBCP_LIB) aux_test.cfg
+	$(LD) $(LDFLAGS) $(OBJS) $(RBCP_LIB) -o $@
 	@echo "Output: $@ ($$(wc -c < $@) bytes)"
 
-$(DEMO): $(DEMO_OBJS) aux_test.cfg
-	$(LD) $(LDFLAGS) $(DEMO_OBJS) -o $@
+$(DEMO): $(DEMO_OBJS) $(RBCP_LIB) aux_test.cfg
+	$(LD) $(LDFLAGS) $(DEMO_OBJS) $(RBCP_LIB) -o $@
 	@echo "Output: $@ ($$(wc -c < $@) bytes, board $(BOARD))"
 
 $(D64): $(PRG)

@@ -55,7 +55,7 @@ RBCP_AUX_POLL_TIMEOUT = CONFIG_RBCP_NV_POLL_TIMEOUT
 RBCP_TIMEOUT_RETRIES = CONFIG_RBCP_TIMEOUT_RETRIES
 
 ; ---------------------------------------------------------------------------
-; Zero-page addresses — must match the declarations in rbcp.s
+; Zero-page addresses — must match the declarations in rbcp_core.s
 ; ---------------------------------------------------------------------------
 
 RBCP_ZP_BASE    = CONFIG_RBCP_ZP_BASE   ; base of RBCP library ZP block

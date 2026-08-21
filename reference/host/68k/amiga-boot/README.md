@@ -2,6 +2,8 @@
 
 An Amiga Kickstart ROM image that talks, over the ROM bus, to the RBCP device serving it.
 
+**Untested on hardware.** It has never been in front of a real Amiga or a real RBCP device.
+
 **Status: milestone 1 — proving entry into command-response mode.** This build resets the device, enters command-response mode, issues a `NOP`, and reports what happened. The menu, slot enumeration, NV storage and boot switch follow.
 
 ## Building

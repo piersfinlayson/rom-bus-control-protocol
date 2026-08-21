@@ -4,9 +4,32 @@ This directory contains generic 6502 assembly routines for communicating with an
 
 For a complete example of an RBCP host implementation on a real 6502-based system, see the [C64 kernal bootloader](../c64-boot/README.md).
 
-For a list of the routines, see the exported symbols in [`rbcp.s`](rbcp.s).
-
 To configure the RBCP implementation's settings for a particular platform, you must provide an `rbcp_config.s` file with the appropriate definitions.  See [`sample_rbcp_config.s`](sample_rbcp_config.s).
+
+## How the library is put together
+
+[`rbcp_core.s`](rbcp_core.s) holds what every host needs: the knock, command framing, the polling of the back-channel, the reset sequence and the pause. Each command is a module of its own under [`cmd/`](cmd), one file per command, named after it.
+
+Build them into an archive with `ar65` and link the archive rather than the objects:
+
+```make
+RBCP_DIR  = ../rbcp
+RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
+RBCP_OBJS = $(patsubst $(RBCP_DIR)/%.s,$(BUILD)/rbcp/%.o,$(RBCP_SRCS))
+RBCP_LIB  = $(BUILD)/rbcp.lib
+
+$(BUILD)/rbcp/%.o: $(RBCP_DIR)/%.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(RBCP_LIB): $(RBCP_OBJS)
+	@rm -f $@
+	ar65 a $@ $(RBCP_OBJS)
+```
+
+`ld65` takes a module out of an archive only where something refers to it, so a host links the commands it calls and nothing else. A command a host never calls costs it nothing, and no configuration has to say so. Put the archive last on the link line, after the application's own objects.
+
+For the list of commands, look at the file names in [`cmd/`](cmd). Each is `rbcp_cmd_` plus the file name, so `cmd/load_slot.s` provides `rbcp_cmd_load_slot`. The exceptions are `cmd/check_protocol_version.s`, which is a helper rather than a command, and the routines in `rbcp_core.s`.
 
 These routines must always be copied to and run from RAM because:
 - When not in command-response mode, retrieving instructions to execute from the ROM will cause the RBCP device to interpret those reads as commands, which will cause unpredictable behavior.
