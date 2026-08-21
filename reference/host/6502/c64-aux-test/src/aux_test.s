@@ -1,17 +1,20 @@
-; aux_test.s — entry, exit, interrupts, key scanning and the main loop
+; aux_test.s — the main loop, the keys that drive it, and what each one does
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; Entered from BASIC by SYS 2061 and returns to BASIC by rts, so the machine
-; must be handed back exactly as it was found.  What this file takes and gives
-; back, in order: the stack pointer, interrupts, zero page $D0-$FF, the border
-; and background colours, and the NMI vector.
-;
-; sei comes second, before the zero page save and before anything reads
-; $A000-$BFFF.  The kernal's raster IRQ scans the keyboard through KEYLOG at
-; $F5/$F6 on every frame, which is inside the block this program is about to
-; take, so leaving interrupts on for even the save would have the two fighting.
+; Entered from BASIC by SYS 2061 and returns to BASIC by rts.  Taking the
+; machine over and handing it back is c64_app.s's job, and scanning the matrix
+; is c64_keys.s's — this file supplies the table of keys it wants and says what
+; each one does.
 
     .include "aux_defs.s"
+
+.import c64_app_enter
+.import c64_app_leave
+.import sess_open
+.import sess_close
+.import c64_keys_scan
+.import c64_keys_wait_none
+.import c64_keys_wait_any
 
 .import display_init
 .import display_keys
@@ -31,7 +34,7 @@
 .import pins_scan
 .import pins_scan_all
 .import pins_set
-.import pins_close
+.import sess_close
 .import pins_group_count
 .import pins_group_drv
 .import pins_group_pins
@@ -40,13 +43,13 @@
 .import pins_drv_at
 .import pins_hold
 .import pins_after
-.import pins_gone
+.import sess_gone
 .import pins_switch_exit
-.import pins_slot
-.import pins_load
-.import pins_read_flash_name
-.import pins_flash_count
-.import pins_flash_types
+.import sess_slot
+.import sess_load
+.import sess_read_flash_name
+.import sess_flash_count
+.import sess_flash_types
 
 ; ---------------------------------------------------------------------------
 ; PRG header and BASIC stub
@@ -73,15 +76,6 @@
 .bss
 ; ---------------------------------------------------------------------------
 
-saved_sp:       .res 1
-saved_zp:       .res ZP_SAVE_COUNT
-saved_border:   .res 1
-saved_bg:       .res 1
-saved_nmi:      .res 2
-
-.export nmi_flag
-nmi_flag:       .res 1
-
 .export cur_group
 .export cur_slot
 cur_group:      .res 1
@@ -104,22 +98,7 @@ BLINK_HOLD = 50             ; 10ms units, so half a second each way
 ; ---------------------------------------------------------------------------
 
 main:
-    tsx
-    stx saved_sp
-    sei                         ; before the first use of $D0-$FF
-
-    ldx #0
-@save_zp:
-    lda ZP_SAVE_BASE, x
-    sta saved_zp, x
-    inx
-    cpx #ZP_SAVE_COUNT
-    bne @save_zp
-
-    lda VIC_BORDER
-    sta saved_border
-    lda VIC_BACKGROUND
-    sta saved_bg
+    jsr c64_app_enter
 
     lda #0
     sta armed
@@ -130,16 +109,20 @@ main:
     lda #RBCP_AUX_RELEASE
     sta pins_after
     lda #1
-    sta pins_slot
+    sta sess_slot
     lda #$FF
     sta reset_flash             ; BSS arrives holding whatever BASIC left
 
-    jsr nmi_install
     jsr display_init
     jsr display_keys
 
+    ; The session first, then what this program wants from it.  Both refuse
+    ; the same way: carry set with the reason in A.
+    jsr sess_open
+    bcs @refused
     jsr pins_discover
     bcc @armed
+@refused:
     jsr display_fail            ; the reason is already in A
     jmp wait_quit
 @armed:
@@ -199,15 +182,8 @@ script:
     jmp wait_quit
 .endif
 .if SCRIPT = 5                          ; the reset question
-    lda cur_slot
-    ldx cur_group
-    jsr pins_drv_at
-    sta reset_pin
-    lda #$FF
-    sta reset_flash
-    jsr next_image
-    jsr show_reset_screen
-    jmp wait_quit
+    lda #KEY_RESET_CODE
+    jsr dispatch
 .endif
     rts
 
@@ -225,11 +201,11 @@ loop:
     bcs lost
     jsr display_rings
 
-    jsr scan_key
+    jsr c64_keys_scan
     cmp #KEY_NONE_CODE
     beq loop
     sta key_held
-    jsr wait_no_key
+    jsr c64_keys_wait_none
     lda key_held
     jsr dispatch
     jmp loop
@@ -304,7 +280,7 @@ dispatch:
 show_all:
     jsr pins_scan_all
     jsr display_all
-    jsr wait_any_key
+    jsr c64_keys_wait_any
     jsr display_init
     jsr display_keys
     jmp redraw
@@ -339,21 +315,22 @@ show_reset:
     jsr show_reset_screen
 
 @wait:
-    jsr scan_key
+    jsr c64_keys_scan
     cmp #KEY_NONE_CODE
+    beq @wait
+    cmp #KEY_RETURN_CODE
     bne @key
-    jsr scan_return
-    bne @wait
+    jsr c64_keys_wait_none
     jmp do_reset
 @key:
     cmp #KEY_PIN_NEXT
     bne @not_next
-    jsr wait_no_key
+    jsr c64_keys_wait_none
     jsr next_image
     jsr show_reset_screen
     jmp @wait
 @not_next:
-    jsr wait_no_key
+    jsr c64_keys_wait_none
     jsr display_keys
     jmp redraw
 
@@ -367,19 +344,19 @@ next_image:
     ldx reset_flash
 @step:
     inx
-    cpx pins_flash_count
+    cpx sess_flash_count
     bcc @check
     ldx #0
 @check:
-    lda pins_flash_types, x
-    cmp #ROM_TYPE_2364
+    lda sess_flash_types, x
+    cmp #CONFIG_ROM_TYPE
     bne @step
     stx reset_flash
     rts
 
 show_reset_screen:
     lda reset_flash
-    jsr pins_read_flash_name
+    jsr sess_read_flash_name
     jmp display_reset
 
 do_reset:
@@ -388,7 +365,7 @@ do_reset:
     lda #RBCP_AUX_RELEASE
     sta pins_after
     lda reset_flash
-    jsr pins_load
+    jsr sess_load
     bcc @loaded
     lda #NOTE_REFUSED
     jsr display_note
@@ -402,27 +379,6 @@ do_reset:
     lda #NOTE_GONE
     jsr display_note
     jmp wait_quit
-
-; ---------------------------------------------------------------------------
-; scan_return — one column.  Z set means RETURN is held.  Clobbers A.
-; ---------------------------------------------------------------------------
-
-scan_return:
-    lda #KEY_COL_0
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_RETURN_BIT
-    rts
-
-; ---------------------------------------------------------------------------
-; wait_any_key — until something is pressed, and then released.
-; ---------------------------------------------------------------------------
-
-wait_any_key:
-    jsr scan_key
-    cmp #KEY_NONE_CODE
-    beq wait_any_key
-    jmp wait_no_key
 
 ; ---------------------------------------------------------------------------
 ; Cursor movement.  The cursor lives on the drivable list, so a group with
@@ -579,11 +535,11 @@ blink:
 
     jsr half_second
 
-    jsr scan_key
+    jsr c64_keys_scan
     cmp #KEY_NONE_CODE
     beq @cycle
 
-    jsr wait_no_key
+    jsr c64_keys_wait_none
     jsr display_keys
     jmp note_pin
 
@@ -730,242 +686,39 @@ compare:
 ; ---------------------------------------------------------------------------
 
 wait_quit:
-    jsr scan_key
+    jsr c64_keys_scan
     cmp #KEY_QUIT_CODE
     bne wait_quit
     ; fall through
 
 quit:
     lda armed
-    beq leave
-    lda pins_gone
-    bne leave
-    jsr pins_close
-    ; fall through
+    beq @leave
+    jsr sess_close
+@leave:
+    jmp c64_app_leave
 
 ; ---------------------------------------------------------------------------
-; leave — hands the machine back and returns to BASIC.
+; The keys this program uses, in the form c64_keys.s walks: column mask, row
+; bit, code, and the code shift gives instead.  Shift reverses the two cursor
+; keys, which is what a C64 does with them everywhere else.
 ;
-; Order is the reverse of main's.  The kernal clear-screen call comes after the
-; zero page restore because the screen editor works through LDTB1 at $D9-$F2,
-; which this program has been using.
-;
-; The release wait comes first.  Without it the key that asked to quit is still
-; held when cli runs, the kernal's IRQ scan puts it in the keyboard buffer, and
-; BASIC echoes it after READY.  Zeroing NDX afterwards catches anything the IRQ
-; managed to buffer between cli and here.
+; A column mask of zero ends the table.
 ; ---------------------------------------------------------------------------
 
-leave:
-    jsr wait_no_key
+.rodata
 
-    jsr nmi_restore
-
-    lda saved_border
-    sta VIC_BORDER
-    lda saved_bg
-    sta VIC_BACKGROUND
-
-    ldx #0
-@restore_zp:
-    lda saved_zp, x
-    sta ZP_SAVE_BASE, x
-    inx
-    cpx #ZP_SAVE_COUNT
-    bne @restore_zp
-
-    ldx saved_sp
-    txs
-    cli
-    lda #0
-    sta KEY_NDX
-    jsr KERNAL_CLRSCR
-    rts
-
-; ---------------------------------------------------------------------------
-; NMI
-;
-; RESTORE is edge-triggered through its own monostable rather than through a
-; CIA, so nothing needs acknowledging.  The kernal's NMI entry does sei then
-; jmp ($0318) without saving registers, so the stub saves the one it uses.
-;
-; Without this the default handler reaches jmp ($A002) when RUN/STOP is held
-; with RESTORE — a read of the command page in the middle of a session, which
-; would inject a command byte.  The stub touches nothing else, so an NMI
-; arriving mid-command stretches the frame in time but does not corrupt it.
-; ---------------------------------------------------------------------------
-
-nmi_stub:
-    pha
-    lda #1
-    sta nmi_flag
-    pla
-    rti
-
-nmi_install:
-    lda #0
-    sta nmi_flag
-    lda NMINV
-    sta saved_nmi
-    lda NMINV+1
-    sta saved_nmi+1
-    lda #<nmi_stub
-    sta NMINV
-    lda #>nmi_stub
-    sta NMINV+1
-    rts
-
-nmi_restore:
-    lda saved_nmi
-    sta NMINV
-    lda saved_nmi+1
-    sta NMINV+1
-    rts
-
-; ---------------------------------------------------------------------------
-; scan_key — returns a key code in A, KEY_NONE_CODE if nothing is held.
-;
-; Six column selects cover the ten keys this program uses.  Shift is read on
-; the two cursor keys only, where it reverses the direction, which is what a
-; C64 does with them everywhere else.
-;
-; Clobbers A, X, Y.
-; ---------------------------------------------------------------------------
-
-.export scan_key
-scan_key:
-    ; column 0 — the cursor keys
-    lda #KEY_COL_0
-    sta CIA1_PRA
-    lda CIA1_PRB
-    tay
-    and #KEY_CRSR_RT_BIT
-    bne @c0_dn
-    jsr shift_held
-    bcs @pin_prev
-    lda #KEY_PIN_NEXT
-    jmp key_done
-@pin_prev:
-    lda #KEY_PIN_PREV
-    jmp key_done
-@c0_dn:
-    tya
-    and #KEY_CRSR_DN_BIT
-    bne @col_1
-    jsr shift_held
-    bcs @grp_prev
-    lda #KEY_GRP_NEXT
-    jmp key_done
-@grp_prev:
-    lda #KEY_GRP_PREV
-    jmp key_done
-
-@col_1:
-    lda #KEY_COL_1
-    sta CIA1_PRA
-    lda CIA1_PRB
-    tay
-    and #KEY_A_BIT
-    bne @c1_z
-    lda #KEY_ALL_CODE
-    jmp key_done
-@c1_z:
-    tya
-    and #KEY_Z_BIT
-    bne @col_2
-    lda #KEY_REL_CODE
-    jmp key_done
-
-@col_2:
-    lda #KEY_COL_2
-    sta CIA1_PRA
-    lda CIA1_PRB
-    tay
-    and #KEY_R_BIT
-    bne @c2_t
-    lda #KEY_RESET_CODE
-    jmp key_done
-@c2_t:
-    tya
-    and #KEY_T_BIT
-    bne @col_3
-    lda #KEY_TEST_CODE
-    jmp key_done
-
-@col_3:
-    lda #KEY_COL_3
-    sta CIA1_PRA
-    lda CIA1_PRB
-    tay
-    and #KEY_B_BIT
-    bne @c3_h
-    lda #KEY_BLINK_CODE
-    jmp key_done
-@c3_h:
-    tya
-    and #KEY_H_BIT
-    bne @col_5
-    lda #KEY_HIGH_CODE
-    jmp key_done
-
-@col_5:
-    lda #KEY_COL_5
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_L_BIT
-    bne @col_7
-    lda #KEY_LOW_CODE
-    jmp key_done
-
-@col_7:
-    lda #KEY_COL_7
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_Q_BIT
-    bne @none
-    lda #KEY_QUIT_CODE
-    jmp key_done
-@none:
-    lda #KEY_NONE_CODE
-    rts
-
-; key_done — the debounce every detected key passes through.  About 200 cycles,
-; which is what stops a held key repeating between two scans.
-key_done:
-    ldx #DEBOUNCE_COUNT
-@dly:
-    dex
-    bne @dly
-    rts
-
-; ---------------------------------------------------------------------------
-; shift_held — carry set if either shift key is down.  Clobbers A.
-; ---------------------------------------------------------------------------
-
-shift_held:
-    lda #KEY_COL_1
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_LSHIFT_BIT
-    beq @yes
-    lda #KEY_COL_6
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_RSHIFT_BIT
-    beq @yes
-    clc
-    rts
-@yes:
-    sec
-    rts
-
-; ---------------------------------------------------------------------------
-; wait_no_key — spins until nothing is held.  Clobbers A, X, Y.
-; ---------------------------------------------------------------------------
-
-.export wait_no_key
-wait_no_key:
-    jsr scan_key
-    cmp #KEY_NONE_CODE
-    bne wait_no_key
-    rts
+.export app_key_table
+app_key_table:
+    .byte %11111110, %00000100, KEY_PIN_NEXT,   KEY_PIN_PREV     ; CRSR right
+    .byte %11111110, %10000000, KEY_GRP_NEXT,   KEY_GRP_PREV     ; CRSR down
+    .byte %11111110, %00000010, KEY_RETURN_CODE, KEY_RETURN_CODE ; RETURN
+    .byte %11111101, %00000100, KEY_ALL_CODE,   KEY_ALL_CODE     ; A
+    .byte %11111101, %00010000, KEY_REL_CODE,   KEY_REL_CODE     ; Z
+    .byte %11111011, %00000010, KEY_RESET_CODE, KEY_RESET_CODE   ; R
+    .byte %11111011, %01000000, KEY_TEST_CODE,  KEY_TEST_CODE    ; T
+    .byte %11110111, %00010000, KEY_BLINK_CODE, KEY_BLINK_CODE   ; B
+    .byte %11110111, %00100000, KEY_HIGH_CODE,  KEY_HIGH_CODE    ; H
+    .byte %11011111, %00000100, KEY_LOW_CODE,   KEY_LOW_CODE     ; L
+    .byte %01111111, %01000000, KEY_QUIT_CODE,  KEY_QUIT_CODE    ; Q
+    .byte 0

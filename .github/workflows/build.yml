@@ -91,9 +91,25 @@ jobs:
         working-directory: reference/host/6502/c64-pipe-test
         run: make build/rbcp_pipe_test.prg
 
+      # Every demo board, because each one assembles different code and only a
+      # build catches a board whose tables no longer match the program.
       - name: Build c64-aux-test
         working-directory: reference/host/6502/c64-aux-test
-        run: make build/rbcp_aux_test.prg build/rbcp_aux_demo.prg
+        run: |
+          make build/rbcp_aux_test.prg
+          for board in 0 1 2; do
+            make clean
+            make BOARD=$board build/rbcp_aux_demo.prg
+          done
+
+      - name: Build c64-led-test
+        working-directory: reference/host/6502/c64-led-test
+        run: |
+          make build/rbcp_led_test.prg
+          for board in 0 1 2 3; do
+            make clean
+            make BOARD=$board build/rbcp_led_demo.prg
+          done
 
   build-amiga-boot:
     runs-on: ubuntu-latest

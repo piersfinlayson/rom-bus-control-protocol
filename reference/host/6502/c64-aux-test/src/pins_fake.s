@@ -32,14 +32,10 @@
 .import pins_hold
 .import pins_after
 .import pins_truncated
-.import pins_gone
-.import pins_dev_type
-.import pins_dev_ver
-.import pins_proto
-.import pins_flash_count
-.import pins_flash_types
-.import pins_flash_name
-.import pins_slot
+
+.import fake_cost
+.import sess_gone
+.import sess_mark_gone
 
 ; ---------------------------------------------------------------------------
 ; Boards.  BOARD is -D on the assembler command line, defaulting to 0.
@@ -80,11 +76,6 @@ BOARD_LOOP_SRC = 18
 BOARD_LOOP_DST = 19
 .endif
 
-; A command on a real device costs about 320us, taken from the rate the pipe
-; throughput test measured.  At roughly 1MHz that is 320 cycles, and the loop
-; below is 5 cycles an iteration.
-FAKE_CMD_CYCLES = 64
-
 ; ---------------------------------------------------------------------------
 .bss
 ; ---------------------------------------------------------------------------
@@ -100,19 +91,8 @@ scan_group:     .res 1
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; fake_cost — burns what a command would have cost on a real device.
-; Clobbers A, X.
-; ---------------------------------------------------------------------------
-
-fake_cost:
-    ldx #FAKE_CMD_CYCLES
-@loop:
-    dex
-    bne @loop
-    rts
-
-; ---------------------------------------------------------------------------
-; pins_discover — fills the group tables from the board table.
+; pins_discover — fills the group tables from the board table.  The session is
+; already open by the time this runs, as it is against a real device.
 ; Carry clear always: a fake device is always there.
 ; ---------------------------------------------------------------------------
 
@@ -120,7 +100,6 @@ fake_cost:
 pins_discover:
     lda #0
     sta pins_truncated
-    sta pins_gone
 
     ldx #0
 @groups:
@@ -137,80 +116,10 @@ pins_discover:
     lda #BOARD_MAX_HOLD
     sta pins_max_hold
 
-    ldx #0
-@ident:
-    lda fake_ident, x
-    sta pins_dev_type, x
-    lda fake_ident + 12, x
-    sta pins_dev_ver, x
-    lda fake_ident + 20, x
-    sta pins_proto, x
-    inx
-    cpx #12
-    bne @ident
-
-    ; Two flash slots of the served ROM's type, so the reset screen has a
-    ; choice to offer and something to name.
-    lda #2
-    sta pins_flash_count
-    lda #ROM_TYPE_2364
-    sta pins_flash_types + 0
-    sta pins_flash_types + 1
-
     jsr fake_reset_pins
     jsr pins_scan_all
     clc
     rts
-
-; ---------------------------------------------------------------------------
-; pins_load and pins_read_flash_name — the flash side of the interface.  There
-; is no flash here, so loading always works and the names are made up.
-; ---------------------------------------------------------------------------
-
-.export pins_load
-pins_load:
-    jsr fake_cost
-    lda #1
-    sta pins_slot
-    clc
-    rts
-
-.export pins_read_flash_name
-pins_read_flash_name:
-    jsr fake_cost
-    cmp #0
-    beq @first
-    ldx #0
-@copy_second:
-    lda fake_name_2, x
-    sta pins_flash_name, x
-    beq @done
-    inx
-    bne @copy_second
-@first:
-    ldx #0
-@copy_first:
-    lda fake_name_1, x
-    sta pins_flash_name, x
-    beq @done
-    inx
-    bne @copy_first
-@done:
-    clc
-    rts
-
-fake_name_1:
-    .byte "BASIC V2", 0
-fake_name_2:
-    .byte "BASIC V2 GREEN", 0
-
-; What a device would answer with, so the ALL PINS screen looks the same here
-; as it will there.  Three fixed length fields rather than three strings, so
-; one loop copies all of them.
-fake_ident:
-    .byte "ONE ROM", 0, 0, 0, 0, 0
-    .byte "0.7.2", 0, 0, 0
-    .byte "RBCP 0.1.2", 0, 0
 
 ; ---------------------------------------------------------------------------
 ; fake_reset_pins — every pin released, and its level whatever the board table
@@ -481,19 +390,11 @@ fake_apply:
 .export pins_set_exit
 pins_set_exit:
     jsr pins_set
-    lda #1
-    sta pins_gone
-    rts
+    jmp sess_mark_gone
 
 .export pins_switch_exit
 pins_switch_exit:
     jmp pins_set_exit
-
-.export pins_close
-pins_close:
-    lda #1
-    sta pins_gone
-    rts
 
 ; ---------------------------------------------------------------------------
 .rodata

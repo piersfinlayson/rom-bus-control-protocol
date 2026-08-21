@@ -1,4 +1,4 @@
-; rbcp_config.s — RBCP configuration for the C64 auxiliary I/O tester
+; rbcp_config.s — RBCP configuration for the C64 LED tester
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
 ; The device sits in the C64's BASIC socket (U3, 2364), serving a stock BASIC
@@ -7,6 +7,10 @@
 ; all of them stay usable while a session is open.  The one rule this program
 ; keeps is that it neither executes nor reads $A000-$BFFF between the knock and
 ; the exit.
+;
+; SET_LED never waits: the device answers a hold without sitting out its
+; duration, so there is no LED equivalent of the auxiliary group's hold
+; timeout.
 
 ; The BASIC ROM is mapped at $A000.
 CONFIG_ROM_BASE_HI = $A0
@@ -44,11 +48,6 @@ CONFIG_RBCP_STATUS_OK = $CC ; inverse = $33
 CONFIG_RBCP_POLL_TIMEOUT = $FF
 CONFIG_RBCP_NV_POLL_TIMEOUT = $FFFF
 
-; SET_AUX with a hold waits on its own timeout, not the NV one: they bound
-; unrelated things.  The largest hold this buys is capped by the poll loop's
-; two counter bytes at about 0.86 seconds on a PAL C64, whatever is set here.
-CONFIG_RBCP_AUX_POLL_TIMEOUT = $FFFF
-
 ; No retries.  A timeout here means the device stopped answering, and this
 ; program wants that to end the run and say so rather than be papered over.
 CONFIG_RBCP_TIMEOUT_RETRIES = $00
@@ -60,6 +59,6 @@ CONFIG_RBCP_CMD_PAUSE = $04
 ; $F0-$FF.  Under a running kernal this is RS-232 pointers, the free bytes at
 ; $FB-$FE, and the tail of the screen editor's line link table.  The program
 ; saves $D0-$FF whole on entry and restores it on exit, so what is underneath
-; does not matter — see the zero page notes in pipe_defs.s.
+; does not matter — see the zero page notes in app_defs.s.
 CONFIG_RBCP_ZP_BASE = $F0
 CONFIG_RBCP_ZP_LENGTH = 16

@@ -45,11 +45,11 @@
 .import pins_drv_at
 .import pins_tier
 .import pins_truncated
-.import pins_slot
-.import pins_flash_name
-.import pins_dev_type
-.import pins_dev_ver
-.import pins_proto
+.import sess_slot
+.import sess_flash_name
+.import sess_dev_type
+.import sess_dev_ver
+.import sess_proto
 
 .import cur_group
 .import cur_slot
@@ -911,15 +911,15 @@ display_all:
     jmp @group
 
 @tail:
-    set_ptr pins_dev_type
+    set_ptr sess_dev_type
     lda #19
     ldx #COL_GROUP
     jsr print_at
-    set_ptr pins_dev_ver
+    set_ptr sess_dev_ver
     lda #19
     ldx #14
     jsr print_at
-    set_ptr pins_proto
+    set_ptr sess_proto
     lda #19
     ldx #22
     jsr print_at
@@ -1003,7 +1003,7 @@ display_reset:
     ldy #10
     ldx #COL_WHITE
     jsr put_dec
-    set_ptr pins_flash_name
+    set_ptr sess_flash_name
     lda #15
     ldx #14
     jsr print_at
@@ -1114,7 +1114,6 @@ str_type:       .byte "OTHER PINS", 0
 
 note_tab:
     .word 0
-    .word str_n_pin
     .word str_n_nodrive
     .word str_n_blink
     .word str_n_low
@@ -1128,7 +1127,6 @@ note_tab:
     .word str_n_trunc
     .word str_n_gone
 
-str_n_pin:      .byte "", 0
 str_n_nodrive:  .byte "EVERY PIN HERE IS IN USE BY THE ROM", 0
 str_n_blink:    .byte "BLINKING - ANY KEY STOPS", 0
 str_n_low:      .byte "MOVE TEST - HOLDING IT LOW", 0
@@ -1142,14 +1140,16 @@ str_n_notdrv:   .byte "THAT PIN IS NOT OURS TO DRIVE", 0
 str_n_trunc:    .byte "MORE PINS THAN THIS SCREEN SHOWS", 0
 str_n_gone:     .byte "SENT - THE SESSION IS OVER", 0
 
+; Indexed by the refusal code, so the session's own come first, in the order
+; app_defs.s numbers them, and this program's follow.
 fail_tab:
-    .word str_f_nodev
-    .word str_f_enter
-    .word str_f_version
-    .word str_f_noaux
-    .word str_f_clash
-    .word str_f_slots
-    .word str_f_noclean
+    .word str_f_nodev           ; SESS_FAIL_NO_DEVICE
+    .word str_f_enter           ; SESS_FAIL_ENTER
+    .word str_f_version         ; SESS_FAIL_VERSION
+    .word str_f_clash           ; SESS_FAIL_CLASH
+    .word str_f_slots           ; SESS_FAIL_RAM_SLOTS
+    .word str_f_noclean         ; SESS_FAIL_NO_CLEAN
+    .word str_f_noaux           ; FAIL_NO_AUX
 
 str_f_nodev:    .byte "NO DEVICE ANSWERED THE KNOCK", 0
 str_f_enter:    .byte "THE DEVICE REFUSED THE SESSION", 0

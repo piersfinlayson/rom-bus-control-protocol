@@ -8,6 +8,8 @@ Keys: cursor left and right move between pins, up and down between groups, shift
 
 ---
 
+**Untested on hardware.**
+
 **Breadbin C64 only.** The device replaces the 8 KB BASIC ROM, a 2364 serving $A000–$BFFF.
 
 ## The move test

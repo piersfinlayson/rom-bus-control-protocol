@@ -10,9 +10,10 @@
 ;
 ; The interface both must provide:
 ;
-;   pins_discover     no input.  Fills group_count, max_hold, and per group the
-;                     type and pin count.  Carry set means there is no
-;                     auxiliary I/O to show, with a FAIL_ code in A.
+;   pins_discover     no input, and called with the session already open.
+;                     Fills group_count, max_hold, and per group the type and
+;                     pin count.  Carry set means there is no auxiliary I/O to
+;                     show, with a FAIL_ code in A.
 ;   pins_scan         A = group.  Refreshes pin_flags and pin_state for every
 ;                     pin in that group, and rebuilds its drivable list.
 ;                     Carry set means the device stopped answering.
@@ -20,13 +21,11 @@
 ;   pins_set          A = state, X = pin, Y = group, using pins_hold and
 ;                     pins_after.  Carry set means refused.
 ;   pins_set_exit     as pins_set, and terminal.
-;   pins_switch_exit  as pins_set_exit, plus pins_slot.  Terminal.
-;   pins_close        leaves whatever mode was entered.
-;   pins_load         A = flash slot.  Loads it into a spare RAM slot and puts
-;                     that slot in pins_slot, ready for pins_switch_exit.
-;   pins_read_flash_name  A = flash slot.  Fills pins_flash_name.
+;   pins_switch_exit  as pins_set_exit, plus sess_slot.  Terminal.
 ;
-; and fills pins_flash_count and pins_flash_types during pins_discover.
+; Everything that is about the session rather than the pins — opening it,
+; leaving it cleanly, the device's identity and the flash slots — is
+; rbcp_session.s, and both of these use it.
 ;
 ; Indexing
 ; --------
@@ -50,15 +49,7 @@
 .export drv_list
 .export pins_hold
 .export pins_after
-.export pins_slot
 .export pins_truncated
-.export pins_gone
-.export pins_dev_type
-.export pins_dev_ver
-.export pins_proto
-.export pins_flash_count
-.export pins_flash_types
-.export pins_flash_name
 
 pins_group_count:   .res 1              ; groups this program will show
 pins_max_hold:      .res 1              ; 10ms units, zero for no timed holds
@@ -72,24 +63,8 @@ drv_list:           .res MAX_GROUPS * MAX_PINS  ; drivable pin numbers, in order
 
 pins_hold:          .res 1              ; 10ms units, argument to the next set
 pins_after:         .res 1
-pins_slot:          .res 1              ; RAM slot for pins_switch_exit
 
 pins_truncated:     .res 1              ; the device reported more than we show
-pins_gone:          .res 1              ; a terminal command has been issued
-
-; What the device calls itself.  Filled by whichever implementation is linked,
-; and shown only on the ALL PINS screen — the demo screen has no room for it
-; and no use for it.
-pins_dev_type:      .res 25
-pins_dev_ver:       .res 25
-pins_proto:         .res 12
-
-; The flash slots, because the reset screen has to offer a choice of what the
-; machine comes back as.  Only the name of the slot being looked at is held —
-; all of them at once would not fit the back channel in one reply anyway.
-pins_flash_count:   .res 1
-pins_flash_types:   .res 16
-pins_flash_name:    .res 32
 
 ; ---------------------------------------------------------------------------
 .code

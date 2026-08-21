@@ -5,7 +5,7 @@ This directory contains reference implementations of RBCP hosts for 68000-family
 ## Contents
 
 - [68K RBCP Host Routines](rbcp/README.md): Generic 68K assembly routines for communicating with an RBCP device, including the bus mapping that a 68K host needs when the device is narrower than the host's bus.
-- [Amiga Kickstart Bootloader](amiga-boot/README.md): An Amiga Kickstart ROM image that talks to the device serving it. Untested on hardware.
+- [Amiga Kickstart Bootloader](amiga-boot/README.md): An Amiga Kickstart ROM image that talks to the device serving it.
 
 ## Why the 68K needs a bus mapping
 

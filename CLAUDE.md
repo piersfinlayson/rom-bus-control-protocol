@@ -28,8 +28,8 @@ Documents state what is true today. Never write a promise about future work
 into a README, a changelog, a specification, a commit message or a comment —
 not "comes later", not "to be added", however hedged. Say it in chat instead.
 
-An application that has not run on real hardware says so, at the top of its own
-README and in the index that points at it.
+An application that has not run on real hardware says so at the top of its own
+README, and nowhere else.
 
 ## Adding an application
 
