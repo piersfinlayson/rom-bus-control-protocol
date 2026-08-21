@@ -644,11 +644,11 @@ An LED is a device indicator rather than an auxiliary pin. What a host says to o
 
 LEDs are an optional device feature. The host should query GET_LED_CAPABILITY before issuing any other command in this group. A device that has no LEDs reports a count of zero from GET_LED_CAPABILITY. All other commands in this group return failure on such a device.
 
-An LED is addressed by a single byte. LED numbering is contiguous and starts from zero. A device with n LEDs numbers them 0 to n-1 with no gaps. An LED number is a final argument in GET_LED_INFO and SET_LED, so 0xAA is not a valid LED number and a device may have at most 170 LEDs.
+An LED is addressed by a single byte. LED numbering is contiguous and starts from zero. A device with n LEDs numbers them 0 to n-1 with no gaps. An LED number is a final argument in GET_LED_INFO, GET_LED_MODE_INFO and SET_LED, so 0xAA is not a valid LED number and a device may have at most 170 LEDs.
 
 A device reports only the LEDs it has, so an LED number may not name the same LED from one device to the next. A host wanting a colour uses the lowest-numbered LED of type RGB.
 
-Each LED has a [type](#led-types), describing what kind of LED it is, and a set of [modes](#led-modes) it supports. Which modes an LED supports is a property of that LED, reported by GET_LED_INFO. A mode built out of a colour is not available on an LED that has none, and a mode built out of a brightness is not available on an LED that has none.
+Each LED has a [type](#led-types), describing what kind of LED it is, and a set of [modes](#led-modes) it supports. Which modes an LED supports is a property of that LED, reported by GET_LED_INFO. A mode built out of a colour is not available on an LED that has none. GET_LED_MODE_INFO reports what one of those modes needs from the host.
 
 An LED's state persists across the end of a command-response session and across RBCP_RESET. Only a device reset restores an LED to its power-on state.
 
@@ -656,7 +656,8 @@ An LED's state persists across the end of a command-response session and across 
 |-----|------|-------|------|-------------|
 | 0x00 | GET_LED_CAPABILITY | 0.1.2 | 0 | Requests the device to report how many LEDs it has and the limits that apply to them. See [GET_LED_CAPABILITY Response Format](#get_led_capability-response-format). Fails if the response data section is smaller than 8 bytes. |
 | 0x01 | GET_LED_INFO | 0.1.2 | 1: A0=led | Requests the device to report what kind of LED the specified LED is, which modes it supports, and what it is doing now. See [GET_LED_INFO Response Format](#get_led_info-response-format). Fails if the LED is not one the device has, or if the response data section is smaller than 16 bytes. An A0 value of 0xAA is invalid and rejected. |
-| 0x02 | SET_LED | 0.1.2 | 8: A0=mode, A1=red, A2=green, A3=blue, A4=brightness, A5=period, A6=hold, A7=led | Places the specified LED in the specified [mode](#led-modes). A1, A2 and A3 are the colour, all three zero meaning the device chooses one — see [Colour](#colour). A4 is the brightness as a percentage, 1 to 100, zero meaning the device chooses. A5 is the period one repetition of the mode takes, in units of 100ms, zero meaning the mode's own default. A6 is the hold, in units of 100ms — see [Hold](#hold). The colour is ignored by a mode that does not take one, the brightness by an LED that has none, and the period by a mode that does not repeat. Fails if the LED is not one the device has, if mode is not one that LED supports, if brightness exceeds 100, or if period or hold exceeds the maximum reported by GET_LED_CAPABILITY. An A7 value of 0xAA is invalid and rejected. |
+| 0x02 | GET_LED_MODE_INFO | 0.1.2 | 2: A0=mode, A1=led | Requests the device to report what the specified mode needs from the host on the specified LED. See [GET_LED_MODE_INFO Response Format](#get_led_mode_info-response-format). Fails if the LED is not one the device has, if the mode is not one that LED supports, or if the response data section is smaller than 8 bytes. An A1 value of 0xAA is invalid and rejected. |
+| 0x03 | SET_LED | 0.1.2 | 8: A0=mode, A1=red, A2=green, A3=blue, A4=brightness, A5=period, A6=hold, A7=led | Places the specified LED in the specified [mode](#led-modes). A1, A2 and A3 are the colour, all three zero meaning the device chooses one — see [Colour](#colour). A4 is the brightness as a percentage, 1 to 100, zero meaning the device chooses. A5 is the period one repetition of the mode takes, in units of 100ms, zero meaning the mode's own default. A6 is the hold, in units of 100ms — see [Hold](#hold). The colour is ignored by a mode that does not take one, the brightness by an LED that has none, and the period by a mode that does not take one. Fails if the LED is not one the device has, if mode is not one that LED supports, if brightness exceeds 100, if hold exceeds the maximum reported by GET_LED_CAPABILITY, or if period is outside the range GET_LED_MODE_INFO reports for that mode. An A7 value of 0xAA is invalid and rejected. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -668,9 +669,13 @@ Whether an LED is lit is carried by its mode, Off being dark and On lit. A host 
 
 #### Hold
 
-The hold bounds how long the mode stays in force. When it elapses the device restores the mode, colour and brightness that were in force when the command arrived. A hold of zero leaves the mode in force until a further command changes it, except where the mode is bounded by definition.
+The hold bounds how long the mode stays in force. A hold of zero leaves the mode in force until a further command changes it.
 
-The device completes the command without waiting for the hold, which outlives the command-response session. Only one state is remembered, and one hold runs. A held command arriving during a hold takes effect and replaces the hold, but not the remembered state, so the LED returns to what it was doing before the first of them.
+A mode set with a non-zero hold is bounded, and so is a mode bounded by definition whatever its hold. When a bounded mode ends the device restores the mode, colour, brightness and period that were in force when the command setting it arrived.
+
+The device completes the command without waiting for the hold, which outlives the command-response session.
+
+Only one restore point is remembered. A bounded mode arriving while another is running takes effect, but does not replace it, so the LED returns to what it was doing before the first of them.
 
 ### Group 0xAA - Reset
 
@@ -979,6 +984,20 @@ The colour fields describe the colour the LED shows when lit: the colour in forc
 
 A host issuing a mode above 0x07, or an implementation-specific mode, does so without discovery, and the command fails where the LED does not support it.
 
+## GET_LED_MODE_INFO Response Format
+
+The response data section begins immediately after the [response header](#response-header) at offset 8 within the back-channel region.
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | flags | Bit 0: this mode takes a period on this LED. Bits 1–7 reserved, and must be set to zero by the device. |
+| 1 | 1 | min_period | The shortest period this mode accepts on this LED, in units of 100ms. Zero where the mode takes no period, or where the shortest it accepts is under one unit. |
+| 2 | 6 | Reserved | Must be set to zero by the device. Must not be assumed to have any particular value by the host. |
+
+The largest period is the one GET_LED_CAPABILITY reports, and applies to every mode.
+
+A host that names no period gets the mode's own default, whatever this reports, so a host with no requirement of its own need not issue this command.
+
 ## Auxiliary Pin Group Types
 
 The following auxiliary pin group type identifiers are defined by the protocol. A single byte is used to identify the pin group type in [GET_AUX_GROUP_INFO](#get_aux_group_info-response-format) responses.
@@ -1073,9 +1092,9 @@ The following modes are defined by the protocol for the mode argument of [SET_LE
 | 0x80–0xFE | Reserved for implementation-specific use |  |
 | 0xFF | Invalid |  |
 
-Beacon is bounded: where the hold is zero the device uses a duration of its own, and the mode ends by itself. Every other mode with a hold of zero stays in force until a further command changes it.
+Beacon is bounded by definition: where the hold is zero the device uses a duration of its own, and the mode ends by itself. Every other mode with a hold of zero stays in force until a further command changes it.
 
-Blink, Breathe and Cycle repeat, and take the period. Off, On and Beacon do not.
+Which modes take a period is the device's to report, per mode and per LED, through [GET_LED_MODE_INFO](#get_led_mode_info-response-format). Off and On never take one.
 
 Host implementations must handle reserved values gracefully, as new modes may be defined in future protocol versions without a non-backwards compatible version increase.
 

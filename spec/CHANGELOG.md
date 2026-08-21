@@ -24,6 +24,11 @@ Substantive changes to the specification are documented in this file.
   carried by the mode, so a host never needs black. The spec carries this reasoning,
   the value being counter-intuitive alone
 - GET_LED_INFO reports the colour a monochrome LED shows, which a device may not know
+- GET_LED_MODE_INFO reports whether a mode takes a period on a given LED, and the
+  shortest one it accepts. A floor belongs to the mode, not the LED, and two modes on
+  one LED differ — so neither the capability command nor the per-LED one can carry it,
+  and without it a host meets a failure it had no way to predict. Which modes take a
+  period is reported for the same reason rather than fixed by the protocol
 - Add LOAD_AND_EXIT and EXIT_CMD_RESP_RESTORE, to put back the bytes the back-channel
   displaces in the served image, which a host could read but not write back. Restore
   takes count last, as only a final argument bans 0xAA. Additive
