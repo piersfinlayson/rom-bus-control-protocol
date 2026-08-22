@@ -19,14 +19,20 @@ local KEY_AT     = tonumber(os.getenv("RBCP_KEY_AT") or "150")   -- first key fr
 local DEBUG      = os.getenv("RBCP_DEBUG") ~= nil
 local SWITCH_IMG = os.getenv("RBCP_SWITCH_IMAGE")   -- served after the switch
 
+-- Names a real device might carry, one of them mixed case, since a name is
+-- drawn as the device gives it and inverse video treats the two cases
+-- differently.  The dead test one is thirty characters, the most that fits.
 local slots = {
-  [0] = "RBCP BOOTLOADER",
-  [1] = "APPLE II AUTOSTART",
-  [2] = "APPLE II MONITOR",
-  [3] = "DEADTEST 1.5",
-  [4] = "APPLESOFT LITE",
+  [0] = "Apple II RBCP Bootloader",
+  [1] = "Apple IIe Stock ROM",
+  [2] = "Adrian's Apple ][ Deadtest ROM",
+  [3] = "APPLE II MONITOR",
+  [4] = "Applesoft Lite",
 }
-local total_flash = 5
+for n = 5, tonumber(os.getenv("RBCP_SLOTS") or "5") - 1 do
+  slots[n] = string.format("SPARE IMAGE %d", n)
+end
+local total_flash = tonumber(os.getenv("RBCP_SLOTS") or "5")
 
 -- What the device serves once it has switched slots.  Without one the
 -- bootloader is still what is in the socket after the switch, and the machine
@@ -61,7 +67,7 @@ local MODE_NAME = { [0] = "off", "on", "blink", "breathe", "cycle", "beacon" }
 
 local ARGS = {                   -- [group][cmd] = argument count
   [0x00] = { [0x01] = 9, [0x04] = 1 },
-  [0x01] = { [0x00] = 0, [0x01] = 1, [0x03] = 0, [0x06] = 0 },
+  [0x01] = { [0x00] = 0, [0x01] = 1, [0x03] = 0, [0x04] = 0, [0x05] = 0, [0x06] = 0 },
   [0x02] = { [0x02] = 2 },
   [0x03] = { [0x00] = 0, [0x01] = 3, [0x06] = 4 },
   [0x04] = { [0x00] = 0, [0x02] = 6 },
@@ -120,6 +126,12 @@ local function execute()
     put_data(2, 0x00)
     put_data(3, 0)
     answer(true)
+  elseif g == 0x01 and c == 0x04 then             -- GET_DEVICE_TYPE
+    put_string(0, "One ROM")
+    answer(true)
+  elseif g == 0x01 and c == 0x05 then             -- GET_DEVICE_VERSION
+    put_string(0, "v0.7.2")
+    answer(true)
   elseif g == 0x01 and c == 0x06 then             -- GET_PROTOCOL_VERSION
     put_data(0, 0) put_data(1, 1) put_data(2, 2) put_data(3, 0)
     answer(true)
@@ -134,6 +146,11 @@ local function execute()
     log("NV_PEEK = %d", dev.nv)
     answer(true)
   elseif g == 0x03 and c == 0x06 then             -- NV_POKE_COMMIT_BYTE
+    if os.getenv("RBCP_NV_FAIL") then
+      log("NV_POKE_COMMIT_BYTE = %d, refused", a[1])
+      answer(false)
+      return
+    end
     dev.nv = a[1]
     log("NV_POKE_COMMIT_BYTE = %d", a[1])
     answer(true)
@@ -290,18 +307,20 @@ emu.register_frame_done(function()
   end
   if frames >= RUN_FRAMES then
     if os.getenv("RBCP_SNAP") then manager.machine.video:snapshot() end
-    -- The text screen, one line per row.  Lower case marks inverse video.
+    -- The text screen, one line per row.  A row drawn in inverse video is
+    -- marked with a *, since the characters themselves now carry case.
     for r = 0, 23 do
       local base = 0x400 + (r % 8) * 0x80 + (r // 8) * 0x28
-      local s = ""
+      local s, inverse = "", false
       for c = 0, 39 do
         local b = mem:read_u8(base + c)
+        if b < 0x80 then inverse = true end
         local ch = b & 0x7F
-        if ch < 0x20 then ch = ch + 0x40 end
-        if b < 0x80 then ch = string.byte(string.lower(string.char(ch))) end
+        if ch < 0x20 then ch = ch + 0x40 end          -- inverse upper case
+        if b >= 0x60 and b < 0x80 then ch = b end     -- inverse lower case
         s = s .. string.char(ch)
       end
-      print(string.format("%02d|%s|", r, s))
+      print(string.format("%02d%s|%s|", r, inverse and "*" or " ", s))
     end
     manager.machine:exit()
   end

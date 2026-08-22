@@ -4,7 +4,7 @@ A fake RBCP device written in [MAME](https://mamedev.org)'s Lua, so the real bin
 
 `rbcp_dev.lua` watches every read in the ROM's address range, decodes the RBCP command stream out of the addresses, and answers by substituting bytes on reads of the back-channel region — which is what a device does. It implements the commands this bootloader calls and no others. Pipe writes are printed, so the log lines can be read.
 
-The device it pretends to be has five flash slots, two RAM slots, one pipe, a byte of writable non-volatile storage, and two LEDs of which the second is the RGB one — so the search for the lowest-numbered RGB LED is exercised rather than assumed to land on zero.
+The device it pretends to be has five flash slots, two RAM slots, one pipe, a byte of writable non-volatile storage, and two LEDs of which the second is the RGB one — so the search for the lowest-numbered RGB LED is exercised rather than assumed to land on zero. One slot name is mixed case, since a name is drawn as the device gives it and inverse video treats the two cases differently.
 
 ## Running
 
@@ -65,9 +65,11 @@ Everything is an environment variable:
 |----------|---------|---------|
 | `RBCP_TARGET` | f8 | `f8` runs the 2KB build on an `apple2p`, `ef` the 8KB build on an `apple2e`. |
 | `RBCP_NV` | 255 | The slot the device has stored. 255 stands for never written. |
+| `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than eleven exercises the entries a digit cannot pick. |
 | `RBCP_KEYS` | none | Keys to press, in order, one every 20 frames. A key in braces is an input port field held for three frames, such as `{Cursor Right}`. |
 | `RBCP_KEY_AT` | 150 | Frame the first key is pressed on. |
 | `RBCP_FRAMES` | 600 | Frame to print the text screen on and stop. |
+| `RBCP_NV_FAIL` | unset | Fail every NV write, which the bootloader carries on through. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
 
 The screen is printed as 24 rows of 40 columns. Lower case marks inverse video, which is how the highlighted line and the title show up.

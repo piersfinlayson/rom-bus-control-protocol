@@ -5,16 +5,36 @@
 # F8 socket of an Apple II or II+.  The EF build is an 8KB image for the EF
 # socket of a IIe, which has no F8 socket.  Only the ROM's address and size
 # differ, and both come from rbcp_config.s.
+#
+# COUNTDOWN sets how many seconds the menu waits before booting on its own.
+#
+# NV_FATAL=1 stops the boot when the device refuses to remember the choice,
+# rather than booting it anyway.  For use while a device is under suspicion,
+# since it tells a failed write apart from what fails after one.  The 2KB
+# image has no room for it and says so.
 
 AS           = ca65
 LD           = ld65
-ASFLAGS_BASE = --cpu 6502 -I . -I src
+COUNTDOWN   ?= 3
+NV_FATAL    ?=
+ASFLAGS_BASE = --cpu 6502 -I . -I src -D COUNTDOWN_SECS=$(COUNTDOWN) \
+               $(if $(NV_FATAL),-D NV_FATAL=1)
 
+# Every build option is part of the object directory name.  Timestamps and
+# stamp files cannot then get it wrong: a different set of options simply has
+# no objects yet, so it builds them, and the same set reuses its own.
 BUILD      = build
-BUILD_F8   = $(BUILD)/f8
-BUILD_EF   = $(BUILD)/ef
+VARIANT    = $(COUNTDOWN)$(if $(NV_FATAL),-nvfatal)
+BUILD_F8   = $(BUILD)/f8-$(VARIANT)
+BUILD_EF   = $(BUILD)/ef-$(VARIANT)
+# The link output lives with the objects, under the countdown's own directory,
+# and is copied to the name everything else uses.  The copy is unconditional:
+# a fixed name cannot carry which value built it, so nothing may be inferred
+# from its age.
 TARGET_F8  = $(BUILD)/apple2_boot_f8.bin
 TARGET_EF  = $(BUILD)/apple2_boot_ef.bin
+LINKED_F8  = $(BUILD_F8)/apple2_boot_f8.bin
+LINKED_EF  = $(BUILD_EF)/apple2_boot_ef.bin
 
 OBJS_F8 = $(BUILD_F8)/apple2_hw.o \
           $(BUILD_F8)/apple2_boot.o \
@@ -38,7 +58,11 @@ SRC_DEPS = src/apple2_defs.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 
 .PHONY: all clean test test-ef
 
-all: $(TARGET_F8) $(TARGET_EF)
+all: $(LINKED_F8) $(LINKED_EF)
+	@cp -f $(LINKED_F8) $(TARGET_F8)
+	@cp -f $(LINKED_EF) $(TARGET_EF)
+	@echo "Output: $(TARGET_F8) ($$(wc -c < $(TARGET_F8)) bytes, countdown $(COUNTDOWN)s)"
+	@echo "Output: $(TARGET_EF) ($$(wc -c < $(TARGET_EF)) bytes, countdown $(COUNTDOWN)s)"
 
 $(BUILD_F8) $(BUILD_EF):
 	mkdir -p $@
@@ -64,10 +88,9 @@ $(BUILD_F8)/apple2_boot.o: src/apple2_boot.s $(SRC_DEPS) | $(BUILD_F8)
 $(BUILD_F8)/apple2_vectors.o: src/apple2_vectors.s | $(BUILD_F8)
 	$(AS) $(ASFLAGS_BASE) src/apple2_vectors.s -o $@
 
-$(TARGET_F8): $(OBJS_F8) $(RBCP_LIB_F8) apple2_boot_f8.cfg
+$(LINKED_F8): $(OBJS_F8) $(RBCP_LIB_F8) apple2_boot_f8.cfg
 	$(LD) -C apple2_boot_f8.cfg $(OBJS_F8) $(RBCP_LIB_F8) -o $@ \
 	      -m $(BUILD_F8)/apple2_boot.map
-	@echo "Output: $@ ($$(wc -c < $@) bytes)"
 
 # ---------------------------------------------------------------------------
 # EF — Apple IIe, 8KB at $E000
@@ -90,10 +113,9 @@ $(BUILD_EF)/apple2_boot.o: src/apple2_boot.s $(SRC_DEPS) | $(BUILD_EF)
 $(BUILD_EF)/apple2_vectors.o: src/apple2_vectors.s | $(BUILD_EF)
 	$(AS) $(ASFLAGS_BASE) -D EF=1 src/apple2_vectors.s -o $@
 
-$(TARGET_EF): $(OBJS_EF) $(RBCP_LIB_EF) apple2_boot_ef.cfg
+$(LINKED_EF): $(OBJS_EF) $(RBCP_LIB_EF) apple2_boot_ef.cfg
 	$(LD) -C apple2_boot_ef.cfg $(OBJS_EF) $(RBCP_LIB_EF) -o $@ \
 	      -m $(BUILD_EF)/apple2_boot.map
-	@echo "Output: $@ ($$(wc -c < $@) bytes)"
 
 # ---------------------------------------------------------------------------
 

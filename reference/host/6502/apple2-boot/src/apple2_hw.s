@@ -34,7 +34,11 @@ a2_hw_init:
     sta TXTPAGE1
     sta LORES
     sta CLR80COL
-    sta CLRALTCHAR
+.if CONFIG_ROM_SIZE > $0800
+    sta SETALTCHAR          ; a IIe, which can show lower case
+.else
+    sta CLRALTCHAR          ; a II or II+ has upper case and nothing else
+.endif
     sta KBDSTRB
     rts
 
@@ -85,7 +89,8 @@ a2_clear_screen:
 ; a2_print_at
 ; Prints a null-terminated ASCII string at a given row and column.
 ; Input: zp_ptr_lo/hi = string, zp_tmp0 = row, zp_tmp1 = column.
-; Lower case is folded to upper case, as a II and II+ cannot display it.
+; On a II or II+ lower case is folded to upper case, which is all it can
+; display.  A IIe is left alone, the alternate character set being on.
 ; Leaves zp_tmp2 and above alone, so callers can keep a loop counter there.
 ; Clobbers: A, X, Y, zp_ptr_lo/hi, zp_tmp0/1
 ; ---------------------------------------------------------------------------
@@ -115,12 +120,14 @@ a2_print_at:
 @loop:
     lda (zp_tmp0), y
     beq @done
+.if CONFIG_ROM_SIZE <= $0800
     cmp #'a'
     bcc @emit
     cmp #'z' + 1
     bcs @emit
     sec
     sbc #$20                ; fold to upper case
+.endif
 @emit:
     ora #$80                ; normal video
     sta (zp_ptr_lo), y
@@ -148,13 +155,26 @@ row_to_ptr:
 ; Input: A = row.  Clobbers: A, X, Y.
 ; ---------------------------------------------------------------------------
 
+; Inverse video is the character with bits 7 and 6 clear, except for lower
+; case, which is $E0-$FF normally and $60-$7F inverse — bit 7 alone.  Clearing
+; bit 6 as well would land it in the range a IIe draws MouseText from.
 .export a2_invert_row
 a2_invert_row:
     jsr row_to_ptr
     ldy #SCREEN_COLS - 1
 @loop:
     lda (zp_ptr_lo), y
+.if CONFIG_ROM_SIZE > $0800
+    cmp #$E0
+    bcs @lower
+.endif
     and #$3F
+.if CONFIG_ROM_SIZE > $0800
+    bpl @put                ; always, the top bit having just been cleared
+@lower:
+    and #$7F
+.endif
+@put:
     sta (zp_ptr_lo), y
     dey
     bpl @loop
@@ -170,6 +190,29 @@ a2_normal_row:
     sta (zp_ptr_lo), y
     dey
     bpl @loop
+    rts
+
+; ---------------------------------------------------------------------------
+; a2_beep
+; The startup beep, as the machine's own ROM makes it.  BELL1 at $FBDD is in
+; the 2KB the bootloader replaces, so there is nothing left to call: this is
+; the same 192 toggles of the speaker at the same spacing, with the delay
+; inline rather than through the monitor's WAIT, which has gone the same way.
+; About 956Hz for about a tenth of a second.
+; Clobbers: A, X, Y
+; ---------------------------------------------------------------------------
+
+.export a2_beep
+a2_beep:
+    ldy #$C0                ; 192 toggles, as BELL1 uses
+@tone:
+    ldx #105                ; 5 cycles each, so ~535 between toggles
+@wait:
+    dex
+    bne @wait
+    lda SPKR
+    dey
+    bne @tone
     rts
 
 ; ---------------------------------------------------------------------------

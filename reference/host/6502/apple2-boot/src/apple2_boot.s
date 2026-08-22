@@ -13,6 +13,7 @@
 .import a2_invert_row
 .import a2_normal_row
 .import a2_getkey
+.import a2_beep
 
 .import rbcp_reset
 .import rbcp_cmd_enter_cmd_resp
@@ -28,6 +29,8 @@
 .import rbcp_cmd_get_pipe_capability
 .import rbcp_cmd_pipe_write
 .if CONFIG_ROM_SIZE > $0800
+.import rbcp_cmd_get_device_type
+.import rbcp_cmd_get_device_version
 .import rbcp_cmd_get_led_capability
 .import rbcp_cmd_get_led_info
 .import rbcp_cmd_set_led
@@ -40,25 +43,46 @@
 ; Constants
 ; ---------------------------------------------------------------------------
 
-; Nine images, because the menu numbers them 1 to 9 and a single digit picks
-; one.  Flash slot 0 is this bootloader and is never listed.
-MAX_DISPLAY      = 9
-
-TITLE_ROW        = 0
-TITLE_COL        = 8
-MENU_ENTRY_ROW0  = 3
-MENU_ENTRY_COL   = 6
-
 ; The countdown and the footer share a row and a column, and the footer is the
 ; longer of the two, so drawing the footer is what rubs the countdown out.
 FOOTER_ROW       = 20
 FOOTER_COL       = 4
 COUNT_DIGIT      = 11               ; where the 0 sits in str_counting
 
+; Where the device names itself, and who wrote this.
+DEVICE_ROW       = 22
+DEVICE_COL       = 2
+ROCKS_COL        = 27
+
+; The list runs from the third row to two rows above the footer, which leaves
+; the gap the footer needs to read as separate from it.  A digit picks one of
+; the first ten and the cursor reaches the rest.
+MENU_ENTRY_ROW0  = 3
+MAX_DISPLAY      = FOOTER_ROW - 2 - MENU_ENTRY_ROW0 + 1
+
+TITLE_ROW        = 0
+TITLE_COL        = 8
+MENU_ENTRY_COL   = 6
+
 ERROR_ROW        = 12
 ERROR_COL        = 8
 
+; A failed NV write stops the boot only where NV_FATAL is defined, which is a
+; thing to build with while a device is under suspicion.  The 2KB image has no
+; room for the message and handler, so it always boots anyway.
+.if .defined(NV_FATAL)
+  .if CONFIG_ROM_SIZE > $0800
+NV_FATAL_BUILD   = 1
+  .else
+    .warning "NV_FATAL does not fit the 2KB build and is ignored there"
+  .endif
+.endif
+
+; Seconds before the menu boots on its own.  The Makefile passes this in, and
+; the fallback is here so that assembling this file by hand still works.
+.ifndef COUNTDOWN_SECS
 COUNTDOWN_SECS   = 3
+.endif
 
 ; ---------------------------------------------------------------------------
 ; BSS — RAM-resident variables
@@ -172,6 +196,8 @@ boot_entry:
 
 boot_ram_entry:
     jsr a2_clear_screen
+    jsr a2_beep             ; the machine is alive and this has it
+
 
     ; Spec defined reset sequence, then the session.
     jsr rbcp_reset
@@ -338,6 +364,9 @@ boot_ram_entry:
 ; ---------------------------------------------------------------------------
 
     jsr draw_title
+.if CONFIG_ROM_SIZE > $0800
+    jsr draw_device
+.endif
     jsr draw_list
     jsr highlight_selection
     lda #COUNTDOWN_SECS
@@ -364,11 +393,18 @@ boot_ram_entry:
 ; Menu
 ; ---------------------------------------------------------------------------
 
+; The key that stopped the countdown is the user's first instruction, not a
+; knock at the door: it goes to the same place any later key does, so RETURN
+; boots at once and a digit picks that image.
 path_menu:
+    pha
     print_at str_footer, FOOTER_ROW, FOOTER_COL
+    pla
+    jmp key_act
 
 key_loop:
     jsr a2_getkey
+key_act:
     cmp #KEY_NONE
     beq key_loop
     cmp #KEY_RETURN
@@ -383,12 +419,12 @@ key_loop:
     beq do_down
     cmp #KEY_SPACE
     beq do_down
-    cmp #KEY_1
+    cmp #KEY_0
     bcc key_loop
     cmp #KEY_9 + 1
     bcs key_loop
     sec
-    sbc #KEY_1              ; 0-based index
+    sbc #KEY_0              ; the digit is the entry
     cmp var_num_display
     bcs key_loop
     pha
@@ -435,9 +471,14 @@ do_boot:
     sta rbcp_arg2           ; location MSB
     lda var_target_ram
     sta rbcp_arg3           ; RAM slot used for staging
+    ; The result is not checked unless this was built with NV_FATAL.  A device
+    ; that will not remember the choice is still a device that can boot it, and
+    ; refusing to boot what the user just picked is the worse of the two.
     jsr rbcp_cmd_nv_poke_commit_byte
+.ifdef NV_FATAL_BUILD
     bcc boot_slot_entry
     jmp err_nv_commit
+.endif
 
 boot_slot_entry:
     lda var_boot_flash
@@ -564,6 +605,50 @@ draw_title:
     lda #TITLE_ROW
     jmp a2_invert_row
 
+.if CONFIG_ROM_SIZE > $0800
+; ---------------------------------------------------------------------------
+; draw_device — the device's own name and version along the bottom, with the
+; author beside them.  Both come from the device rather than from here, so the
+; line says what is actually serving the ROM.
+;
+; The version follows the type with a space between, so the type is measured
+; rather than assumed to be any particular width.
+; ---------------------------------------------------------------------------
+
+draw_device:
+    jsr rbcp_cmd_get_device_type
+    bcs @rocks                      ; a device that will not say, does not say
+    set_ptr RBCP_DATA_ADDR
+    lda #DEVICE_ROW
+    ldx #DEVICE_COL
+    jsr print_str
+
+    ldy #0                          ; how wide was it?
+@len:
+    lda RBCP_DATA_ADDR, y
+    beq @got_len
+    iny
+    bne @len
+@got_len:
+    iny                             ; a space after it
+    tya
+    clc
+    adc #DEVICE_COL
+    pha                             ; the column, which the command clobbers
+    jsr rbcp_cmd_get_device_version
+    pla                             ; pulling does not disturb the carry
+    bcs @rocks
+    tax
+    set_ptr RBCP_DATA_ADDR
+    lda #DEVICE_ROW
+    jsr print_str
+
+@rocks:
+    print_at str_rocks, DEVICE_ROW, ROCKS_COL
+    lda #DEVICE_ROW
+    jmp a2_invert_row
+.endif
+
 ; ---------------------------------------------------------------------------
 ; draw_list — one line per image, each asked for as it is drawn.
 ;
@@ -586,10 +671,25 @@ draw_list:
     jsr rbcp_cmd_get_flash_slot_info
     bcs @next
 
-    lda ZP_TMP2
+    ; Images are numbered from zero, and only the first ten have a digit that
+    ; picks them.  The rest are reached with the cursor and show no number,
+    ; rather than one that does nothing.
+    lda #')'
+    ldx ZP_TMP2
+    cpx #10
+    bcc @numbered
+    lda #' '
+@numbered:
+    sta str_entry + 1
+    txa
+    bcs @blank
     clc
-    adc #'1'
-    sta str_entry           ; 1 upwards, in front of the name
+    adc #'0'
+    bne @put                ; always
+@blank:
+    lda #' '
+@put:
+    sta str_entry
     set_ptr str_entry
     lda ZP_TMP2
     clc
@@ -784,9 +884,11 @@ err_flash_info:       ldx #4
                       jmp err_halt
 err_no_images:        ldx #5
                       jmp err_halt
-err_nv_commit:        ldx #6
+err_load:             ldx #6
+.ifdef NV_FATAL_BUILD
                       jmp err_halt
-err_load:             ldx #7
+err_nv_commit:        ldx #7
+.endif
                       ; fall through
 
 ; err_halt — X = error number.  Says what went wrong and stops.  There is no
@@ -811,21 +913,35 @@ err_halt:
 err_lo:
     .byte <msg_err_cmd_resp, <msg_err_version, <msg_err_ram_info
     .byte <msg_err_ram_count, <msg_err_flash_info, <msg_err_no_images
-    .byte <msg_err_nv, <msg_err_load
+    .byte <msg_err_load
+.ifdef NV_FATAL_BUILD
+    .byte <msg_err_nv
+.endif
 err_hi:
     .byte >msg_err_cmd_resp, >msg_err_version, >msg_err_ram_info
     .byte >msg_err_ram_count, >msg_err_flash_info, >msg_err_no_images
-    .byte >msg_err_nv, >msg_err_load
+    .byte >msg_err_load
+.ifdef NV_FATAL_BUILD
+    .byte >msg_err_nv
+.endif
 
 ; ===========================================================================
 ; Strings.  These live in the CODE segment, so they are read from RAM once
 ; the session is open.
 ; ===========================================================================
 
-str_header:     .byte "APPLE II RBCP BOOTLOADER", 0
+str_header:
+.if CONFIG_ROM_SIZE > $0800
+                .byte "Apple ][ ROM Bootloader", 0
+.else
+                .byte "APPLE ][ ROM BOOTLOADER", 0
+.endif
 str_counting:   .byte "BOOTING IN 0 - ANY KEY FOR MENU", 0
+.if CONFIG_ROM_SIZE > $0800
+str_rocks:      .byte "piers.rocks", 0
+.endif
 str_entry:      .byte "0) ", 0
-str_footer:     .byte "RETURN BOOTS, ARROWS OR 1-9 PICK", 0
+str_footer:     .byte "RETURN BOOTS, ARROWS OR 0-9 PICK", 0
 
 msg_switching:  .byte "SWITCHING TO SLOT $", 0
 
@@ -836,5 +952,7 @@ msg_err_ram_info:   .byte "NO RAM INFO", 0
 msg_err_ram_count:  .byte "NEED 2 RAM SLOTS", 0
 msg_err_flash_info: .byte "NO SLOT COUNT", 0
 msg_err_no_images:  .byte "NO IMAGES", 0
-msg_err_nv:         .byte "NV WRITE FAILED", 0
 msg_err_load:       .byte "LOAD FAILED", 0
+.ifdef NV_FATAL_BUILD
+msg_err_nv:         .byte "NV WRITE FAILED", 0
+.endif

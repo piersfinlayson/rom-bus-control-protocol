@@ -14,8 +14,10 @@
 
 KBD             = $C000     ; bit 7 set = key waiting, bits 0-6 = ASCII
 CLR80COL        = $C00C     ; 40 columns
-CLRALTCHAR      = $C00E     ; primary character set
+CLRALTCHAR      = $C00E     ; primary character set, upper case only
+SETALTCHAR      = $C00F     ; alternate character set, which has lower case
 KBDSTRB         = $C010     ; any access clears the keyboard strobe
+SPKR            = $C030     ; any access toggles the speaker
 TXTSET          = $C051     ; text rather than graphics
 MIXCLR          = $C052     ; whole screen, not split
 TXTPAGE1        = $C054     ; display page 1 at $0400
@@ -66,7 +68,7 @@ KEY_RIGHT       = $95
 KEY_UP          = $8B
 KEY_DOWN        = $8A
 KEY_SPACE       = $A0
-KEY_1           = $B1
+KEY_0           = $B0
 KEY_9           = $B9
 
 ; ---------------------------------------------------------------------------
