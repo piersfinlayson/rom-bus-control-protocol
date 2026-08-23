@@ -943,7 +943,9 @@ str_rocks:      .byte "piers.rocks", 0
 str_entry:      .byte "0) ", 0
 str_footer:     .byte "RETURN BOOTS, ARROWS OR 0-9 PICK", 0
 
-msg_switching:  .byte "SWITCHING TO SLOT $", 0
+; The log is not the screen, so it is not held to upper case the way a string
+; a II or II+ displays is.
+msg_switching:  .byte "Switching to slot $", 0
 
 str_err:            .byte "RBCP ERROR", 0
 msg_err_cmd_resp:   .byte "NO REPLY", 0
