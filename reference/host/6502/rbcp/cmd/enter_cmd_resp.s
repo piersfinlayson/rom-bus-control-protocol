@@ -22,7 +22,7 @@
 ; On failure, rbcp_zp_5 holds the stage that failed:
 ;   1 = token poll timeout (command not received / silently discarded)
 ;   2 = progress poll timeout (received but never completed)
-;   3 = response = FAILED
+;   3 = response = FAILED, and A holds the byte read
 ; Returns carry clear = success, carry set = failure. Clobbers: A, X, Y.
 ; ---------------------------------------------------------------------------
 .export rbcp_cmd_enter_cmd_resp
@@ -69,19 +69,19 @@ rbcp_cmd_enter_cmd_resp:
     dec rbcp_zp_6
     bpl @tok_attempt
 .endif
-    lda #1
-    jmp @fail
+    ldx #1
+    bne @fail               ; always, and cheaper than a jmp
 @tok_ok:
     jsr rbcp_poll_progress
     bcc @prog_ok
-    lda #2
-    jmp @fail
+    ldx #2
+    bne @fail               ; always, and cheaper than a jmp
 @prog_ok:
     jsr rbcp_check_response
     bcc @ok
-    lda #3
+    ldx #3
 @fail:
-    sta rbcp_zp_5
+    stx rbcp_zp_5           ; via X, so A keeps the response byte for the caller
     sec
     rts
 @ok:

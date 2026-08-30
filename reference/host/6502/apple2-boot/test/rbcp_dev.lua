@@ -17,6 +17,13 @@ local KEYS       = os.getenv("RBCP_KEYS") or ""     -- keys to feed, in order
 local RUN_FRAMES = tonumber(os.getenv("RBCP_FRAMES") or "600")
 local KEY_AT     = tonumber(os.getenv("RBCP_KEY_AT") or "150")   -- first key frame
 local DEBUG      = os.getenv("RBCP_DEBUG") ~= nil
+-- "01:06" makes the device ignore GET_PROTOCOL_VERSION entirely, as a device
+-- too busy to answer in time looks from the host's side.
+local DEAF       = os.getenv("RBCP_DEAF")
+-- "00:01:5" makes the device answer the response byte with what it held
+-- before the command for five reads after it has said the command is
+-- complete, which is a device publishing the two out of order.
+local LATE       = os.getenv("RBCP_LATE_RSP")
 local SWITCH_IMG = os.getenv("RBCP_SWITCH_IMAGE")   -- served after the switch
 
 -- Names a real device might carry, one of them mixed case, since a name is
@@ -45,6 +52,16 @@ end
 
 local bch = {}                   -- back-channel bytes, index 0..BCH_SIZE-1
 for i = 0, BCH_SIZE - 1 do bch[i] = 0 end
+
+-- Which command holds its response back, for how many reads, and what those
+-- reads answer while it does.
+local late_g, late_c, late_n
+if LATE then
+  local g, c, n = LATE:match("^(%x%x):(%x%x):(%d+)$")
+  if not g then error("RBCP_LATE_RSP must be GG:CC:reads, e.g. 00:01:5") end
+  late_g, late_c, late_n = tonumber(g, 16), tonumber(c, 16), tonumber(n)
+end
+local late_left, late_val = 0, 0
 
 local dev = {
   cmd_resp = false,
@@ -91,11 +108,24 @@ local function answer(ok)
   bch[2] = dev.token & 0xFF
   bch[3] = (dev.token >> 8) & 0xFF
   bch[4] = COMPLETE
+  if late_g and dev.group == late_g and dev.cmd == late_c then
+    late_left, late_val = late_n, bch[5]
+    log("%02X/%02X response held back for %d reads", late_g, late_c, late_n)
+  end
   bch[5] = ok and STATUS_OK or ((~STATUS_OK) & 0xFF)
 end
 
 local function execute()
   local g, c, a = dev.group, dev.cmd, dev.args
+  if DEAF == string.format("%02X:%02X", g, c) then
+    log("%02X/%02X ignored", g, c)
+    return
+  end
+  if os.getenv("RBCP_REFUSE") == string.format("%02X:%02X", g, c) then
+    log("%02X/%02X refused", g, c)
+    answer(false)
+    return
+  end
   if g == 0xAA then
     dev.cmd_resp = false
     log("RESET")
@@ -242,7 +272,12 @@ rbcp_tap = mem:install_read_tap(ROM_BASE, 0xFFFF, "rbcp", function(offset, data,
     return data
   end
   if dev.cmd_resp and offset >= BCH_BASE and offset < BCH_BASE + BCH_SIZE then
-    return bch[offset - BCH_BASE]
+    local i = offset - BCH_BASE
+    if i == 5 and late_left > 0 then
+      late_left = late_left - 1
+      return late_val
+    end
+    return bch[i]
   end
   if dev.cmd_resp and (offset >> 8) ~= CMD_PAGE then return data end
   local finished = (dev.want == 1)

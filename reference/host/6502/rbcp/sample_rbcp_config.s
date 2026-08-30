@@ -67,7 +67,7 @@ CONFIG_RBCP_TIMEOUT_RETRIES = $03
 ; an arbitrary value with no fixed unit.  $00 = no pause.  Depending on your
 ; host system and device, you may need to experiment with this value to find
 ; the optimal setting.
-CONFIG_RBCP_CMD_PAUSE = $10
+CONFIG_RBCP_CMD_PAUSE = $04
 
 ; Set to the base address of the ZP block that the RBCP library should use.
 ; Must be at least 16 bytes long.

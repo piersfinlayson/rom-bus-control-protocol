@@ -70,6 +70,11 @@ Everything is an environment variable:
 | `RBCP_KEY_AT` | 150 | Frame the first key is pressed on. |
 | `RBCP_FRAMES` | 600 | Frame to print the text screen on and stop. |
 | `RBCP_NV_FAIL` | unset | Fail every NV write, which the bootloader carries on through. |
+| `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
+| `RBCP_REFUSE` | unset | `GG:CC` — the command the device answers with failed. |
+| `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said the command is complete, which is a device publishing the two out of order. |
+| `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, so the machine boots something other than the bootloader again. |
+| `RBCP_SNAP` | unset | Save a screenshot at the end of the run. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
 
 The screen is printed as 24 rows of 40 columns. Lower case marks inverse video, which is how the highlighted line and the title show up.

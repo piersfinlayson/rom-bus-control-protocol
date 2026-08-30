@@ -214,7 +214,10 @@ rbcp_ppl_ok:
 
 ; ---------------------------------------------------------------------------
 ; rbcp_check_response — carry clear if RBCP_STATUS_OK, set otherwise.
-; Clobbers: A.
+;
+; A holds the byte that was read, whichever way it went.  A caller that fails
+; can then say what it saw, rather than reading the location a second time and
+; reporting whatever it holds by then.
 ; ---------------------------------------------------------------------------
 
 .export rbcp_check_response
@@ -237,7 +240,7 @@ rbcp_cr_ok:
 ; On failure, rbcp_zp_5 holds the stage that failed:
 ;   1 = token poll timeout (command not received)
 ;   2 = progress poll timeout (received but never completed)
-;   3 = response = FAILED
+;   3 = response = FAILED, and A holds the byte read
 
 .export rbcp_issue_cmd_long_poll
 rbcp_issue_cmd_long_poll:
@@ -282,8 +285,8 @@ rbcp_issue_cmd_body:
     dec rbcp_zp_6
     bpl @tok_attempt
 .endif
-    lda #1
-    jmp @err
+    ldx #1
+    bne @err                ; always, and cheaper than a jmp
 @tok_ok:
     lda rbcp_zp_3
     beq @short_poll
@@ -300,14 +303,14 @@ rbcp_issue_cmd_body:
     jsr rbcp_poll_progress
     bcc @prog_ok
 @prog_fail:
-    lda #2
-    jmp @err
+    ldx #2
+    bne @err                ; always, and cheaper than a jmp
 @prog_ok:
     jsr rbcp_check_response
     bcc @rsp_ok
-    lda #3
+    ldx #3
 @err:
-    sta rbcp_zp_5
+    stx rbcp_zp_5           ; via X, so A keeps the response byte for the caller
     sec
     rts
 @rsp_ok:
@@ -341,8 +344,7 @@ rbcp_reset:
     jsr rbcp_reset_stage_2
     jsr rbcp_pause
     jsr rbcp_reset_stage_3
-    jsr rbcp_pause
-    rts
+    jmp rbcp_pause
 
 rbcp_cmd_reset:
     lda #RBCP_GRP_RESET
@@ -363,14 +365,12 @@ rbcp_reset_stage_1:
 
 .export rbcp_reset_stage_2
 rbcp_reset_stage_2:
-    jsr rbcp_cmd_reset
-    rts
+    jmp rbcp_cmd_reset
 
 .export rbcp_reset_stage_3
 rbcp_reset_stage_3:
     jsr rbcp_knock
-    jsr rbcp_cmd_reset
-    rts
+    jmp rbcp_cmd_reset
 
 
 ; The pause every command mode send needs, and the send after a terminal

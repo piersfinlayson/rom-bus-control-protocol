@@ -5,10 +5,6 @@
 Do not run `git commit` or `git push`. Stage if asked, and supply the message
 text. The commit is the user's.
 
-Commit messages: one line, then at most three bullets, each one short sentence.
-No trailers of any kind, `Co-Authored-By` included. Keep low-level detail out of
-them — a bullet says what changed, not how it was implemented.
-
 ## Nothing personal in a repository file
 
 No home directories, no machine-specific paths, no defaults inferred from where

@@ -47,7 +47,6 @@
 ; longer of the two, so drawing the footer is what rubs the countdown out.
 FOOTER_ROW       = 20
 FOOTER_COL       = 4
-COUNT_DIGIT      = 11               ; where the 0 sits in str_counting
 
 ; Where the device names itself, and who wrote this.
 DEVICE_ROW       = 22
@@ -66,10 +65,30 @@ MENU_ENTRY_COL   = 6
 
 ERROR_ROW        = 12
 ERROR_COL        = 8
+DIAG_ROW         = 17
+
+; Where the two digits sit in str_err, and each field in the diagnostic
+; lines, which are one run of bytes so a single offset reaches both.
+ERR_CODE_OP      = 11
+ERR_CODE_STAGE   = 12
+DIAG_GRP         = 4
+DIAG_CMD         = 11
+DIAG_TOK         = 18
+DIAG_LINE2       = 21               ; str_diag1 and its terminator
+DIAG_PRG         = DIAG_LINE2 + 4
+DIAG_RSP         = DIAG_LINE2 + 11
+DIAG_DGRP        = DIAG_LINE2 + 19
+DIAG_DCMD        = DIAG_LINE2 + 27
+DIAG_LINE3       = DIAG_LINE2 + 30  ; str_diag2 and its terminator
+DIAG_SETTLE      = DIAG_LINE3 + 18
 
 ; A failed NV write stops the boot only where NV_FATAL is defined, which is a
 ; thing to build with while a device is under suspicion.  The 2KB image has no
 ; room for the message and handler, so it always boots anyway.
+.if CONFIG_ROM_SIZE > $0800
+DIAGS_BUILD      = 1
+.endif
+
 .if .defined(NV_FATAL)
   .if CONFIG_ROM_SIZE > $0800
 NV_FATAL_BUILD   = 1
@@ -82,6 +101,16 @@ NV_FATAL_BUILD   = 1
 ; the fallback is here so that assembling this file by hand still works.
 .ifndef COUNTDOWN_SECS
 COUNTDOWN_SECS   = 3
+.endif
+
+; Where the count sits in str_counting.  A countdown that reaches ten carries a
+; tens column, and one that does not is a character narrower.
+.if COUNTDOWN_SECS > 9
+COUNT_TENS       = 11
+COUNT_UNITS      = 12
+.assert COUNTDOWN_SECS <= 19, error, "the countdown has one tens digit, and rubs it out on the way past ten, so nineteen seconds is the most it counts"
+.else
+COUNT_UNITS      = 11
 .endif
 
 ; ---------------------------------------------------------------------------
@@ -103,6 +132,15 @@ var_boot_flash:   .res 1    ; flash slot the countdown will boot
 var_count:        .res 1
 .if CONFIG_ROM_SIZE > $0800
 var_led:          .res 1    ; lowest RGB LED, or $FF where the device has none
+; The header as it stood when the library gave up, which is not what it holds
+; by the time the screen is drawn.
+var_rsp_saw:      .res 1    ; response byte the library read
+var_hdr_grp:      .res 1    ; last command the device recorded, group
+var_hdr_cmd:      .res 1    ; last command the device recorded, cmd
+var_hdr_tok:      .res 1    ; token LSB
+var_hdr_prg:      .res 1    ; progress
+var_rsp_settle:   .res 1    ; reads before the response said OK, $FF = never
+var_rsp_valid:    .res 1    ; 0 unless the response byte is what failed
 .endif
 
 ; ===========================================================================
@@ -198,6 +236,10 @@ boot_ram_entry:
     jsr a2_clear_screen
     jsr a2_beep             ; the machine is alive and this has it
 
+.ifdef DIAGS_BUILD
+    lda #0                  ; nothing captured yet, and BSS is not cleared
+    sta var_rsp_valid
+.endif
 
     ; Spec defined reset sequence, then the session.
     jsr rbcp_reset
@@ -373,9 +415,19 @@ boot_ram_entry:
     sta var_count
 @tick:
     lda var_count
+.if COUNTDOWN_SECS > 9
+    cmp #10                 ; the tens column starts as part of the string, so
+    bcs @units              ; it only has to be rubbed out on the way past ten
+    ldx #' '
+    stx str_counting + COUNT_TENS
+    bcc @put                ; always, given the compare above
+@units:
+    sbc #10                 ; carry is set, so this takes off exactly ten
+@put:
+.endif
     clc
     adc #'0'
-    sta str_counting + COUNT_DIGIT   ; the strings are in RAM, so this sticks
+    sta str_counting + COUNT_UNITS   ; the strings are in RAM, so this sticks
     print_at str_counting, FOOTER_ROW, FOOTER_COL
 
     jsr wait_a_second
@@ -896,6 +948,37 @@ err_nv_commit:        ldx #7
 ; would have booted has not been loaded.  Power cycling starts again.
 err_halt:
     stx ZP_TMP3             ; a2_print_at leaves ZP_TMP2 and above alone
+
+    ; Every path here is a branch and a jmp from the library call that
+    ; failed, so A is still the byte that failed the response check.
+.ifdef DIAGS_BUILD
+    jsr capture_err
+    ldx ZP_TMP3             ; capture_err counts its reads in X
+.endif
+
+    ; The code is the failing operation and the stage it reached: 1 the
+    ; command was never acknowledged, 2 it was but never completed, 3 it
+    ; completed and reported failure, 0 the command worked and its answer was
+    ; not one this can use.  The library leaves the stage in rbcp_zp_5.
+    ;
+    ; The 2KB image has room for neither this nor the diagnostic lines, and
+    ; shows the message alone.
+.ifdef DIAGS_BUILD
+    inx
+    txa
+    clc
+    adc #'0'
+    sta str_err + ERR_CODE_OP
+    lda rbcp_zp_5
+    cmp #4                  ; $FF where no stage was reached
+    bcc @stage
+    lda #0
+@stage:
+    clc
+    adc #'0'
+    sta str_err + ERR_CODE_STAGE
+.endif
+
     jsr a2_clear_screen
     jsr draw_title
     print_at str_err, ERROR_ROW, ERROR_COL
@@ -907,8 +990,125 @@ err_halt:
     lda #ERROR_ROW + 2
     ldx #ERROR_COL
     jsr print_str
+.ifdef DIAGS_BUILD
+    jsr draw_diags
+.endif
 @halt:
     jmp @halt
+
+.ifdef DIAGS_BUILD
+; ---------------------------------------------------------------------------
+; draw_diags — the raw state, for reporting rather than reading.  Marked as
+; internal so that nobody takes it for something they are meant to act on.
+;
+; GRP and CMD are what this was sending.  TOK, PRG and RSP are the
+; back-channel as it stood when it gave up.  DGRP and DCMD are the last
+; command the device says it processed, which is how a shifted frame shows
+; itself: the device answering something other than what was asked.
+; ---------------------------------------------------------------------------
+
+draw_diags:
+    lda rbcp_zp_0
+    ldy #DIAG_GRP
+    jsr poke_hex
+    lda rbcp_zp_1
+    ldy #DIAG_CMD
+    jsr poke_hex
+    lda var_hdr_tok
+    ldy #DIAG_TOK
+    jsr poke_hex
+    lda var_hdr_prg
+    ldy #DIAG_PRG
+    jsr poke_hex
+    lda var_rsp_saw
+    ldy #DIAG_RSP
+    jsr poke_hex
+    lda var_hdr_grp
+    ldy #DIAG_DGRP
+    jsr poke_hex
+    lda var_hdr_cmd
+    ldy #DIAG_DCMD
+    jsr poke_hex
+
+    print_at str_diag_head, DIAG_ROW, ERROR_COL
+    print_at str_diag1, DIAG_ROW + 1, ERROR_COL
+    print_at str_diag2, DIAG_ROW + 2, ERROR_COL
+
+    lda var_rsp_valid
+    beq @no_capture
+    lda var_rsp_settle
+    ldy #DIAG_SETTLE
+    jsr poke_hex
+    print_at str_diag3, DIAG_ROW + 3, ERROR_COL
+@no_capture:
+    rts
+
+; ---------------------------------------------------------------------------
+; capture_err — the response header as it stood when the library gave up.
+; Called with A as the library left it.
+;
+; The snapshot comes first and unrolled, so that it is taken within about
+; forty cycles of the read that failed.  Only a stage 3 failure leaves the
+; response byte in A, so only that case times how long the response then took
+; to say OK.  The count saturates at $FF, which therefore reads as never.
+; ---------------------------------------------------------------------------
+
+capture_err:
+    sta var_rsp_saw
+    lda CONFIG_RBCP_BCH_BASE + 0
+    sta var_hdr_grp
+    lda CONFIG_RBCP_BCH_BASE + 1
+    sta var_hdr_cmd
+    lda RBCP_TOKEN_LSB_ADDR
+    sta var_hdr_tok
+    lda RBCP_PROGRESS_ADDR
+    sta var_hdr_prg
+
+    ldx rbcp_zp_5
+    cpx #3
+    beq @timed
+    lda RBCP_RESPONSE_ADDR  ; the library never got as far as reading it
+    sta var_rsp_saw
+    rts
+@timed:
+    ldx #0
+@wait:
+    lda RBCP_RESPONSE_ADDR
+    cmp #RBCP_STATUS_OK
+    beq @settled
+    inx
+    cpx #$FF
+    bne @wait
+@settled:
+    stx var_rsp_settle
+    lda #1
+    sta var_rsp_valid
+    rts
+
+; poke_hex — A as two hex characters at str_diag1 + Y.  The two lines are one
+; run of bytes with a terminator between them, so one offset reaches both.
+poke_hex:
+    pha
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    jsr @nibble
+    sta str_diag1, y
+    iny
+    pla
+    and #$0F
+    jsr @nibble
+    sta str_diag1, y
+    rts
+@nibble:
+    cmp #10
+    bcc @digit
+    adc #6                  ; carry is set, so this adds 7
+@digit:
+    adc #'0'
+    rts
+.endif
 
 err_lo:
     .byte <msg_err_cmd_resp, <msg_err_version, <msg_err_ram_info
@@ -936,7 +1136,12 @@ str_header:
 .else
                 .byte "APPLE ][ ROM BOOTLOADER", 0
 .endif
+.if COUNTDOWN_SECS > 9
+str_counting:   .byte "BOOTING IN ", '0' + COUNTDOWN_SECS / 10
+                .byte "0 - ANY KEY FOR MENU", 0
+.else
 str_counting:   .byte "BOOTING IN 0 - ANY KEY FOR MENU", 0
+.endif
 .if CONFIG_ROM_SIZE > $0800
 str_rocks:      .byte "piers.rocks", 0
 .endif
@@ -947,7 +1152,17 @@ str_footer:     .byte "RETURN BOOTS, ARROWS OR 0-9 PICK", 0
 ; a II or II+ displays is.
 msg_switching:  .byte "Switching to slot $", 0
 
+.ifdef DIAGS_BUILD
+str_err:            .byte "RBCP ERROR 00", 0
+str_diag_head:      .byte "INTERNAL DIAGNOSTICS", 0
+str_diag1:          .byte "GRP:00 CMD:00 TOK:00", 0
+str_diag2:          .byte "PRG:00 RSP:00 DGRP:00 DCMD:00", 0
+str_diag3:          .byte "RESPONSE OK AFTER:00", 0
+.assert str_diag2 - str_diag1 = DIAG_LINE2, error, "diagnostic field offsets have drifted"
+.assert str_diag3 - str_diag1 = DIAG_LINE3, error, "diagnostic field offsets have drifted"
+.else
 str_err:            .byte "RBCP ERROR", 0
+.endif
 msg_err_cmd_resp:   .byte "NO REPLY", 0
 msg_err_version:    .byte "PROTOCOL VERSION", 0
 msg_err_ram_info:   .byte "NO RAM INFO", 0

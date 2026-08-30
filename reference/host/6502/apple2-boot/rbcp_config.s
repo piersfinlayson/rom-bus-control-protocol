@@ -91,7 +91,6 @@ CONFIG_RBCP_TIMEOUT_RETRIES = $00
 ; available to detect when the device is ready for the next command).  This is
 ; an arbitrary value with no fixed unit.  $00 = no pause.
 ; - $04 works using One ROM host-control plugin and a C64 bootloader kernal
-; - $10 works with logging enabled with the One ROM host-control plugin
 CONFIG_RBCP_CMD_PAUSE = $04
 
 ; Set to the base address of the ZP block that the RBCP library should use.
