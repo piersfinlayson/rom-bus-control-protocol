@@ -724,6 +724,8 @@ The first 8 bytes of the back-channel region form the response header, present i
 
 Command-specific response data follows the header at offset 8, in the space provided by the active format identifier, assuming sufficient ROM space has been allocated.
 
+The device sets the reserved bytes to zero while processing ENTER_CMD_RESP, after it has set the response field and before it sets progress to complete. Where ENTER_CMD_RESP is discarded or fails, the device does not write them, having not entered command-response mode. The device writes no other byte of the response header except as the [command processing sequence](#command-processing-sequence) requires.
+
 ### Command Processing Sequence
 
 On receipt of a command the device performs the following steps in order:

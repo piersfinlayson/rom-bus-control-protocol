@@ -4,6 +4,10 @@ Substantive changes to the specification are documented in this file.
 
 ## v0.1.2 - unreleased
 
+- Say when the device sets the response header's reserved bytes: inside ENTER_CMD_RESP,
+  after the response field and before complete, so a version giving them a meaning need
+  not move them. Not written where that command is discarded or fails. No other header
+  byte is written outside the processing sequence. Previously unspecified
 - Add group 0x04, Pipes: transfer bytes between the host and a pipe on the device.
   A pipe carries one direction or both. PIPE_WRITE takes four bytes, all or none.
   PIPE_READ takes what the device has, and reports bytes it discarded. Additive
