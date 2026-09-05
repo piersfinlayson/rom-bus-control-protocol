@@ -163,3 +163,34 @@ jobs:
         with:
           name: romsel
           path: reference/host/x86/romsel/build/romsel.exe
+
+  # The makefile's clean recipe is the one place the host shows through, and
+  # only a DOS, Windows or OS/2 wmake takes that branch.  This job runs it.
+  build-romsel-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Open Watcom
+        shell: pwsh
+        run: |
+          curl.exe -sSLo ow-snapshot.tar.xz https://github.com/open-watcom/open-watcom-v2/releases/download/Current-build/ow-snapshot.tar.xz
+          New-Item -ItemType Directory -Force "$env:USERPROFILE\watcom" | Out-Null
+          tar -xf ow-snapshot.tar.xz -C "$env:USERPROFILE\watcom" --strip-components=1
+          Add-Content $env:GITHUB_ENV "WATCOM=$env:USERPROFILE\watcom"
+          Add-Content $env:GITHUB_ENV "INCLUDE=$env:USERPROFILE\watcom\h"
+          Add-Content $env:GITHUB_ENV "LIB=$env:USERPROFILE\watcom\lib286;$env:USERPROFILE\watcom\lib286\dos"
+          Add-Content $env:GITHUB_PATH "$env:USERPROFILE\watcom\binnt64"
+
+      - name: Build romsel
+        shell: pwsh
+        working-directory: reference/host/x86/romsel
+        run: wmake
+
+      # Leaving nothing behind is part of what this job checks.
+      - name: Clean romsel
+        shell: pwsh
+        working-directory: reference/host/x86/romsel
+        run: |
+          wmake clean
+          if (Test-Path build) { throw "build/ survived wmake clean" }
