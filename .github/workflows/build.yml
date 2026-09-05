@@ -135,3 +135,31 @@ jobs:
         with:
           name: amiga-boot
           path: reference/host/68k/amiga-boot/build/amiga_boot.bin
+
+  build-romsel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Open Watcom is not packaged, and its installer needs a terminal.  The
+      # snapshot tarball is the same tree it would lay down.
+      - name: Install Open Watcom
+        run: |
+          curl -sSLO https://github.com/open-watcom/open-watcom-v2/releases/download/Current-build/ow-snapshot.tar.xz
+          mkdir -p "$HOME/watcom"
+          tar xJf ow-snapshot.tar.xz -C "$HOME/watcom" --strip-components=1
+          chmod -R +x "$HOME/watcom/binl64"
+          echo "WATCOM=$HOME/watcom" >> "$GITHUB_ENV"
+          echo "INCLUDE=$HOME/watcom/h" >> "$GITHUB_ENV"
+          echo "LIB=$HOME/watcom/lib286:$HOME/watcom/lib286/dos" >> "$GITHUB_ENV"
+          echo "$HOME/watcom/binl64" >> "$GITHUB_PATH"
+
+      - name: Build romsel
+        working-directory: reference/host/x86/romsel
+        run: wmake
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: romsel
+          path: reference/host/x86/romsel/build/romsel.exe

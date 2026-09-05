@@ -24,6 +24,7 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/apple2-boot/test/`](reference/host/6502/apple2-boot/test/README.md) — A fake RBCP device in MAME's Lua, which runs the Apple II bootloader against an emulated machine with no hardware attached
   - [`68k/rbcp/`](reference/host/68k/rbcp/README.md) — Generic 68K RBCP routines, including the bus mapping needed where the device is narrower than the host's bus
   - [`68k/amiga-boot/`](reference/host/68k/amiga-boot/README.md) — A sample Amiga Kickstart bootloader using RBCP
+  - [`x86/romsel/`](reference/host/x86/romsel/README.md) — A DOS program that picks which image a One ROM serves from an 8088 machine's BIOS socket, and resets into it
 - [`reference/device/`](reference/device/README.md) — Reference device implementations (i.e. emulated ROMs supporting RBCP)
 
 ## Status

@@ -16,6 +16,19 @@ jobs:
       - name: Install cc65
         run: sudo apt-get install -y cc65
 
+      # Open Watcom is not packaged, and its installer needs a terminal.  The
+      # snapshot tarball is the same tree it would lay down.
+      - name: Install Open Watcom
+        run: |
+          curl -sSLO https://github.com/open-watcom/open-watcom-v2/releases/download/Current-build/ow-snapshot.tar.xz
+          mkdir -p "$HOME/watcom"
+          tar xJf ow-snapshot.tar.xz -C "$HOME/watcom" --strip-components=1
+          chmod -R +x "$HOME/watcom/binl64"
+          echo "WATCOM=$HOME/watcom" >> "$GITHUB_ENV"
+          echo "INCLUDE=$HOME/watcom/h" >> "$GITHUB_ENV"
+          echo "LIB=$HOME/watcom/lib286:$HOME/watcom/lib286/dos" >> "$GITHUB_ENV"
+          echo "$HOME/watcom/binl64" >> "$GITHUB_PATH"
+
       - name: Build c64-boot
         working-directory: reference/host/6502/c64-boot
         run: make
@@ -27,6 +40,10 @@ jobs:
       - name: Build apple2-boot
         working-directory: reference/host/6502/apple2-boot
         run: make
+
+      - name: Build romsel
+        working-directory: reference/host/x86/romsel
+        run: wmake
 
       - name: Extract version
         id: version
@@ -43,3 +60,4 @@ jobs:
             reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
             reference/host/6502/apple2-boot/build/apple2_boot_f8.bin
             reference/host/6502/apple2-boot/build/apple2_boot_ef.bin
+            reference/host/x86/romsel/build/romsel.exe
