@@ -3,7 +3,7 @@
 Pick which image a One ROM serves from the BIOS socket of an 8088 machine,
 from DOS, and reset into it.
 
-Written by Adrian Black.
+Written by anonymous.
 
 ## What it does
 
