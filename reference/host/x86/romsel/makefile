@@ -1,6 +1,6 @@
 # ROMSEL - Open Watcom wmake.  Needs wcc, wlink and wmake on the path, with
-# WATCOM, INCLUDE and LIB set for a 16-bit DOS target.  DOS and Linux hosts
-# both build it, and produce the same binary.
+# WATCOM, INCLUDE and LIB set for a 16-bit DOS target.  Windows and Linux
+# hosts produce the same binary.
 #
 #   wmake
 #
@@ -14,15 +14,7 @@
 CC      = wcc
 LINK    = wlink
 
-!ifdef __UNIX__
-BLD     = build/
-MKBLD   = mkdir -p build
-CLEAN   = rm -rf build
-!else
-BLD     = build\
-MKBLD   = if not exist build mkdir build
-CLEAN   = if exist build rmdir /s /q build
-!endif
+BLD     = build
 
 ROM_SEG  = 0xFE00
 ROM_SIZE = 0x2000
@@ -37,30 +29,40 @@ DEFS = -DCFG_ROM_SEG=$(ROM_SEG) -DCFG_ROM_SIZE=$(ROM_SIZE) &
 
 CFLAGS = -q -0 -ms -bt=dos -os -s -zq -wx $(DEFS)
 
-OBJS = $(BLD)romsel.obj $(BLD)rbcp.obj $(BLD)vid.obj
+OBJS = $(BLD)/romsel.obj $(BLD)/rbcp.obj $(BLD)/vid.obj
 
-all : $(BLD)romsel.exe .SYMBOLIC
+all : $(BLD)/romsel.exe .SYMBOLIC
 
 # wlink puts the map in the current directory unless it is named, and
 # nothing but build/ is generated here.
-$(BLD)romsel.exe : $(OBJS)
-	$(LINK) system dos name $(BLD)romsel.exe &
-	    option quiet, map=$(BLD)romsel.map &
-	    file $(BLD)romsel.obj file $(BLD)rbcp.obj file $(BLD)vid.obj
+$(BLD)/romsel.exe : $(OBJS)
+	$(LINK) system dos name $(BLD)/romsel.exe &
+	    option quiet, map=$(BLD)/romsel.map &
+	    file $(BLD)/romsel.obj file $(BLD)/rbcp.obj file $(BLD)/vid.obj
 
 # Without -fo= Watcom writes .obj on DOS and .o on Linux, and the two hosts
 # stop building the same file.
-$(BLD)romsel.obj : romsel.c rbcp.h vid.h config.h
-	@$(MKBLD)
-	$(CC) $(CFLAGS) -fo=$(BLD)romsel.obj romsel.c
+$(BLD)/romsel.obj : romsel.c rbcp.h vid.h config.h
+	@if not exist $(BLD) mkdir $(BLD)
+	$(CC) $(CFLAGS) -fo=$(BLD)/romsel.obj romsel.c
 
-$(BLD)rbcp.obj : rbcp.c rbcp.h config.h
-	@$(MKBLD)
-	$(CC) $(CFLAGS) -fo=$(BLD)rbcp.obj rbcp.c
+$(BLD)/rbcp.obj : rbcp.c rbcp.h config.h
+	@if not exist $(BLD) mkdir $(BLD)
+	$(CC) $(CFLAGS) -fo=$(BLD)/rbcp.obj rbcp.c
 
-$(BLD)vid.obj : vid.c vid.h
-	@$(MKBLD)
-	$(CC) $(CFLAGS) -fo=$(BLD)vid.obj vid.c
+$(BLD)/vid.obj : vid.c vid.h
+	@if not exist $(BLD) mkdir $(BLD)
+	$(CC) $(CFLAGS) -fo=$(BLD)/vid.obj vid.c
 
+# wmake handles its own DEL and RMDIR rather than passing them to a shell,
+# and on Windows the shell reads build/*.obj as a switch.  This is the one
+# recipe where the host shows through.
 clean : .SYMBOLIC
-	@$(CLEAN)
+!ifdef __UNIX__
+	@rm -rf $(BLD)
+!else
+	@if exist $(BLD) del /q $(BLD)\*.obj
+	@if exist $(BLD) del /q $(BLD)\*.exe
+	@if exist $(BLD) del /q $(BLD)\*.map
+	@if exist $(BLD) rmdir $(BLD)
+!endif

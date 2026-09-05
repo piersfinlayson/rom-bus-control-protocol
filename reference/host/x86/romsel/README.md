@@ -71,7 +71,7 @@ Reads of the data area are reads of RAM. They are not calls.
 
 Needs [Open Watcom](https://github.com/open-watcom/open-watcom-v2) with
 `wcc`, `wlink` and `wmake` on the path, and `WATCOM`, `INCLUDE` and `LIB` set
-for a 16-bit DOS target. It hosts on DOS, Windows and Linux, and the DOS and
+for a 16-bit DOS target. It hosts on DOS, Windows and Linux. The Windows and
 Linux builds are byte-identical. There is no macOS build.
 
 The build tool is Open Watcom's own `wmake`, not GNU make.
