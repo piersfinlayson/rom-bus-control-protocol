@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-Version: 0.1.2
+Version: 0.1.2 IN DEVELOPMENT
 
 This specification may be freely implemented without restriction.
 
