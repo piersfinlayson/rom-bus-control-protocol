@@ -24,7 +24,7 @@ For example, using One ROM and the pre-built bootloader binary:
 
 ```
 onerom program  --plugin usb --plugin host-control \
-                --slot https://images.onerom.org/roms/host-control/v0.1.0/vic20_pal_boot.bin,type=2364,cs1=0 \
+                --slot https://images.onerom.org/roms/host-control/vic20-boot/latest/vic20_boot_pal.bin,type=2364,cs1=0 \
                 --slot kernal1.bin,type=2364,cs1=0 \
                 --slot kernal2.bin,type=2364,cs1=0
 ```

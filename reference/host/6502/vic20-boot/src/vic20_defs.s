@@ -6,6 +6,13 @@
 .include "../rbcp/rbcp_defs.s"
 
 ; ---------------------------------------------------------------------------
+; This bootloader's own version.  It is not the protocol's version and it is
+; not the device's.  RELEASE.md says when it changes and how it is published.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)
 ; ---------------------------------------------------------------------------
 

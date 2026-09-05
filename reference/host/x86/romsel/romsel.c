@@ -186,7 +186,7 @@ static void frame(void)
 {
     vid_clear(A_NORM);
     vid_fill(0, 0, 80, ' ', A_SEL);
-    vid_puts(0, 2, "ROMSEL - One ROM image selector", A_SEL);
+    vid_puts(0, 2, "ROMSEL " CFG_VERSION " - One ROM image selector", A_SEL);
     vid_fill(24, 0, 80, ' ', A_SEL);
     vid_puts(24, 2, "UP/DOWN or 0-9 select   ENTER boot   ESC quit", A_SEL);
 }

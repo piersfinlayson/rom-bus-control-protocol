@@ -26,6 +26,7 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`68k/amiga-boot/`](reference/host/68k/amiga-boot/README.md) — A sample Amiga Kickstart bootloader using RBCP
   - [`x86/romsel/`](reference/host/x86/romsel/README.md) — A DOS program that picks which image a One ROM serves from an 8088 machine's BIOS socket, and resets into it
 - [`reference/device/`](reference/device/README.md) — Reference device implementations (i.e. emulated ROMs supporting RBCP)
+- [`RELEASE.md`](RELEASE.md) — How a release, and an application, is published
 
 ## Status
 

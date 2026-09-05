@@ -8,11 +8,22 @@ Auto-boots the last booted kernal (or the first kernal) if no key is pressed dur
 
 This bootloader is compatible with cartridges such as Kung Fu Flash.
 
-## Pre-built Binary
+## Pre-built Binaries
 
-https://images.onerom.org/roms/host-control/v0.1.0/c64_bootloader.bin
+An 8KB kernal ROM, and a 16KB image holding basic and the kernal together for
+a C64C.
+
+https://images.onerom.org/roms/host-control/c64-bootloader/latest/c64_bootloader.bin
+
+https://images.onerom.org/roms/host-control/c64-bootloader/latest/c64_bootloader_c64c.bin
 
 ## Source Code
+
+The published images are built from a fork, which adds the C64C target:
+
+https://github.com/piersfinlayson/c64-bootloader
+
+Upstream, and where the bootloader comes from:
 
 https://github.com/r107sl/c64-bootloader
 
@@ -24,7 +35,7 @@ For example, using One ROM and the pre-built bootloader binary:
 
 ```
 onerom program  --plugin usb --plugin host-control \
-                --slot file=https://images.onerom.org/roms/host-control/v0.1.0/c64_bootloader.bin,type=2364,cs1=0 \
+                --slot file=https://images.onerom.org/roms/host-control/c64-bootloader/latest/c64_bootloader.bin,type=2364,cs1=0 \
                 --slot file=kernal1.bin,type=2364,cs1=0 \
                 --slot file=kernal2.bin,type=2364,cs1=0
 ``` 
@@ -34,12 +45,15 @@ onerom program  --plugin usb --plugin host-control \
 Requires ca65/cc65/ld65.
 
 ```bash
-git clone https://github.com/r107sl/c64-bootloader
+git clone https://github.com/piersfinlayson/c64-bootloader
 cd c64-bootloader
 make
+make TARGET=c64c
 ```
 
-Creates `./rom.bin`.
+The default target creates `./c64_bootloader.bin`, the 8KB kernal ROM.
+`TARGET=c64c` creates `./c64_bootloader_c64c.bin`, the 16KB image with basic
+in the lower half and the kernal in the upper.
 
 ## License
 

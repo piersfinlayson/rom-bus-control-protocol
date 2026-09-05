@@ -60,7 +60,13 @@ MENU_ENTRY_ROW0  = 3
 MAX_DISPLAY      = FOOTER_ROW - 2 - MENU_ENTRY_ROW0 + 1
 
 TITLE_ROW        = 0
+; The 8KB title carries this bootloader's version and the 2KB one does not,
+; so the two are centred to different widths.
+.if CONFIG_ROM_SIZE > $0800
+TITLE_COL        = 5
+.else
 TITLE_COL        = 8
+.endif
 MENU_ENTRY_COL   = 6
 
 ERROR_ROW        = 12
@@ -1130,9 +1136,10 @@ err_hi:
 ; the session is open.
 ; ===========================================================================
 
+; The 2KB image has no room to spare, so only the 8KB one shows the version.
 str_header:
 .if CONFIG_ROM_SIZE > $0800
-                .byte "Apple ][ ROM Bootloader", 0
+                .byte "Apple ][ ROM Bootloader ", APP_VERSION, 0
 .else
                 .byte "APPLE ][ ROM BOOTLOADER", 0
 .endif

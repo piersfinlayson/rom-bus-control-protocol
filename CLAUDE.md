@@ -49,7 +49,11 @@ Adding one under `reference/host/` means all of:
   holding its ROM address, size, command page and back-channel region.
 - `reference/host/68k/` — the same for 68K hosts, where the library is a single
   file included by the application.
+- `reference/host/x86/romsel/` — a DOS application, built with Open Watcom's
+  `wmake`. `GNUmakefile` catches `make` and says to use `wmake`.
 - `host-apps/` — applications that are not reference implementations.
+- `tools/publish.py` — copies release artefacts into a `one-rom-images`
+  checkout and updates its manifests. See `RELEASE.md`.
 
 `build/` is ignored everywhere. Nothing else is generated into the tree.
 

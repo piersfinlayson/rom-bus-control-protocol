@@ -4,6 +4,14 @@
 .include "c64_defs.s"
 
 ; ---------------------------------------------------------------------------
+; This bootloader's own version, shown in the header.  It is not the
+; protocol's version and it is not the device's.  RELEASE.md says when it
+; changes and how it is published.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
 ; Imports
 ; ---------------------------------------------------------------------------
 
@@ -1109,7 +1117,7 @@ pause_before_reset:
 ; String data (RODATA — accessed via RAM so in code)
 ; ===========================================================================
 
-str_header:         .byte "      C64 RBCP KERNAL BOOTLOADER", 0
+str_header:         .byte "   C64 RBCP KERNAL BOOTLOADER ", APP_VERSION, 0
 str_copright:       .byte "         (C) 2026 PIERS.ROCKS", 0
 str_prompt:         .byte "SELECT KERNAL:", 0
 str_footer:         .byte "   UP/DOWN TO MOVE, RETURN TO BOOT", 0

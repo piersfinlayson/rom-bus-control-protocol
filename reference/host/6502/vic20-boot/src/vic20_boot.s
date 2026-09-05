@@ -962,7 +962,7 @@ pause_before_reset:
 ; String data (RODATA — accessed via RAM so in code)
 ; ===========================================================================
 
-str_header:     .byte "  VIC-20 RBCP BOOT", 0
+str_header:     .byte "VIC-20 RBCP ", APP_VERSION, 0
 str_copyright:  .byte "(C) 2026 PIERS.ROCKS", 0
 str_prompt:     .byte "SELECT KERNAL:", 0
 str_footer:     .byte "UP/DN=MOVE  RET=BOOT", 0

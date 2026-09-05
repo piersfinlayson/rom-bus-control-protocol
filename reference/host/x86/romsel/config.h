@@ -1,8 +1,13 @@
 /* config.h - build-time settings for ROMSEL.
-   Every value here describes the installation, not the protocol. */
+   The version is ROMSEL's own. Everything after it describes the
+   installation, not the protocol. */
 
 #ifndef CONFIG_H
 #define CONFIG_H
+
+/* ROMSEL's version, shown on every screen. Not overridable: a build must not
+   be able to claim a version it is not. */
+#define CFG_VERSION     "0.1.0"
 
 /* SEGMENT THE ROM WINDOW STARTS AT:
    An 8 KB XT BIOS lives at F000:E000, physical FE000. Expressing that as
