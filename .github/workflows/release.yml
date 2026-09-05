@@ -41,6 +41,18 @@ jobs:
         working-directory: reference/host/6502/apple2-boot
         run: make
 
+      - name: Build c64-rbcp-stress
+        working-directory: reference/host/6502/c64-rbcp-stress
+        run: make
+
+      - name: Build vic20-rbcp-stress
+        working-directory: reference/host/6502/vic20-rbcp-stress
+        run: make
+
+      - name: Build apple2-rbcp-stress
+        working-directory: reference/host/6502/apple2-rbcp-stress
+        run: make
+
       - name: Build romsel
         working-directory: reference/host/x86/romsel
         run: wmake
@@ -60,4 +72,10 @@ jobs:
             reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
             reference/host/6502/apple2-boot/build/apple2_boot_f8.bin
             reference/host/6502/apple2-boot/build/apple2_boot_ef.bin
+            reference/host/6502/c64-rbcp-stress/build/c64_meter_kernal.bin
+            reference/host/6502/c64-rbcp-stress/build/c64_meter_basic.bin
+            reference/host/6502/c64-rbcp-stress/build/c64_meter_combined.bin
+            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_pal.bin
+            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_ntsc.bin
+            reference/host/6502/apple2-rbcp-stress/build/apple2_meter.bin
             reference/host/x86/romsel/build/romsel.exe

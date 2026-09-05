@@ -111,6 +111,41 @@ jobs:
             make BOARD=$board build/rbcp_led_demo.prg
           done
 
+  build-rbcp-meter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      # One program, three machines.  Each build has to be run, because the
+      # shared code is assembled against a different screen and a different
+      # ROM address every time.
+      - name: Build c64-rbcp-stress
+        working-directory: reference/host/6502/c64-rbcp-stress
+        run: make
+
+      - name: Build vic20-rbcp-stress
+        working-directory: reference/host/6502/vic20-rbcp-stress
+        run: make
+
+      - name: Build apple2-rbcp-stress
+        working-directory: reference/host/6502/apple2-rbcp-stress
+        run: make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rbcp-meter
+          path: |
+            reference/host/6502/c64-rbcp-stress/build/c64_meter_kernal.bin
+            reference/host/6502/c64-rbcp-stress/build/c64_meter_basic.bin
+            reference/host/6502/c64-rbcp-stress/build/c64_meter_combined.bin
+            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_pal.bin
+            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_ntsc.bin
+            reference/host/6502/apple2-rbcp-stress/build/apple2_meter.bin
+
   build-amiga-boot:
     runs-on: ubuntu-latest
     steps:

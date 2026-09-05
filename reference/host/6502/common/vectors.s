@@ -1,14 +1,24 @@
 ; vectors.s — Back-channel fill, interrupt stubs, ROM vectors
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
+;
+; A kernal socket image holds the 6502 vector table at $FFFA and is entered at
+; reset.  A BASIC socket image (BASIC_SOCKET) has neither - the kernal enters
+; BASIC through the word at $A000, and the interrupt vectors stay the kernal's.
 
     .import boot_entry
 
 ; ---------------------------------------------------------------------------
-; FILL segment — back-channel region ($E000-$E2FF, 768 bytes of $00)
+; FILL segment — the command page, then the 768 byte back-channel region
 ; ---------------------------------------------------------------------------
 
 .segment "FILL"
+
+.ifdef BASIC_SOCKET
+    .word boot_entry        ; $A000-$A001  BASIC cold start
+    .res 766, $00
+.else
     .res 768, $00
+.endif
 
 ; ---------------------------------------------------------------------------
 ; BOOT segment — irq_nmi_stub runs from ROM
@@ -19,6 +29,8 @@
 ; The stub must be in BOOT (ROM address) so the vectors are valid before
 ; the CODE segment has been copied to RAM.
 ; ---------------------------------------------------------------------------
+
+.ifndef BASIC_SOCKET
 
 .segment "BOOT"
 
@@ -34,3 +46,5 @@ irq_nmi_stub:
     .word irq_nmi_stub      ; $FFFA-$FFFB  NMI
     .word boot_entry        ; $FFFC-$FFFD  RESET
     .word irq_nmi_stub      ; $FFFE-$FFFF  IRQ/BRK
+
+.endif
