@@ -29,3 +29,7 @@ Some of the C64 implementations in this directory use display disable approach.
 - [C64 Reliability Meter](c64-rbcp-stress/README.md): A ROM that counts how many RBCP commands a device answers per one it gets wrong, in an 8KB image for each of the two C64 ROM sockets and a 16KB image spanning both.
 - [VIC-20 Reliability Meter](vic20-rbcp-stress/README.md): The same meter for a VIC-20, PAL and NTSC.
 - [Apple IIe Reliability Meter](apple2-rbcp-stress/README.md): The same meter for an Apple IIe, which can be run against the fake RBCP device in MAME's Lua.
+- [C64 RBCP Terminal](c64-rbcp-term/README.md): A ROM that sends what you type down an RBCP pipe, in an 8KB image for each of the two C64 ROM sockets and a 16KB image spanning both.
+- [VIC-20 RBCP Terminal](vic20-rbcp-term/README.md): The same terminal for a VIC-20, PAL and NTSC, on an unexpanded machine.
+- [Apple IIe RBCP Terminal](apple2-rbcp-term/README.md): The same terminal for an Apple IIe, which can be run against the fake RBCP device in MAME's Lua.
+- `term/`: Code shared by the terminal programs.

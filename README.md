@@ -29,6 +29,9 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/vic20-rbcp-stress/`](reference/host/6502/vic20-rbcp-stress/README.md) — An RBCP reliability meter for a VIC-20
   - [`6502/apple2-rbcp-stress/`](reference/host/6502/apple2-rbcp-stress/README.md) — An RBCP reliability meter for an Apple IIe
   - [`6502/stress/`](reference/host/6502/stress/README.md) — Reliability meter shared 6502 routines
+  - [`6502/c64-rbcp-term/`](reference/host/6502/c64-rbcp-term/README.md) — A C64 RBCP terminal ROM that sends what you type down an RBCP pipe and out of the device's USB port
+  - [`6502/vic20-rbcp-term/`](reference/host/6502/vic20-rbcp-term/README.md) — An RBCP terminal for a VIC-20
+  - [`6502/apple2-rbcp-term/`](reference/host/6502/apple2-rbcp-term/README.md) — An RBCP terminal for an Apple IIe
   - [`68k/rbcp/`](reference/host/68k/rbcp/README.md) — Generic 68K RBCP routines, including the bus mapping needed where the device is narrower than the host's bus
   - [`68k/amiga-boot/`](reference/host/68k/amiga-boot/README.md) — A sample Amiga Kickstart bootloader using RBCP
   - [`x86/romsel/`](reference/host/x86/romsel/README.md) — A DOS program that picks which image a One ROM serves from an 8088 machine's BIOS socket, and resets into it

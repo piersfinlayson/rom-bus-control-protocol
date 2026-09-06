@@ -19,6 +19,9 @@ This directory contains reference implementations of RBCP hosts for various plat
   - [`6502/vic20-rbcp-stress/`](6502/vic20-rbcp-stress/README.md) — A VIC-20 RBCP reliability meter
   - [`6502/apple2-rbcp-stress/`](6502/apple2-rbcp-stress/README.md) — An Apple IIe RBCP reliability meter
   - [`6502/stress/`](6502/stress/README.md) — Shared 6502 RBCP reliability meter routines
+  - [`6502/c64-rbcp-term/`](6502/c64-rbcp-term/README.md) — A C64 RBCP terminal
+  - [`6502/vic20-rbcp-term/`](6502/vic20-rbcp-term/README.md) — A VIC-20 RBCP terminal
+  - [`6502/apple2-rbcp-term/`](6502/apple2-rbcp-term/README.md) — An Apple IIe RBCP terminal
 - [`68k/`](68k/README.md) — 68000-family systems
   - [`68k/rbcp/`](68k/rbcp/README.md) — Generic 68K RBCP routines, including the bus mapping needed where the device is narrower than the host's bus
   - [`68k/amiga-boot/`](68k/amiga-boot/README.md) — An Amiga Kickstart bootloader
