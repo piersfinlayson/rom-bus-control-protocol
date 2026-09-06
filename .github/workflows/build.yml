@@ -87,12 +87,9 @@ jobs:
 
       # The .prg targets only.  Packaging them into a .d64 needs c1541 from
       # VICE, which is not worth installing to prove they assemble.
-      - name: Build c64-pipe-test
-        working-directory: reference/host/6502/c64-pipe-test
-        run: make build/rbcp_pipe_test.prg
-
-      # Every demo board, because each one assembles different code and only a
-      # build catches a board whose tables no longer match the program.
+      #
+      # Every demo board too, because each one assembles different code and
+      # only a build catches a board whose tables no longer match the program.
       - name: Build c64-aux-test
         working-directory: reference/host/6502/c64-aux-test
         run: |
@@ -110,6 +107,42 @@ jobs:
             make clean
             make BOARD=$board build/rbcp_led_demo.prg
           done
+
+  build-pipe-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      # One program, three machines.  Every image has to be built, because the
+      # shared code is assembled against a different screen, a different clock
+      # and a different ROM address each time.
+      - name: Build c64-pipe-test
+        working-directory: reference/host/6502/c64-pipe-test
+        run: make
+
+      - name: Build vic20-pipe-test
+        working-directory: reference/host/6502/vic20-pipe-test
+        run: make
+
+      - name: Build apple2-pipe-test
+        working-directory: reference/host/6502/apple2-pipe-test
+        run: make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipe-test
+          path: |
+            reference/host/6502/c64-pipe-test/build/c64_pipe_kernal.bin
+            reference/host/6502/c64-pipe-test/build/c64_pipe_basic.bin
+            reference/host/6502/c64-pipe-test/build/c64_pipe_combined.bin
+            reference/host/6502/vic20-pipe-test/build/vic20_pipe_pal.bin
+            reference/host/6502/vic20-pipe-test/build/vic20_pipe_ntsc.bin
+            reference/host/6502/apple2-pipe-test/build/apple2_pipe_pal.bin
+            reference/host/6502/apple2-pipe-test/build/apple2_pipe_ntsc.bin
 
   build-rbcp-meter:
     runs-on: ubuntu-latest

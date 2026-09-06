@@ -4,29 +4,13 @@
 ; The window is exactly one second, so the byte count in it is the rate.  There
 ; is no division and no multiply anywhere in this file.
 ;
-; That falls out of an arithmetic fact.  The PAL clock is 985248 Hz and
-; 985248 = 32 * 30789, so a Timer A period of 30789 cycles underflowing 32
-; times is one second to the cycle.  NTSC is 1022727 Hz, which is not an integer
-; multiple of anything useful — the real figure is 14318181/14 — so 32 periods
-; of 31960 gives 1022720 cycles, 6.8 parts per million short of a second.  At
-; the rates being measured that is well under a single byte.
-;
-; A CIA reloads from its latch and counts down through zero, so the latch value
-; written is the period minus one.
-;
-; Timer B counts Timer A underflows.  A window has closed when Timer B has
-; stepped 32 times, which is one read of its low byte — the byte alone only
-; becomes ambiguous after 256 underflows, and the check runs once per line.
-;
-; CIA2 rather than CIA1, which carries the keyboard matrix and the kernal's own
-; timer, and is left as found.  The interrupt mask at $DD0D is not touched, so
-; neither timer can raise an NMI.
+; A window has closed when the machine's clock has stepped PLAT_TICK_HZ times.
+; What the clock is, and how a tick is made to be exactly a
+; PLAT_TICK_HZ-th of a second, is the machine's business — see its plat_defs.s.
+; One byte of it is read, which stays unambiguous as long as no more than 255
+; ticks pass between two reads, and this check runs once a line.
 
     .include "pipe_defs.s"
-
-WINDOW_UNDERFLOWS = 32
-PAL_TA_LATCH      = 30789 - 1
-NTSC_TA_LATCH     = 31960 - 1
 
 ; ---------------------------------------------------------------------------
 .bss
@@ -37,7 +21,6 @@ NTSC_TA_LATCH     = 31960 - 1
 .export bytes_win, bytes_total, lines_total
 .export refusals, errors
 .export rate_now, rate_best, rate_mean, secs
-.export video_pal
 
 bytes_win:      .res 3      ; bytes sent in the window now open
 bytes_total:    .res 4
@@ -49,89 +32,11 @@ rate_best:      .res 3
 secs:           .res 2      ; windows closed since the run started
 rate_mean:      .res 3      ; total bytes over elapsed seconds, at run end
 
-video_pal:      .res 1      ; non-zero PAL, from the kernal's own flag
-
-.export armed_flag
-armed_flag:     .res 1      ; non-zero once the session is open and checked
-
-saved_cia2:     .res 6      ; TA lo/hi, TB lo/hi, CRA, CRB
-win_tb_lo:      .res 1      ; Timer B low byte when the window opened
+win_tick:       .res 1      ; the clock when the window opened
 
 ; ---------------------------------------------------------------------------
 .code
 ; ---------------------------------------------------------------------------
-
-; ---------------------------------------------------------------------------
-; timing_start — takes CIA2 and programs it.  Clobbers A.
-; ---------------------------------------------------------------------------
-
-.export timing_start
-timing_start:
-    lda CIA2_TA_LO
-    sta saved_cia2 + 0
-    lda CIA2_TA_HI
-    sta saved_cia2 + 1
-    lda CIA2_TB_LO
-    sta saved_cia2 + 2
-    lda CIA2_TB_HI
-    sta saved_cia2 + 3
-    lda CIA2_CRA
-    sta saved_cia2 + 4
-    lda CIA2_CRB
-    sta saved_cia2 + 5
-
-    lda PALNTSC                 ; the kernal set this at reset and it is right
-    sta video_pal
-
-    lda #0                      ; stop both before loading the latches
-    sta CIA2_CRA
-    sta CIA2_CRB
-
-    lda video_pal
-    beq @ntsc
-    lda #<PAL_TA_LATCH
-    sta CIA2_TA_LO
-    lda #>PAL_TA_LATCH
-    sta CIA2_TA_HI
-    jmp @latched
-@ntsc:
-    lda #<NTSC_TA_LATCH
-    sta CIA2_TA_LO
-    lda #>NTSC_TA_LATCH
-    sta CIA2_TA_HI
-@latched:
-    lda #$FF                    ; Timer B just counts, so it free-runs
-    sta CIA2_TB_LO
-    sta CIA2_TB_HI
-
-    lda #CIA2_CRB_RUN
-    sta CIA2_CRB
-    lda #CIA2_CRA_RUN
-    sta CIA2_CRA
-    rts
-
-; ---------------------------------------------------------------------------
-; timing_stop — gives CIA2 back.  Clobbers A.
-; ---------------------------------------------------------------------------
-
-.export timing_stop
-timing_stop:
-    lda #0
-    sta CIA2_CRA
-    sta CIA2_CRB
-    lda saved_cia2 + 0
-    sta CIA2_TA_LO
-    lda saved_cia2 + 1
-    sta CIA2_TA_HI
-    lda saved_cia2 + 2
-    sta CIA2_TB_LO
-    lda saved_cia2 + 3
-    sta CIA2_TB_HI
-    lda saved_cia2 + 4
-    sta CIA2_CRA
-    lda saved_cia2 + 5
-    sta CIA2_CRB
-    rts
 
 ; ---------------------------------------------------------------------------
 ; timing_reset_run — zeroes every counter and opens the first window.
@@ -155,25 +60,20 @@ timing_reset_run:
 
 .export timing_open_window
 timing_open_window:
-    lda CIA2_TB_LO
-    sta win_tb_lo
+    PLAT_CLOCK_READ
+    sta win_tick
     rts
 
 ; ---------------------------------------------------------------------------
 ; timing_window_closed — carry set if a second has passed since the window
-; opened.  Fourteen cycles, called once per line.
-;
-; Timer B counts down, so elapsed underflows are start minus now.
-;
+; opened.  Six instructions, called once per line.
 ; Clobbers A.
 ; ---------------------------------------------------------------------------
 
 .export timing_window_closed
 timing_window_closed:
-    lda win_tb_lo
-    sec
-    sbc CIA2_TB_LO
-    cmp #WINDOW_UNDERFLOWS
+    PLAT_CLOCK_ELAPSED win_tick
+    cmp #PLAT_TICK_HZ
     rts
 
 ; ---------------------------------------------------------------------------
@@ -221,6 +121,7 @@ timing_close_window:
     bne @opened
     inc secs + 1
 @opened:
+    jsr timing_mean             ; the window that just closed counts toward it
     jmp timing_open_window
 
 ; ---------------------------------------------------------------------------
@@ -265,7 +166,7 @@ timing_add_line:
 
 ; ---------------------------------------------------------------------------
 ; timing_mean — total bytes over elapsed seconds, into rate_mean.  The only
-; division in the program, and it runs once, when a run stops.
+; division in the tester, and it runs once, when a run stops.
 ;
 ; Shift and subtract: the dividend shifts left out of the top and the quotient
 ; bit shifts in at the bottom, so the two share one 32-bit word.

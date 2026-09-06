@@ -1,42 +1,35 @@
-; display.s — everything this program puts on the screen
+; display.s — the layout, and every word that goes on a screen
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; The interface
-; -------------
-; The counter block in timing.s is the interface.  This file reads it and never
-; writes it.  The rest of the program passes a status code in A and never holds
-; a string, a row, a column or a colour.
+; Every word this tester puts on a screen is here, bar the two rows of key
+; names, which are the machine's because the keys are.  Where each part of the
+; display sits is the machine's business too and comes from its plat_defs.s,
+; and putting a character on the screen is plat_put's.  What is here is the
+; layout and the words.
 ;
-; Two rules a rewrite of this file has to keep, neither of them visible in the
-; code:
-;
-;   - Write $0400 and $D800 directly.  No kernal screen calls.  CHROUT and the
-;     rest of the editor work through $D0-$F2, which this program has taken for
-;     its own zero page, so the screen memory is safe and the editor is not.
-;
-;   - Do not read $A000-$BFFF.  A stray read of the command page injects a
-;     command byte into an open session.
+; The counter block in timing.s is the interface to the rest of the tester.
+; This file reads it and never writes it.  Everything else passes a status code
+; in A.
 ;
 ; Cost: display_counters runs once per closed window and inside the window, so
-; it is inside the measured time.  That is deliberate — it keeps the C64's
+; it is inside the measured time.  That is deliberate — it keeps the machine's
 ; figure and the USB host's figure in agreement.  Eight fields of eight digits
-; is about 3500 cycles, 0.36% of a second.  That is the number to watch when
-; changing this file.
+; is a few thousand cycles, well under a percent of a second.  That is the
+; number to watch when changing this file.
 
     .include "pipe_defs.s"
 
-.import c64_clear_screen
-.import c64_print_at
-.import row_off_lo
-.import row_scr_hi
+.import plat_cls
+.import plat_row
+.import plat_put
+.import plat_reverse
+.import plat_keys_1
+.import plat_keys_2
 
 ; Written by session.s
 .import device_type_buf
 .import device_version_buf
 .import proto_ver_buf
-.import ram_slot_active
-.import exit_slot
-.import exit_flash
 
 ; The counter block, written by the run path
 .import bytes_total, lines_total, refusals, errors
@@ -52,10 +45,6 @@
 num:        .res 4          ; what print_num renders
 digit_tmp:  .res 4
 
-dark_depth:  .res 1         ; how many callers have the screen off
-dark_ctrl:   .res 1         ; VIC_CTRL1 as the outermost one found it
-dark_border: .res 1         ; and the border colour
-
 ; ---------------------------------------------------------------------------
 .code
 ; ---------------------------------------------------------------------------
@@ -68,84 +57,67 @@ dark_border: .res 1         ; and the border colour
 .endmacro
 
 ; ---------------------------------------------------------------------------
-; display_init — black border and background, white text.  White on black
-; rather than anything prettier — it is what reads on video.
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; display_init — a blank screen, the title bar, and the keys.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 .export display_init
 display_init:
-    lda #0
-    sta dark_depth
-    lda #COL_BLACK
-    sta VIC_BORDER
-    sta VIC_BACKGROUND
-    ldy #COL_WHITE
-    jsr c64_clear_screen
+    jsr plat_cls
 
     set_ptr str_title
     lda #ROW_TITLE
-    ldx #5
+    ldx #COL_TITLE
     jsr print_at
 
-    set_ptr str_keys
+    set_ptr str_brand
+    lda #ROW_TITLE
+    ldx #COL_BRAND
+    jsr print_at
+
+    lda #ROW_TITLE              ; the band goes on last, behind both
+    ldx #0
+    ldy #SCREEN_COLS
+    jsr plat_reverse
+
+    set_ptr plat_keys_1
     lda #ROW_KEYS
-    ldx #1
+    ldx #COL_KEYS
+    jsr print_at
+
+    set_ptr plat_keys_2
+    lda #ROW_KEYS + 1
+    ldx #COL_KEYS
     jmp print_at
 
 ; ---------------------------------------------------------------------------
-; display_device — device identity and RAM slot counts.
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; display_device — what the device calls itself.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 .export display_device
 display_device:
     set_ptr device_type_buf
     lda #ROW_DEVICE
-    ldx #1
+    ldx #COL_DEV
     jsr print_at
 
     set_ptr device_version_buf
-    lda #ROW_DEVICE
-    ldx #17
+    lda #ROW_VERSION
+    ldx #COL_VER
     jsr print_at
 
     set_ptr proto_ver_buf
-    lda #ROW_DEVICE
-    ldx #28
-    jsr print_at
-
-    set_ptr str_ram_slots
-    lda #ROW_SLOTS
-    ldx #1
-    jsr print_at
-
-    lda ram_slot_active
-    ldx #5
-    ldy #ROW_SLOTS
-    jmp digit_at
-
-; ---------------------------------------------------------------------------
-; display_exit_slot — fills in where the clean exit points, once verification
-; has found it.
-; Clobbers A, X, Y and the c64_hw.s scratch.
-; ---------------------------------------------------------------------------
-
-.export display_exit_slot
-display_exit_slot:
-    lda exit_slot
-    ldx #24
-    ldy #ROW_SLOTS
-    jsr digit_at
-    lda exit_flash
-    ldx #37
-    ldy #ROW_SLOTS
-    jmp digit_at
+    lda #ROW_PROTO
+    ldx #COL_PROTO
+    jmp print_at
 
 ; ---------------------------------------------------------------------------
 ; display_labels — the fixed left-hand text of every counter row.  Drawn once.
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
+
+LABEL_COUNT = 8
 
 .export display_labels
 display_labels:
@@ -158,21 +130,17 @@ display_labels:
     lda label_ptr_tab_hi, x
     sta ZP_PTR_HI
     lda label_row_tab, x
-    ldx #1
+    ldx #COL_LABEL
     jsr print_at
     inc ZP_APP6
     lda ZP_APP6
-    cmp #8
+    cmp #LABEL_COUNT
     bne @loop
     rts
 
 ; ---------------------------------------------------------------------------
 ; display_paths — the three send path names, the selected one in reverse video.
-;
-; c64_highlight_row is no use here — it reverses all forty columns, and this row
-; needs one name out of three.
-;
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 .export display_paths
@@ -191,12 +159,12 @@ display_paths:
     lda path_col_tab, x
     tax
     lda #ROW_PATHS
-    jmp reverse_span
+    jmp plat_reverse
 
 ; ---------------------------------------------------------------------------
 ; display_counters — every number on the screen.  Called once per closed
 ; window and once when a run stops.
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 .export display_counters
@@ -242,66 +210,9 @@ display_counters:
     jmp num16_at
 
 ; ---------------------------------------------------------------------------
-; display_dark and display_light — the screen off while the host is talking to
-; the device, and back to however it was found afterwards.
-;
-; A VIC-II fetching characters takes the bus off the processor, and on a badline
-; it holds it for over forty cycles.  Across that handover the device can see an
-; access that was not one, see one as two, or miss one, and any of those slips
-; the command frame by a byte.  With the display off there are no fetches.
-;
-; A pair covers a whole operation — the session opening, a run, the exit — not a
-; command, so the screen never changes state at loop rate.  Counters carry on
-; being written while it is dark and are there to read the moment a run ends.
-;
-; The border goes blue because with the display off the whole screen takes the
-; border colour, and black in both states would look like a stopped machine.
-;
-; The pair nests, so an inner one cannot put the screen back early.  Neither
-; touches a register or a flag, so either can sit between a call and the branch
-; on its carry.
-; ---------------------------------------------------------------------------
-
-.export display_dark
-display_dark:
-    php
-    pha
-    inc dark_depth
-    lda dark_depth
-    cmp #1
-    bne @out
-    lda VIC_CTRL1
-    sta dark_ctrl
-    and #<(~VIC_CTRL1_DEN)
-    sta VIC_CTRL1
-    lda VIC_BORDER
-    sta dark_border
-    lda #COL_BLUE
-    sta VIC_BORDER
-@out:
-    pla
-    plp
-    rts
-
-.export display_light
-display_light:
-    php
-    pha
-    dec dark_depth
-    bne @out
-    lda dark_border
-    sta VIC_BORDER
-    lda dark_ctrl
-    sta VIC_CTRL1
-@out:
-    pla
-    plp
-    rts
-
-; ---------------------------------------------------------------------------
 ; display_status — A = status code.  The row is blanked first, so a short
 ; message never leaves the tail of a longer one behind it.
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 .export display_status
@@ -314,13 +225,11 @@ display_status:
     tax
     lda str_status_tab, x
     sta ZP_APP0
-    lda str_status_tab+1, x
+    lda str_status_tab + 1, x
     sta ZP_APP1
 
-    set_ptr str_blank_row
     lda #ROW_STATUS
-    ldx #0
-    jsr print_at
+    jsr blank_row
 
     lda ZP_APP0
     sta ZP_PTR_LO
@@ -333,7 +242,7 @@ display_status:
 ; ---------------------------------------------------------------------------
 ; num16_at / num24_at / num32_at — A = row, X/Y = pointer to the value.
 ; Widens into the 32-bit scratch and renders it.
-; Clobbers A, X, Y and the c64_hw.s scratch.
+; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 num16_at:
@@ -375,31 +284,33 @@ num32_at:
     sta num + 3
 
 numv_go:
-    pla
-    tay                         ; row
-    ldx #NUM_COL
+    lda #NUM_COL
+    sta ZP_APP2
+    pla                         ; row
     ; fall through
 
 ; ---------------------------------------------------------------------------
-; print_num — renders num as eight digits right-aligned in the field starting
-; at column X on row Y, leading zeros as spaces.  Repeated subtraction, which
-; is slow and short, and runs once per second per field.
+; print_num — renders num as NUM_WIDTH digits right-aligned in the field
+; starting at column ZP_APP2 on the row in A, leading zeros as spaces.
+; Repeated subtraction, which is slow and short, and runs once a second per
+; field.
 ; Clobbers A, X, Y and the app zero page.
 ; ---------------------------------------------------------------------------
 
 print_num:
-    stx ZP_APP2                 ; leftmost column of the field
-    sty ZP_APP3                 ; row
+    jsr plat_row
     lda #0
     sta ZP_APP6                 ; non-zero once a digit has been emitted
     sta ZP_APP7                 ; digit position, 0 to NUM_WIDTH-1
+    ldy ZP_APP2                 ; column, and Y stays the column throughout
 
 @digit:
     lda ZP_APP7
     asl a
     asl a
     tax                         ; four bytes per pow10 entry
-    ldy #0                      ; value of this digit
+    lda #0
+    sta ZP_APP4                 ; value of this digit
 @sub:
     sec
     lda num + 0
@@ -423,35 +334,28 @@ print_num:
     sta num + 2
     lda digit_tmp + 3
     sta num + 3
-    iny
+    inc ZP_APP4
     jmp @sub
 
 @emit:
-    sty ZP_APP4                 ; digit value
-    cpy #0
+    lda ZP_APP4
     bne @show
     lda ZP_APP6
     bne @show                   ; past the leading zeros, so zeros count
     lda ZP_APP7
     cmp #(NUM_WIDTH - 1)
     beq @show                   ; the units digit always shows
-    lda #CHAR_SPACE
+    lda #' '
     jmp @put
 @show:
     lda #1
     sta ZP_APP6
     lda ZP_APP4
     clc
-    adc #$30                    ; screen codes $30-$39 are the digits
+    adc #'0'
 @put:
-    pha
-    lda ZP_APP2
-    clc
-    adc ZP_APP7
-    tax
-    ldy ZP_APP3
-    pla
-    jsr poke_char
+    jsr plat_put                ; Y comes back as the column it went in as
+    iny
     inc ZP_APP7
     lda ZP_APP7
     cmp #NUM_WIDTH
@@ -472,70 +376,46 @@ load_num:
     rts
 
 ; ---------------------------------------------------------------------------
-; poke_char — A = screen code, X = column, Y = row.
-; Clobbers A, Y.  Preserves X.
-; ---------------------------------------------------------------------------
-
-poke_char:
-    sta ZP_APP5
-    stx ZP_APP4
-    lda row_off_lo, y
-    clc
-    adc ZP_APP4
-    sta ZP_PTR_LO
-    lda row_scr_hi, y
-    adc #0
-    sta ZP_PTR_HI
-    lda ZP_APP5
-    ldy #0
-    sta (ZP_PTR_LO), y
-    rts
-
-; ---------------------------------------------------------------------------
-; reverse_span — A = row, X = column, Y = length.  Sets bit 7 on the screen
-; codes, which is what reverse video is.
-; Clobbers A, X, Y and the c64_hw.s scratch.
-; ---------------------------------------------------------------------------
-
-reverse_span:
-    sty ZP_APP7
-    stx ZP_APP4
-    tay
-    lda row_off_lo, y
-    clc
-    adc ZP_APP4
-    sta ZP_PTR_LO
-    lda row_scr_hi, y
-    adc #0
-    sta ZP_PTR_HI
-    ldy #0
-@loop:
-    lda (ZP_PTR_LO), y
-    ora #$80
-    sta (ZP_PTR_LO), y
-    iny
-    cpy ZP_APP7
-    bne @loop
-    rts
-
-; ---------------------------------------------------------------------------
-; digit_at — A = value 0-9, X = column, Y = row.
-; Clobbers A, X, Y.
-; ---------------------------------------------------------------------------
-
-digit_at:
-    clc
-    adc #$30
-    jmp poke_char
-
-; ---------------------------------------------------------------------------
-; print_at — A = row, X = col, ZP_PTR_LO/HI = null-terminated ASCII.
+; print_at — A = row, X = column, ZP_PTR_LO/HI = a null-terminated ASCII
+; string.  Stops at the right-hand edge, so a device name longer than the
+; screen cannot wrap onto the row below.
+; Clobbers A, X, Y and the app zero page above ZP_APP3.
 ; ---------------------------------------------------------------------------
 
 print_at:
-    sta ZP_TMP0
-    stx ZP_TMP1
-    jmp c64_print_at
+    stx ZP_APP4                 ; column
+    jsr plat_row
+    lda #0
+    sta ZP_APP5                 ; index into the string
+@loop:
+    ldy ZP_APP5
+    lda (ZP_PTR_LO), y
+    beq @done
+    ldy ZP_APP4
+    cpy #SCREEN_COLS
+    bcs @done
+    jsr plat_put
+    inc ZP_APP4
+    inc ZP_APP5
+    bne @loop
+@done:
+    rts
+
+; ---------------------------------------------------------------------------
+; blank_row — A = row.  Spaces from edge to edge.
+; Clobbers A, X, Y.
+; ---------------------------------------------------------------------------
+
+blank_row:
+    jsr plat_row
+    ldy #0
+@loop:
+    lda #' '
+    jsr plat_put
+    iny
+    cpy #SCREEN_COLS
+    bne @loop
+    rts
 
 ; ---------------------------------------------------------------------------
 .rodata
@@ -555,8 +435,34 @@ label_ptr_tab_hi:
     .byte >str_rate, >str_best, >str_total, >str_lines
     .byte >str_secs, >str_refusals, >str_errors, >str_mean
 
-; Where each name starts on the paths row, and how long it is.  From the
-; string below: "1 LIB4" at 3, "2 LIB1" at 15, "3 TUNED4" at 27.
+; Where each name starts on the paths row, and how long it is.  Both come off
+; the string in the same branch below, so the three move together.
+
+str_status_tab:
+    .word str_blank
+    .word str_opening
+    .word str_armed
+    .word str_no_device
+    .word str_enter_fail
+    .word str_version
+    .word str_no_pipe
+    .word str_pipe_dir
+    .word str_running
+    .word str_stopped
+    .word str_no_answer
+    .word str_not_armed
+    .word str_no_complete
+    .word str_bad_refusal
+    .word str_pipe_stuck
+    .word str_no_recover
+
+str_brand:
+    .byte "PIERS.ROCKS", 0
+str_blank:
+    .byte 0
+
+.if SCREEN_COLS >= 32
+
 path_col_tab:
     .byte 3, 15, 27
 path_len_tab:
@@ -564,15 +470,8 @@ path_len_tab:
 
 str_title:
     .byte "RBCP PIPE THROUGHPUT TEST", 0
-str_keys:
-    .byte "RET STARTS AND STOPS  T 10 SEC  Q QUIT", 0
-; Digits are poked in at columns 5, 24 and 37, which is where the zeros sit.
-str_ram_slots:
-    .byte "RAM 0 ACTIVE  EXIT RAM 0 FROM FLASH 0", 0
 str_paths:
     .byte "   1 LIB4      2 LIB1      3 TUNED4", 0
-str_blank_row:
-    .byte "                                        ", 0
 
 str_rate:
     .byte "BPS", 0
@@ -591,40 +490,10 @@ str_errors:
 str_mean:
     .byte "MEAN THIS RUN", 0
 
-str_status_tab:
-    .word str_blank
-    .word str_checking
-    .word str_opening
-    .word str_armed
-    .word str_clash
-    .word str_no_device
-    .word str_enter_fail
-    .word str_version
-    .word str_no_pipe
-    .word str_pipe_dir
-    .word str_ram_slot_count
-    .word str_dirty_exit
-    .word str_running
-    .word str_stopped
-    .word str_no_answer
-    .word str_not_armed
-    .word str_verifying
-    .word str_no_clean
-    .word str_no_complete
-    .word str_bad_refusal
-    .word str_pipe_stuck
-    .word str_no_recover
-
-str_blank:
-    .byte 0
-str_checking:
-    .byte "READING BASIC IMAGE", 0
 str_opening:
     .byte "OPENING RBCP SESSION", 0
 str_armed:
     .byte "READY", 0
-str_clash:
-    .byte "BACK CHANNEL CLASHES WITH IMAGE - STOPPED", 0
 str_no_device:
     .byte "NO DEVICE ANSWERED THE KNOCK", 0
 str_enter_fail:
@@ -635,10 +504,6 @@ str_no_pipe:
     .byte "DEVICE HAS NO PIPE", 0
 str_pipe_dir:
     .byte "PIPE 0 WILL NOT TAKE HOST BYTES", 0
-str_ram_slot_count:
-    .byte "DEVICE NEEDS TWO RAM SLOTS", 0
-str_dirty_exit:
-    .byte "LEFT SESSION - BASIC IMAGE IS DIRTY", 0
 str_running:
     .byte "RUNNING", 0
 str_stopped:
@@ -647,10 +512,6 @@ str_no_answer:
     .byte "DEVICE DID NOT TAKE THE COMMAND", 0
 str_not_armed:
     .byte "NO SESSION - NOTHING TO RUN", 0
-str_verifying:
-    .byte "LOOKING FOR A CLEAN IMAGE IN FLASH", 0
-str_no_clean:
-    .byte "NO FLASH SLOT MATCHES - NO CLEAN EXIT", 0
 str_no_complete:
     .byte "DEVICE NEVER FINISHED THE COMMAND", 0
 str_bad_refusal:
@@ -659,3 +520,65 @@ str_pipe_stuck:
     .byte "PIPE STAYED FULL - RUN ENDED", 0
 str_no_recover:
     .byte "DEVICE DID NOT COME BACK - NO SESSION", 0
+
+.else
+
+path_col_tab:
+    .byte 0, 6, 12
+path_len_tab:
+    .byte 5, 5, 5
+
+str_title:
+    .byte "RBCP PIPE", 0
+str_paths:
+    .byte "1LIB4 2LIB1 3TUN4", 0
+
+str_rate:
+    .byte "BPS", 0
+str_best:
+    .byte "BEST", 0
+str_total:
+    .byte "BYTES", 0
+str_lines:
+    .byte "LINES", 0
+str_secs:
+    .byte "SECS", 0
+str_refusals:
+    .byte "REFUSED", 0
+str_errors:
+    .byte "ERRORS", 0
+str_mean:
+    .byte "MEAN", 0
+
+str_opening:
+    .byte "OPENING SESSION", 0
+str_armed:
+    .byte "READY", 0
+str_no_device:
+    .byte "NO DEVICE", 0
+str_enter_fail:
+    .byte "NO CMD-RESP MODE", 0
+str_version:
+    .byte "BAD PROTOCOL VER", 0
+str_no_pipe:
+    .byte "NO PIPE", 0
+str_pipe_dir:
+    .byte "PIPE WILL NOT TAKE", 0
+str_running:
+    .byte "RUNNING", 0
+str_stopped:
+    .byte "STOPPED", 0
+str_no_answer:
+    .byte "COMMAND NOT TAKEN", 0
+str_not_armed:
+    .byte "NO SESSION", 0
+str_no_complete:
+    .byte "NEVER FINISHED", 0
+str_bad_refusal:
+    .byte "REFUSED NOT FULL", 0
+str_pipe_stuck:
+    .byte "PIPE STAYED FULL", 0
+str_no_recover:
+    .byte "DEVICE GONE", 0
+
+.endif

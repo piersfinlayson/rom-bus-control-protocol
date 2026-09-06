@@ -6,8 +6,8 @@ shot and the measurement.  Redirecting stdout gives a measurement run with no
 passthrough, which is why there is no quiet option.
 
 Once a second a status line goes to stderr with the rate and what the stream
-looks like.  This side is the authoritative figure — the C64 measures itself
-too, but it is the thing being measured.
+looks like.  This side is the authoritative figure — the machine under test
+measures itself too, but it is the thing being measured.
 
 Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 """

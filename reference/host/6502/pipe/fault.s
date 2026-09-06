@@ -32,8 +32,8 @@
 .import armed_flag
 .import session_open
 
-.import nmi_flag
-.import scan_return
+.import plat_abort_flag
+.import plat_key_stop
 
 ; ---------------------------------------------------------------------------
 .bss
@@ -51,7 +51,7 @@ fault_lost:     .res 1      ; non-zero when the device needs putting together
 ; one line rather than on the whole run.
 fault_stall:    .res 1
 
-stall_tb:       .res 1      ; Timer B low byte when the stall opened
+stall_tb:       .res 1      ; the clock when the stall opened
 burst_left:     .res 1      ; immediate retries left before asking the pipe
 saw_room:       .res 1      ; the pipe reported room for the refused bytes
 
@@ -106,8 +106,9 @@ fault_stage:
 ; the bytes that were just refused, twice over, is not fullness — it is a
 ; device answering about something else — so the run ends and says so.
 ;
-; Where the pipe really is full the wait continues, but RETURN and RESTORE are
-; read on every round and the whole stall is bounded at STALL_UNDERFLOWS.
+; Where the pipe really is full the wait continues, but the stop key and the
+; machine's own abort are read on every round and the whole stall is bounded at
+; STALL_SECS.
 ;
 ; Returns carry clear to send the same bytes again, carry set to end the run
 ; with fault_stat holding the reason.
@@ -126,7 +127,7 @@ fault_write_refused:
     lda fault_stall
     bne @burst
     inc fault_stall                 ; a stall has begun
-    lda CIA2_TB_LO
+    PLAT_CLOCK_READ
     sta stall_tb
     lda #0
     sta saw_room
@@ -181,15 +182,13 @@ fault_write_refused:
     lda #0
     sta saw_room
 
-    lda nmi_flag
+    lda plat_abort_flag
     bne @stopped
-    jsr scan_return
+    jsr plat_key_stop
     beq @stopped
 
-    lda stall_tb                    ; Timer B counts down
-    sec
-    sbc CIA2_TB_LO
-    cmp #STALL_UNDERFLOWS
+    PLAT_CLOCK_ELAPSED stall_tb
+    cmp #STALL_TICKS
     bcc @wait
     lda #STAT_PIPE_STUCK
     sta fault_stat

@@ -1,60 +1,30 @@
-; rbcp_config.s — RBCP configuration for the C64 pipe throughput test
+; rbcp_config.s — RBCP configuration for the VIC-20 pipe throughput test
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; Three images, two sockets.
+; An 8KB 2364 in the kernal socket, $E000-$FFFF, with the machine's own kernal
+; still fitted.  The kernal runs at reset and enters BASIC through the word at
+; $C000, which is where this image is entered.
 ;
-; The kernal build is an 8KB 2364 at $E000-$FFFF.  The machine boots into it,
-; and the command page and the back channel are the first three pages of the
-; image, where the tester's own code is not.
-;
-; The BASIC build is the same 8KB 2364 in the other socket, at $A000-$BFFF,
-; with the machine's own kernal still fitted.  The two sockets are not the
-; same electrically and the same program in each is the only way to say what
-; the difference between them costs.
-;
-; The combined build is a 16KB 23128 spanning both ROM sockets: $A000-$BFFF
-; where BASIC would be, and $E000-$FFFF where the kernal would be.  The BASIC
-; half is blank and the tester does not need one, so the command page and the
-; back channel go there.  The device then writes its replies into eight
-; kilobytes of nothing, and every byte the machine boots out of is untouched.
-;
-; Build the second with COMBINED=1 and the third with BASIC_SOCKET=1.
+; The command page is $C100 rather than $C000, because the kernal reads the
+; first four bytes of this socket itself: $C000 on the way in, and $C002 when
+; RESTORE arrives with RUN/STOP held.  A command page there would take those
+; reads as command bytes.  A page further up, the kernal never touches.
 ;
 ; The timeouts and the retry count below are what this program measures with.
 ; A retry would hide the thing it exists to count, so there are none.
 
-.ifdef COMBINED
-
-; The 23128 covers both sockets.  The image starts where BASIC would.
-CONFIG_ROM_BASE_HI = $A0
-CONFIG_ROM_SIZE = $4000
-CONFIG_RBCP_CMD_PAGE = $A0
-CONFIG_RBCP_BCH_BASE = $A100
-
-.elseif .defined(BASIC_SOCKET)
-
-; The 2364 in the BASIC socket.
-CONFIG_ROM_BASE_HI = $A0
-CONFIG_ROM_SIZE = $2000
-CONFIG_RBCP_CMD_PAGE = $A0
-CONFIG_RBCP_BCH_BASE = $A100
-
-.else
-
-; The 2364 in the kernal socket.
 CONFIG_ROM_BASE_HI = $E0
 CONFIG_ROM_SIZE = $2000
+
 CONFIG_RBCP_CMD_PAGE = $E0
 CONFIG_RBCP_BCH_BASE = $E100
-
-.endif
 
 ; The command page value relative to the start of the ROM image.  A low byte
 ; of $00 means a command byte held in X is sent with lda base,x — four cycles,
 ; and no page-cross penalty is reachable.
 CONFIG_RBCP_CMD_PAGE_REL = CONFIG_RBCP_CMD_PAGE - CONFIG_ROM_BASE_HI
 
-; The back channel sits immediately above the command page in every build.
+; The back channel sits immediately above the command page.
 CONFIG_RBCP_BCH_START = (CONFIG_RBCP_BCH_BASE - (CONFIG_ROM_BASE_HI * $100))
 
 ; 512 bytes: an 8 byte header and a 504 byte data section.  The largest reply
@@ -79,6 +49,7 @@ CONFIG_RBCP_TIMEOUT_RETRIES = $00
 ; Used by rbcp_reset, which sends in command mode with no back channel to poll.
 CONFIG_RBCP_CMD_PAUSE = $04
 
-; The tester owns the machine from reset, so the top of zero page is free.
+; The tester masks interrupts on entry and never calls the kernal again, so the
+; top of zero page is free.
 CONFIG_RBCP_ZP_BASE = $F0
 CONFIG_RBCP_ZP_LENGTH = 16

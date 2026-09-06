@@ -34,6 +34,9 @@
 .import fault_stall
 .import fault_write_refused
 .import run_abort
+.if PLAT_SW_TICK
+.import plat_clock_poll
+.endif
 
 CMD_BASE = CONFIG_RBCP_CMD_PAGE * $100
 
@@ -105,6 +108,9 @@ tuned_blocks_end:
 .assert RBCP_POLL_TIMEOUT > 0, error, "A run needs a bounded poll"
 
 tuned_poll:
+.if PLAT_SW_TICK
+    jsr plat_clock_poll         ; a machine whose clock is counted in software
+.endif
     ldx #<RBCP_POLL_TIMEOUT
 @token:
     lda RBCP_TOKEN_LSB_ADDR

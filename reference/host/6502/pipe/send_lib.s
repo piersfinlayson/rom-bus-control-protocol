@@ -13,6 +13,9 @@
 .import fault_stall
 .import fault_stage
 .import fault_write_refused
+.if PLAT_SW_TICK
+.import plat_clock_poll
+.endif
 
 ; ---------------------------------------------------------------------------
 .bss
@@ -87,6 +90,9 @@ send_lib_line:
     rts                         ; carry set, with the reason in fault_stat
 
 @taken:
+.if PLAT_SW_TICK
+    jsr plat_clock_poll         ; a machine whose clock is counted in software
+.endif
     lda line_pos_next
     sta line_pos
     cmp #64

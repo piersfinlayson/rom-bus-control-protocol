@@ -10,6 +10,9 @@ This directory contains reference implementations of RBCP hosts for various plat
   - [`6502/vic20-boot/`](6502/vic20-boot/README.md) — A VIC-20 kernal bootloader
   - [`6502/apple2-boot/`](6502/apple2-boot/README.md) — An Apple II and IIe ROM bootloader
   - [`6502/c64-pipe-test/`](6502/c64-pipe-test/README.md) — A C64 pipe throughput test
+  - [`6502/vic20-pipe-test/`](6502/vic20-pipe-test/README.md) — A VIC-20 pipe throughput test
+  - [`6502/apple2-pipe-test/`](6502/apple2-pipe-test/README.md) — An Apple IIe pipe throughput test
+  - [`6502/pipe/`](6502/pipe/README.md) — Shared 6502 pipe throughput test routines
   - [`6502/c64-aux-test/`](6502/c64-aux-test/README.md) — A C64 auxiliary I/O tester
   - [`6502/c64-led-test/`](6502/c64-led-test/README.md) — A C64 LED tester
   - [`6502/c64-rbcp-stress/`](6502/c64-rbcp-stress/README.md) — A C64 RBCP reliability meter
