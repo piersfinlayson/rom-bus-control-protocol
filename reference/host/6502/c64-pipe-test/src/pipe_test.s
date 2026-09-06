@@ -39,6 +39,9 @@
 .import send_tuned_line
 .import chunk_count
 .import armed_flag
+.import fault_stat
+.import fault_lost
+.import fault_recover
 
 ; ---------------------------------------------------------------------------
 ; PRG header and BASIC stub
@@ -186,7 +189,7 @@ menu:
 ; ---------------------------------------------------------------------------
 ; start_run — A = 0 continuous, non-zero for a fixed ten seconds.
 ;
-; The banner goes out through the library path whatever is selected: it is one
+; The banner goes out through the library path whatever is selected — it is one
 ; line, once, and it is what marks a run boundary for the reader and for the
 ; checking tool.
 ; ---------------------------------------------------------------------------
@@ -203,14 +206,17 @@ start_run:
 @armed:
     inc run_number
 
+    lda #STAT_STOPPED           ; how a run ends unless something says otherwise
+    sta fault_stat
     lda #0
+    sta fault_lost
     sta tuned_mode              ; the banner is never mirrored
     jsr build_banner
     lda #RBCP_PIPE_WRITE_MAX
     sta chunk_count
     jsr send_lib_line
     bcc @banner_ok
-    jmp run_lost
+    jmp run_finish
 @banner_ok:
 
     jsr line_reset
@@ -249,7 +255,7 @@ run_loop:
 @via_lib:
     jsr send_lib_line
     bcc @sent
-    jmp run_lost
+    jmp run_finish
 @sent:
     jsr timing_add_line
     jsr line_next
@@ -281,30 +287,46 @@ run_loop:
 
 run_stop:
     lda #STAT_STOPPED
+    sta fault_stat
     jmp run_finish
 
-; A poll that never completed.  tuned_poll jumps straight here, so the stack is
-; unwound to where the run loop started rather than returned through.
+; A device that stopped answering.  tuned_poll jumps straight here, so the
+; stack is unwound to where the run loop started rather than returned through.
 .export run_abort
 run_abort:
     ldx run_sp
     txs
-run_lost:
-    lda #STAT_LOST
+    ; fall through
+
+; ---------------------------------------------------------------------------
+; run_finish — every way out of a run, with fault_stat holding which.
+;
+; The reason a run ended stays on the status row afterwards, including where
+; the device was brought back, because that is the thing worth reading.  Only a
+; device that did not come back replaces it, and then the program is no longer
+; armed and the next RETURN says so.
+; ---------------------------------------------------------------------------
 
 run_finish:
-    pha
     lda #0
     sta tuned_mode
     jsr timing_mean
     jsr display_counters
-    pla
+    lda fault_stat
     jsr display_status
+
+    lda fault_lost
+    beq @done
+    jsr fault_recover
+    bcc @done
+    lda #STAT_NO_RECOVER
+    jsr display_status
+@done:
     jsr wait_no_key
     jmp menu
 
 ; ---------------------------------------------------------------------------
-; build_banner — "#### RUN nn PATH" padded to 62 characters and terminated.
+; build_banner — "#### RUN nnn PATH" padded to 62 characters and terminated.
 ; Written straight into line_buf, not through line_store, because the banner is
 ; never mirrored into the block.
 ; Clobbers A, X, Y.
@@ -339,8 +361,18 @@ build_banner:
     iny
     bne @run_word
 
+    ; Three digits, because run_number is a byte and two of them walk past '9'
+    ; at a hundred runs.
 @number:
     lda run_number
+    ldx #'0' - 1
+@hundreds:
+    inx
+    sec
+    sbc #100
+    bcs @hundreds
+    adc #100
+    stx line_buf + 9
     ldy #'0' - 1
 @tens:
     iny
@@ -348,10 +380,10 @@ build_banner:
     sbc #10
     bcs @tens
     adc #10
-    sty line_buf + 9
+    sty line_buf + 10
     clc
     adc #'0'
-    sta line_buf + 10
+    sta line_buf + 11
 
     lda run_path
     asl a
@@ -364,7 +396,7 @@ build_banner:
 @name:
     lda (ZP_APP0), y
     beq @done
-    sta line_buf + 12, y
+    sta line_buf + 13, y
     iny
     bne @name
 @done:
@@ -376,6 +408,7 @@ build_banner:
 ; Clobbers A.
 ; ---------------------------------------------------------------------------
 
+.export scan_return
 scan_return:
     lda #KEY_COL_0
     sta CIA1_PRA
@@ -489,7 +522,7 @@ nmi_restore:
 ; scan_key — returns a key code in A, KEY_NONE_CODE if nothing is held.
 ;
 ; Four column selects cover all six keys this program uses.  A run does not
-; call this: it scans RETURN alone, one line in sixteen, which is one column.
+; call this — it scans RETURN alone, one line in sixteen, which is one column.
 ;
 ; Clobbers A, X.
 ; ---------------------------------------------------------------------------

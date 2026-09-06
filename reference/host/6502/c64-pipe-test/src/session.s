@@ -26,6 +26,8 @@
 .import display_device
 .import display_exit_slot
 
+.import fault_recover
+
 ; ---------------------------------------------------------------------------
 .bss
 ; ---------------------------------------------------------------------------
@@ -86,7 +88,7 @@ session_start:
     ; The two bytes the device will use for progress and response.  A device
     ; writes complete only when it has finished, so an image that already holds
     ; the complete value there would let a poll read a false complete before the
-    ; command had landed.  The inverses are harmless: pending and failed are
+    ; command had landed.  The inverses are harmless — pending and failed are
     ; what those locations are supposed to look like before anything happens.
     lda RBCP_PROGRESS_ADDR
     cmp #RBCP_COMPLETE
@@ -108,7 +110,7 @@ session_start:
     jsr rbcp_cmd_enter_cmd_resp
     bcc @entered
     lda rbcp_zp_5
-    cmp #1
+    cmp #STAGE_NOT_TAKEN
     bne @enter_refused
     lda #STAT_NO_DEVICE         ; token never moved, so nothing received it
     jmp fail
@@ -196,7 +198,7 @@ fail:
 ; ---------------------------------------------------------------------------
 ; verify_image — finds a flash slot holding exactly the image being served.
 ;
-; The exit switches away from the dirtied slot rather than repairing it: every
+; The exit switches away from the dirtied slot rather than repairing it — every
 ; command writes the response header, and the header lives in the active slot,
 ; so the served image is dirty from the first command and the write that would
 ; restore it would be a command in its turn.  A slot that has never held a back
@@ -341,9 +343,18 @@ fold_spare_slot:
 ; ---------------------------------------------------------------------------
 ; session_end — leaves command-response mode.
 ;
+; The exit is itself a command, so it lands only if the device is listening for
+; one and the framing is where the host thinks it is.  A run that ended with
+; the device mid-frame, or dropped out of command-response mode altogether,
+; leaves neither true — and an exit that does not land leaves the served image
+; holding the response header, which is a machine that will not boot BASIC and
+; nothing in this program to repair it with.  So the device is put back
+; together first, every time.  It costs a reset and a re-entry on the way out.
+;
 ; With a verified clean slot this switches to it, which is the only exit that
-; leaves the served image byte-perfect: that slot has never held a back channel
-; and SWITCH_AND_EXIT writes no response header.
+; leaves the served image byte-perfect — that slot has never held a back channel
+; and SWITCH_AND_EXIT writes no response header.  RBCP_RESET changes no slot
+; contents and no active slot, so the recovery does not disturb it.
 ;
 ; With no verified slot it exits silently and says so.  A silent exit is the
 ; only other one that adds no further header write, so it leaves the image
@@ -356,6 +367,8 @@ fold_spare_slot:
 session_end:
     lda session_open
     beq @done
+    jsr fault_recover
+    bcs @gone
     lda exit_slot_valid
     beq @silent
 
@@ -378,6 +391,10 @@ session_end:
     jsr display_status
 @done:
     rts
+
+@gone:
+    lda #STAT_NO_RECOVER        ; fault_recover has already cleared the flags
+    jmp display_status
 
 ; ---------------------------------------------------------------------------
 ; read_identity — device type, device version and protocol version into the
@@ -455,7 +472,7 @@ read_identity:
 ; checksum_image — Fletcher-16 over the whole served image, read as ordinary
 ; data before the knock.
 ;
-; A linear sweep cannot form a knock: it produces consecutive low address
+; A linear sweep cannot form a knock — it produces consecutive low address
 ; bytes, and the knock is six specific non-consecutive ones.
 ;
 ; Fletcher rather than a plain sum because a plain sum cannot see a

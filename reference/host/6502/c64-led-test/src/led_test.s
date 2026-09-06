@@ -7,7 +7,7 @@
 ; each one does.
 ;
 ; Every key that changes something sends one SET_LED, reads every LED back and
-; compares.  That comparison is the only check available: nothing the host
+; compares.  That comparison is the only check available — nothing the host
 ; reads proves an LED lit, because GET_LED_INFO answers out of the same place
 ; SET_LED wrote to.  What is left is whether the device agrees with itself, and
 ; whether a person or a camera looking at the board sees what the screen says.
@@ -23,6 +23,8 @@
 .import sess_close
 .import sess_gone
 
+.import display_dark
+.import display_light
 .import display_init
 .import display_keys
 .import display_keys_clear
@@ -30,6 +32,9 @@
 .import display_leds_fresh
 .import display_modes
 .import display_read
+.import display_lost
+.import display_tally
+.import display_tally_frame
 .import display_note
 .import display_colours
 .import display_all
@@ -47,6 +52,16 @@
 .import leds_mode_info
 .import leds_supports
 .import leds_nearest
+.import fail_stage
+.import fail_gone
+.import fail_group
+.import fail_cmd
+.import fail_hdr
+.import leds_ok_lo
+.import leds_ok_hi
+.import leds_bad_lo
+.import leds_bad_hi
+.import leds_shown
 .import leds_level
 .import show_col
 .import show_dith
@@ -69,6 +84,7 @@
 .import mode_takes_period
 .import mode_min_period
 .import brighter
+.import led_col_c64
 .import pal_r
 .import pal_g
 .import pal_b
@@ -126,6 +142,7 @@ anim_step:      .res MAX_LEDS
 anim_left_lo:   .res MAX_LEDS
 anim_left_hi:   .res MAX_LEDS
 anim_ticks:     .res 1          ; 10ms units since the last pass
+scan_wait:      .res 1          ; 10ms units since the last refresh scan
 paint_led:      .res 1
 paint_level:    .res 1
 pause_left:     .res 1
@@ -148,13 +165,20 @@ main:
     sta cur_led
     sta pick_index
     sta read_state
+    sta leds_ok_lo              ; nothing zeroes the bss on a C64
+    sta leds_ok_hi
+    sta leds_bad_lo
+    sta leds_bad_hi
 
     jsr display_init
     jsr display_keys
+    jsr display_tally_frame
 
     ; The session first, then what this program wants from it.  Both refuse the
-    ; same way: carry set with the reason in A.
+    ; same way — carry set with the reason in A.
+    jsr display_dark
     jsr sess_open
+    jsr display_light
     bcs @refused
     jsr leds_discover
     bcc @armed
@@ -164,6 +188,8 @@ main:
 @armed:
     lda #1
     sta armed
+    lda #SCAN_TICKS             ; the first pass round the loop scans
+    sta scan_wait
     jsr anim_reset
     jsr init_wants
     jsr redraw
@@ -181,7 +207,7 @@ main:
 ;
 ; SET_LED carries every field at once, so there is no way to change a mode and
 ; leave a brightness alone.  What this can do is start from the device's own
-; answers: the mode it reports, and the palette entry nearest the colour it
+; answers — the mode it reports, and the palette entry nearest the colour it
 ; reports.  Brightness, period and hold start at the entry that leaves each of
 ; them to the device.
 ; ---------------------------------------------------------------------------
@@ -229,18 +255,29 @@ apply_steps:
 ; ---------------------------------------------------------------------------
 ; loop — the program's resting state.  Rescans, redraws and takes one key.
 ;
-; The scan is the refresh: one GET_LED_INFO per LED, so the picture is as live
+; The scan is the refresh — one GET_LED_INFO per LED, so the picture is as live
 ; as the device is fast.  An LED something else on the device changed shows up
 ; here without this program having asked.
 ; ---------------------------------------------------------------------------
 
 loop:
-    jsr leds_scan
-    bcs lost
     jsr ticker_poll
     sta anim_ticks
+    clc
+    adc scan_wait
+    bcs @scan                   ; a recovery can outlast a byte of ticks
+    sta scan_wait
+    cmp #SCAN_TICKS
+    bcc @drawn
+@scan:
+    lda #0
+    sta scan_wait
+    jsr leds_scan
+    bcs lost
+@drawn:
     jsr anim_update
     jsr display_leds
+    jsr display_tally
 
     jsr c64_keys_scan
     cmp #KEY_NONE_CODE
@@ -251,10 +288,53 @@ loop:
     jsr dispatch
     jmp loop
 
+; A command the device answered, even to refuse it, leaves the session in step:
+; the device discards what is left of the frame before it reports completion.
+; So the run goes on and the count on screen says how often it happens, and the
+; record of it stays on screen.
+;
+; A command it did not answer has already had a reset, a re-entry and two more
+; goes at it in leds_dev.s.  Where that brought the device back the run goes on
+; too, on a single line that says so rather than the record, which under
+; LED_DIAGS takes the keys off the screen for the rest of the run.  The count
+; is the tally of these, as it is of the refusals.  Only a device the recovery
+; could not reach ends the run.
 lost:
-    lda #NOTE_LOST
+    lda fail_gone
+    bne @stop
+    lda fail_stage
+    cmp #STAGE_REFUSED
+    beq @record
+    lda #NOTE_SLIPPED
     jsr display_note
+    jmp loop
+@record:
+    jsr display_lost
+    jmp loop
+@stop:
+    jsr display_lost
     jmp wait_quit
+
+; ---------------------------------------------------------------------------
+; frame_matched — carry set if the device recorded the command it was sent.
+;
+; A device answering about a different command than the one that went out has
+; not refused anything.  Its frame was mangled before it was read, and calling
+; that a refusal would hide the one thing worth seeing.  Clobbers A.
+; ---------------------------------------------------------------------------
+
+frame_matched:
+    lda fail_hdr + 0
+    cmp fail_group
+    bne @no
+    lda fail_hdr + 1
+    cmp fail_cmd
+    bne @no
+    sec
+    rts
+@no:
+    clc
+    rts
 
 ; ---------------------------------------------------------------------------
 ; dispatch — A = a KEY_ code.
@@ -449,7 +529,7 @@ set_mode:
     jmp send_current
 
 ; ---------------------------------------------------------------------------
-; The three stepping keys.  Each walks a short list and sends the result: a C64
+; The three stepping keys.  Each walks a short list and sends the result — a C64
 ; keyboard is a bad way to type a number, and a bad number is worth nothing
 ; here — what these are for is putting the LED somewhere a camera can see.
 ; ---------------------------------------------------------------------------
@@ -536,18 +616,29 @@ step_period:
 send_current:
     lda #NOTE_BLANK
     jsr display_note
+    jsr display_dark            ; one dark window for the set and the read back
     lda cur_led
     jsr leds_set
-    bcs @refused
+    bcs @not_set
     jsr leds_scan
     bcs @lost
     jsr check_read
     jmp @show
-@refused:
+@not_set:
+    ; A device that answered and said no about this very command is a refusal,
+    ; and the line under the discs says so.  Anything else is not, and is not
+    ; reported as though it were.
+    lda fail_stage
+    cmp #STAGE_REFUSED
+    bne @lost
+    jsr frame_matched
+    bcc @lost
     lda #READ_REFUSED
     sta read_state
     jsr leds_scan
+    bcs @lost
 @show:
+    jsr display_light
     jsr anim_restart
     jsr anim_update
     jsr display_leds
@@ -555,8 +646,18 @@ send_current:
     lda read_state
     jmp display_read
 @lost:
-    lda #NOTE_LOST
-    jsr display_note
+    jsr display_light
+    lda fail_gone
+    bne @stop
+    lda fail_stage
+    cmp #STAGE_REFUSED
+    beq @record
+    lda #NOTE_SLIPPED
+    jmp display_note
+@record:
+    jmp display_lost
+@stop:
+    jsr display_lost
     jmp wait_quit
 
 ; ---------------------------------------------------------------------------
@@ -688,6 +789,7 @@ show_all:
 back_from_screen:
     jsr display_init
     jsr display_keys
+    jsr display_tally_frame
     jmp redraw
 
 ; ---------------------------------------------------------------------------
@@ -735,7 +837,7 @@ parade:
 ; The device tells this program what mode each LED is in and how long one
 ; repetition takes.  That is enough to draw the same thing on screen, so it
 ; does — a blink blinks, a breathe fades, a cycle turns.  The two clocks are
-; not synchronised and cannot be, and that is fine: this is not a measurement,
+; not synchronised and cannot be, and that is fine — this is not a measurement,
 ; it is a C64 and a board doing the same thing at the same time.
 ;
 ; What comes out is show_col and show_dith for each LED, which is all display.s
@@ -876,7 +978,7 @@ lit_level:
 ; ---------------------------------------------------------------------------
 ; set_level — A = LVL_, X = LED.  X survives.
 ;
-; Dark is the LED's body rather than a hole in the screen: an unlit LED is a
+; Dark is the LED's body rather than a hole in the screen — an unlit LED is a
 ; grey lens, and drawing it that way keeps the disc where it was.
 ; ---------------------------------------------------------------------------
 
@@ -900,8 +1002,12 @@ set_level:
     rts
 @lit:
     lda paint_led
-    jsr leds_nearest            ; a palette entry, which is also its colour
-    bne @have
+    jsr leds_shown
+    beq @no_colour
+    tay
+    lda led_col_c64 - 1, y      ; entry 1 is the table's first row
+    bne @have                   ; always: nothing in the table is black
+@no_colour:
     lda #COL_MED_GREY           ; the device states no colour
 @have:
     tay
@@ -943,7 +1049,7 @@ anim_steps:
 ; anim_reload — X = LED.  How long its next step lasts, in 10ms units.
 ;
 ; A step is the period divided by the number of steps, and every step count is
-; a power of two so the divide is a shift.  Beacon times itself: it is a
+; a power of two so the divide is a shift.  Beacon times itself — it is a
 ; pattern to be picked out by eye rather than one repetition of anything.
 ; Clobbers A, Y and ZP_APP0 to ZP_APP4.
 ; ---------------------------------------------------------------------------
@@ -1021,7 +1127,7 @@ times_ten:
 
 ; ---------------------------------------------------------------------------
 ; pause — about two seconds, or until a key is pressed, which is reported by
-; carry set.  Rough is fine: nothing measures it, and a step that is a little
+; carry set.  Rough is fine — nothing measures it, and a step that is a little
 ; off two seconds looks exactly like one that is not.
 ; Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
@@ -1063,7 +1169,9 @@ wait_quit:
 quit:
     lda armed
     beq @leave
+    jsr display_dark
     jsr sess_close
+    jsr display_light
 @leave:
     jsr ticker_stop
     jsr charset_restore

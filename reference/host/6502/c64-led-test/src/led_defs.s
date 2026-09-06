@@ -3,9 +3,10 @@
 ;
 ; The zero page this program claims, the kernal locations it touches and the
 ; refusals a session can return are all in app_defs.s, shared with the other
-; C64 testers.
+; C64 testers.  The stage a failed command reached is in common/rbcp_stage.s.
 
     .include "app_defs.s"
+    .include "rbcp_stage.s"
     .include "disc_glyphs.inc"
 
 ; Screen and colour row pointers, built by display.s from the c64_hw.s tables.
@@ -43,7 +44,7 @@ SC_SOLID        = $A0       ; reversed space
 ; brighter partner is used where it has one.
 ; An LED whose mode is Off is a grey lens, because that is what an unlit LED
 ; looks like sitting on a board.  An LED that is dark for an instant of a blink
-; or a breathe is not that: it has gone out, and the way to draw gone out is
+; or a breathe is not that — it has gone out, and the way to draw gone out is
 ; for there to be nothing there.
 LVL_BLACK       = 0         ; out, this instant
 LVL_DARK        = 1         ; not lit at all: the LED's body, which is grey
@@ -79,6 +80,22 @@ ANIM_DEFAULT_PERIOD = 20    ; two seconds, where the device reports none
 ; ---------------------------------------------------------------------------
 
 VIC_RASTER      = $D012
+VIC_CTRL1_DEN   = %00010000 ; display enable, and with it the badlines
+
+; Ticks between refresh scans, in 10ms units.  The scan blanks the display for
+; the length of the exchange, so a scan every pass strobes the screen.
+SCAN_TICKS      = 100
+
+; One ROM's own flame mode.  The spec reserves $80 to $FE for implementations
+; to use as they like, so this belongs to the application and not to the
+; library's list of modes every device has.
+LED_MODE_FLAME  = $80
+
+; The bytes of a failed frame, which cost the key legend three rows to show.
+; Off unless the command line asks for them.
+.ifndef LED_DIAGS
+LED_DIAGS       = 0
+.endif
 
 CIA2_TB_LO      = $DD06
 CIA2_TB_HI      = $DD07
@@ -100,6 +117,8 @@ ROW_KEYS1       = 21
 ROW_KEYS2       = 22
 ROW_KEYS3       = 23
 ROW_READ        = 24        ; what the device read back against what was sent
+ROW_TALLY       = ROW_READ  ; and the counts, on the left of the same row
+COL_READ        = 18        ; clear of the counts beside it
 
 COL_DISC_0      = 4
 COL_DISC_1      = 23
@@ -107,11 +126,20 @@ COL_DISC_1      = 23
 ; The colour screen: a live preview on the left, the palette on the right.
 ROW_PICK        = 3         ; eight entries a column
 COL_PICK_A      = 18
-COL_PICK_B      = 29
 COL_PREVIEW     = 2
 ROW_PREVIEW     = 3
 ROW_SENDS       = 15
-PICK_COUNT      = 16        ; the device's own choice, then fifteen colours
+PICK_COUNT      = 8         ; the device's own choice, then seven colours
+
+; ---------------------------------------------------------------------------
+; The colours an LED shows.  Not the palette above — that is what the host can
+; send and it is a screen's colours, which include ones no LED makes.  White is
+; last because it is not found by matching a hue, so the search walks the seven
+; before it.
+; ---------------------------------------------------------------------------
+
+LED_COL_COUNT   = 8
+LED_COL_WHITE   = 8
 
 ; ---------------------------------------------------------------------------
 ; Startup refusals.  The session's own are in app_defs.s and this program's
@@ -128,7 +156,7 @@ FAIL_COUNT      = SESS_FAIL_COUNT + 1
 
 NOTE_BLANK      = $00
 NOTE_REFUSED    = $01       ; the device rejected a SET_LED
-NOTE_LOST       = $02       ; the device stopped answering
+NOTE_LOST       = $02       ; the device stopped answering, stage unknown
 NOTE_NO_COLOUR  = $03       ; this LED's colour is not the host's to set
 NOTE_NO_PERIOD  = $04       ; this mode takes no period on this LED
 NOTE_NO_HOLD    = $05       ; the device times no holds
@@ -136,11 +164,12 @@ NOTE_UNSUPPORTED = $06      ; this LED does not have that mode
 NOTE_TRUNCATED  = $07       ; the device reports more LEDs than this shows
 NOTE_PARADE     = $08
 NOTE_GONE       = $09
-NOTE_COUNT      = $0A
+NOTE_SLIPPED    = $0A       ; a command was lost and the device came back
+NOTE_COUNT      = $0B
 
 ; ---------------------------------------------------------------------------
 ; What the last SET_LED reads back as.  The only check this program can make
-; on its own: nothing it reads proves an LED lit, but a device that reports
+; on its own — nothing it reads proves an LED lit, but a device that reports
 ; back something other than what it was given has been caught in the act.
 ; ---------------------------------------------------------------------------
 
@@ -179,7 +208,7 @@ KEY_LED_1       = $14
 ; ---------------------------------------------------------------------------
 ; The values the stepping keys walk.  Each is a short list because a C64
 ; keyboard is a bad way to type a number and a bad number is worth nothing
-; here: what these are for is putting the LED somewhere a camera can see.
+; here — what these are for is putting the LED somewhere a camera can see.
 ; ---------------------------------------------------------------------------
 
 BRIGHT_STEPS    = 5         ; device chooses, 25, 50, 75, 100

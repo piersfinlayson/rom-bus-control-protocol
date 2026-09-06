@@ -1,8 +1,8 @@
 ; display.s — everything this program puts on the screen
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; The seam
-; --------
+; The interface
+; -------------
 ; The tables in leds.s are the interface.  This file reads them and never
 ; writes them.  The rest of the program passes a note code in A and never holds
 ; a string, a row, a column or a colour.
@@ -29,7 +29,7 @@
 ; itself.
 ;
 ; The disc is a real circle rather than the octagon the ROM character set can
-; manage: the VIC takes its characters from RAM here, and charset.s puts an
+; manage — the VIC takes its characters from RAM here, and charset.s puts an
 ; ellipse sampled per pixel into them.  Dimming ANDs that same ellipse with a
 ; halftone, so brightness never changes the shape.
 ;
@@ -64,7 +64,17 @@
 .import disc_class
 .import disc_level_lo
 .import disc_level_hi
-.import leds_nearest
+.import leds_shown
+.import fail_stage
+.import fail_group
+.import fail_cmd
+.import fail_led
+.import fail_sent_tok
+.import fail_hdr
+.import leds_ok_lo
+.import leds_ok_hi
+.import leds_bad_lo
+.import leds_bad_hi
 .import leds_supports
 .import pal_r
 .import pal_g
@@ -80,6 +90,9 @@
 ; ---------------------------------------------------------------------------
 .bss
 ; ---------------------------------------------------------------------------
+
+dark_depth:     .res 1          ; brackets open around a device exchange
+dark_saved:     .res 1          ; VIC_CTRL1 as the outermost one found it
 
 num_buf:        .res 4
 dec_colour:     .res 1
@@ -477,15 +490,68 @@ scr_code:
     cmp #$40
     bcc @out
     cmp #$60
-    bcs @out
+    bcs @lower
     sec
     sbc #$40
+    rts
+@lower:
+    cmp #$7B
+    bcs @out
+    sec
+    sbc #$60                    ; the device names itself in mixed case, and
+@out:                           ; this charset has one glyph for both
+    rts
+
+; ---------------------------------------------------------------------------
+; display_dark and display_light — the screen off while the host is talking to
+; the device, and back to however it was found afterwards.
+;
+; A VIC-II fetching characters takes the bus off the processor, and on a
+; badline it holds it for over forty cycles.  The address bus and the chip
+; select change hands across that, and around the handover the device can see
+; an access that was not one, see one as two, or miss one — any of which slips
+; the command frame by a byte.  Clearing the display enable bit stops every
+; fetch, and with the display off the frames go out intact.
+;
+; The pair nests, so a routine that brackets a batch may call one that brackets
+; a single command.  Neither touches a register or a flag — display_dark runs
+; before a command has been handed the LED it was given, and display_light
+; after it has worked out what to report.
+; ---------------------------------------------------------------------------
+
+.export display_dark
+display_dark:
+    php
+    pha
+    inc dark_depth
+    lda dark_depth
+    cmp #1
+    bne @out
+    lda VIC_CTRL1
+    sta dark_saved
+    and #<(~VIC_CTRL1_DEN)
+    sta VIC_CTRL1
 @out:
+    pla
+    plp
+    rts
+
+.export display_light
+display_light:
+    php
+    pha
+    dec dark_depth
+    bne @out
+    lda dark_saved
+    sta VIC_CTRL1
+@out:
+    pla
+    plp
     rts
 
 ; ---------------------------------------------------------------------------
 ; display_init — black on black with white text.  White on black rather than
-; anything prettier: it is what reads on video, and it is what leaves a lit
+; anything prettier — it is what reads on video, and it is what leaves a lit
 ; disc as the only colour on the screen.
 ; Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
@@ -495,6 +561,7 @@ display_init:
     lda #0
     sta shown_valid
     sta dec_rev_flag
+    sta dark_depth
     lda #COL_BLACK
     sta VIC_BORDER
     sta VIC_BACKGROUND
@@ -527,7 +594,7 @@ display_init:
     rts
 
 ; ---------------------------------------------------------------------------
-; display_keys — the four key rows.  Written once and left alone, except while
+; display_keys — the three key rows.  Written once and left alone, except while
 ; a parade is running, when they are cleared to keep the screen quiet.
 ; Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
@@ -604,7 +671,7 @@ display_leds:
 ; ---------------------------------------------------------------------------
 ; wait_lower_border — holds until the beam is below the last text row.
 ;
-; A disc redrawn while the beam is crossing it tears: the top comes out at the
+; A disc redrawn while the beam is crossing it tears — the top comes out at the
 ; new brightness and the bottom is still at the old one, once per change.
 ; Starting in the lower border leaves the blanking and the top border to draw
 ; in, which is enough for the disc that changed.
@@ -689,7 +756,7 @@ note_shown:
 ;
 ; The colour is the palette entry nearest what the device reports, so an LED
 ; the device chose a colour for is drawn in that colour and not in the one this
-; program last asked for.  Grey is what an LED with no colour stated gets: it
+; program last asked for.  Grey is what an LED with no colour stated gets — it
 ; says so without pretending to be one.
 ;
 ; Below full brightness every cell of the disc becomes the same dither glyph,
@@ -755,7 +822,7 @@ set_disc_left:
 ;
 ; Every cell of the thirteen by eleven box is written, including those spaces.
 ; Writing only the disc would leave whatever was there before showing through,
-; and the text inside changes length: a mode that was BREATHE and is now ON
+; and the text inside changes length — a mode that was BREATHE and is now ON
 ; would keep the ends of the longer word.
 ;
 ; Clobbers A, X, Y, ZP_APP0 to ZP_APP5.
@@ -887,7 +954,7 @@ buf_cells:
 
 ; ---------------------------------------------------------------------------
 ; build_mode — A = mode.  A mode the protocol does not name is shown as its
-; number rather than as nothing: a device is allowed one, and a host that
+; number rather than as nothing — a device is allowed one, and a host that
 ; cannot say what it is looking at is worse than one that says a number.
 ; ---------------------------------------------------------------------------
 
@@ -895,6 +962,11 @@ build_mode:
     pha
     jsr buf_reset
     pla
+    cmp #LED_MODE_FLAME
+    bne @indexed
+    set_ptr str_flame
+    jmp buf_str
+@indexed:
     cmp #6
     bcs @unnamed
     asl a
@@ -912,14 +984,39 @@ build_mode:
     jmp buf_dec
 
 ; ---------------------------------------------------------------------------
-; build_colour — the name of the palette entry nearest what the device reports.
+; build_colour — the colour the device says this LED is showing.
+;
+; Named out of the table of colours an LED can be, not the palette.  The
+; palette is what the colour screen sends, and it is a screen's colours.
+;
+; A cycling LED has no colour to name.  The device reports none, and the hue
+; this program animates is its own guess at the phase rather than the device's,
+; so naming it would name a colour the LED may not be showing.
 ; ---------------------------------------------------------------------------
 
 build_colour:
     jsr buf_reset
+    ldx disc_idx
+    lda led_mode, x
+    cmp #RBCP_LED_CYCLE
+    beq @blank
+    cmp #RBCP_LED_OFF
+    beq @blank
     lda disc_idx
-    jsr leds_nearest
-    ; fall through
+    jsr leds_shown
+    bne @named
+    set_ptr str_device
+    jmp buf_str
+@named:
+    asl a
+    tax
+    lda led_colour_names - 2, x     ; entry 1 is the first name
+    sta ZP_PTR_LO
+    lda led_colour_names - 1, x
+    sta ZP_PTR_HI
+    jmp buf_str
+@blank:
+    rts
 
 ; buf_pick_name — A = palette entry, appended to the line buffer.
 buf_pick_name:
@@ -944,6 +1041,9 @@ buf_pick_name:
 build_values:
     jsr buf_reset
     ldx disc_idx
+    lda led_mode, x
+    cmp #RBCP_LED_OFF           ; an unlit LED is not lit at a brightness
+    beq @no_bright
     lda led_bright, x
     beq @no_bright
     jsr buf_dec
@@ -1077,12 +1177,20 @@ put_str:
 ; ---------------------------------------------------------------------------
 
 put_hex:
-    stx dec_colour
     pha
     lda #'$'                    ; $20 to $3F are their own screen codes
     jsr put_at
     iny
     pla
+    ; fall through
+
+; ---------------------------------------------------------------------------
+; put_hex8 — as put_hex, without the dollar.  The failure record is a row of
+; these and a dollar in front of each would cost the room the words need.
+; ---------------------------------------------------------------------------
+
+put_hex8:
+    stx dec_colour
     pha
     lsr a
     lsr a
@@ -1217,10 +1325,146 @@ display_read:
     jsr row_ptrs
     pla
     tax
-    ldy #0
-    jmp put_str
+    ldy #COL_READ
+    jsr put_str
 @out:
+    jsr display_tally_frame     ; the row was cleared, so the counts go back
+    jmp display_tally
+
+; ---------------------------------------------------------------------------
+; display_lost — the record of the command that ended the run.
+;
+; One sentence cannot say this, so it is three rows under LED_DIAGS.  The note
+; says what went wrong.  SENT is what the host asked for, with the token it saw
+; before the
+; command went out and how many LED commands the device had answered up to
+; then.  GOT is what the device itself had written into the response header by
+; the time the host gave up.
+;
+; The two rows read together are the diagnosis.  A GOT row still naming the
+; command before this one, with the token unmoved from SENT, means the device
+; never took it.  The same command with the token moved on means it took it and
+; did not finish.
+; Clobbers A, X, Y.
+; ---------------------------------------------------------------------------
+
+.export display_lost
+display_lost:
+    lda #ROW_NOTE
+    jsr clear_row
+.if LED_DIAGS
+    lda #ROW_KEYS1
+    jsr clear_row
+    lda #ROW_KEYS2
+    jsr clear_row
+.endif
+
+    lda fail_stage
+    cmp #STAGE_COUNT
+    bcc @known
+    lda #0                      ; a stage this program does not name
+@known:
+    asl a
+    tax
+    lda stage_tab, x
+    sta ZP_PTR_LO
+    lda stage_tab + 1, x
+    sta ZP_PTR_HI
+    lda #ROW_NOTE
+    jsr row_ptrs
+    ldy #1
+    ldx #COL_LIGHT_RED
+    jsr put_str
+
+.if LED_DIAGS
+    lda #ROW_KEYS1
+    jsr row_ptrs
+    set_ptr str_sent
+    ldy #1
+    ldx #COL_MED_GREY
+    jsr put_str
+    lda fail_group
+    ldy #6
+    jsr put_field
+    lda fail_cmd
+    ldy #9
+    jsr put_field
+    lda fail_led
+    ldy #16
+    jsr put_field
+    lda fail_sent_tok
+    ldy #23
+    jsr put_field
+
+    lda #ROW_KEYS2
+    jsr row_ptrs
+    set_ptr str_got
+    ldy #1
+    ldx #COL_MED_GREY
+    jsr put_str
+    lda fail_hdr + 0
+    ldy #6
+    jsr put_field
+    lda fail_hdr + 1
+    ldy #9
+    jsr put_field
+    lda fail_hdr + 2
+    ldy #16
+    jsr put_field
+    lda fail_hdr + 4
+    ldy #23
+    jsr put_field
+    lda fail_hdr + 5
+    ldy #30
+    jsr put_field
+.endif
     rts
+
+; ---------------------------------------------------------------------------
+; display_tally — how many LED commands the device has answered and how many it
+; has not, with the keys that are worth having while it runs.
+;
+; The numbers are drawn every turn of the main loop, because a run that stops
+; failing has to be able to show that — the count going up with nothing beside
+; it is the answer.  The words around them are drawn once, by
+; display_tally_frame, so that a loop turn writes eight characters rather than
+; the whole row.
+; Clobbers A, X, Y.
+; ---------------------------------------------------------------------------
+
+.export display_tally_frame
+display_tally_frame:
+    lda #ROW_TALLY
+    jsr row_ptrs
+    set_ptr str_tally
+    ldy #0
+    ldx #COL_MED_GREY
+    jsr put_str
+    ; fall through
+
+.export display_tally
+display_tally:
+    lda #ROW_TALLY
+    jsr row_ptrs
+    lda leds_ok_hi
+    ldy #3
+    jsr put_field
+    lda leds_ok_lo
+    ldy #5
+    jsr put_field
+    lda leds_bad_hi
+    ldy #12
+    jsr put_field
+    lda leds_bad_lo
+    ldy #14
+    jsr put_field
+    rts
+
+; put_field — A = value, Y = column.  One byte of the record, in the colour the
+; numbers are shown in.  Clobbers A, X, and returns Y after the second digit.
+put_field:
+    ldx #COL_WHITE
+    jmp put_hex8
 
 ; ---------------------------------------------------------------------------
 ; display_note — A = a NOTE_ code.  The one plain line about what just
@@ -1252,7 +1496,7 @@ display_note:
     rts
 
 ; ---------------------------------------------------------------------------
-; display_fail — A = a refusal code.  Replaces everything: on a machine with no
+; display_fail — A = a refusal code.  Replaces everything — on a machine with no
 ; device, or one this program will not touch, there is nothing else to show.
 ; Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
@@ -1305,10 +1549,9 @@ clear_rows:
 ; ---------------------------------------------------------------------------
 ; display_colours — the colour screen.
 ;
-; The list is the C64's own fifteen, and picking one sends that colour's real
-; RGB triple, so the disc on the left and the LED on the board are the same
-; number rather than approximations of each other.  That is the whole reason a
-; side by side comparison means anything.
+; Seven colours and the device's own choice.  Picking one sends a primary, so
+; the LED lights the colour its name says rather than the washed out version a
+; C64 screen uses for the same word.
 ;
 ; Black is not offered.  Whether an LED is lit is carried by its mode, so a
 ; colour being set is always one meant to be seen.
@@ -1371,18 +1614,11 @@ display_colours:
     adc #ROW_PICK
     jsr row_ptrs
 
-    lda tmp_pick
-    cmp #8
-    bcc @col_a
-    ldy #COL_PICK_B
-    bne @swatch                 ; always taken
-@col_a:
     ldy #COL_PICK_A
-@swatch:
     sty buf_col
     ldx tmp_pick
     bne @own
-    ldx #COL_DARK_GREY          ; the device's own choice has no swatch to show
+    ldx #COL_RED                ; the colour the device comes up in
 @own:
     lda #SC_SOLID
     jsr put_at
@@ -1677,6 +1913,7 @@ str_f3:         .byte "F3", 0
 mode_names:
     .word str_off, str_on, str_blink, str_breathe, str_cycle, str_beacon
 
+str_flame:      .byte "FLAME", 0
 str_off:        .byte "OFF", 0
 str_on:         .byte "ON", 0
 str_blink:      .byte "BLINK", 0
@@ -1684,6 +1921,11 @@ str_breathe:    .byte "BREATHE", 0
 str_cycle:      .byte "CYCLE", 0
 str_beacon:     .byte "BEACON", 0
 str_mode:       .byte "MODE ", 0
+
+; The colours an LED shows, in the order leds.s numbers them.
+led_colour_names:
+    .word str_c_red, str_c_orange, str_c_yellow, str_c_green
+    .word str_c_cyan, str_c_blue, str_c_purple, str_c_white
 
 colour_names:
     .word str_c_white, str_c_red, str_c_cyan, str_c_purple
@@ -1715,7 +1957,7 @@ str_mono:       .byte "MONO", 0
 str_rgb:        .byte "RGB", 0
 str_modes:      .byte "MODES", 0
 
-; The mode keys are not here: they are on the screen under the modes they set.
+; The mode keys are not here — they are on the screen under the modes they set.
 str_keys1:      .byte "CRSR L/R  LED       CRSR U/D  COLOUR", 0
 str_keys2:      .byte "C COLOURS  B BRIGHT  P PERIOD  H HOLD", 0
 str_keys3:      .byte "SPACE PARADE   A ALL   Q QUIT", 0
@@ -1739,14 +1981,30 @@ read_col:
     .byte COL_WHITE, COL_LIGHT_GREEN, COL_LIGHT_RED, COL_LIGHT_RED
 
 str_r_none:     .byte "", 0
-str_r_match:    .byte "LAST SET LED  OK   READ BACK AGREES", 0
-str_r_differs:  .byte "READ BACK DIFFERS FROM WHAT WAS SENT", 0
-str_r_refused:  .byte "THE DEVICE REFUSED THAT SET LED", 0
+str_r_match:    .byte "READ BACK AGREES", 0
+str_r_differs:  .byte "READ BACK DIFFERS", 0
+str_r_refused:  .byte "DEVICE REFUSED THE SET", 0
+
+; What the library reached before it gave up, in the order rbcp_core.s numbers
+; the stages.  Entry 0 is a stage this program does not name, which is also
+; what a failure the library never reported a stage for reads as.
+stage_tab:
+    .word str_n_lost, str_s_not_taken, str_s_unfinished, str_s_refused
+
+str_s_not_taken:  .byte "THE DEVICE DID NOT TAKE THE COMMAND", 0
+str_s_unfinished: .byte "THE DEVICE TOOK IT AND NEVER FINISHED", 0
+str_s_refused:    .byte "THE DEVICE REFUSED THE COMMAND", 0
+
+; The two rows of the record.  The gaps are where the numbers are written, so
+; the words and the columns in display_lost have to agree.
+str_sent:       .byte "SENT       LED    TOK", 0
+str_got:        .byte "GOT        TOK    PRG    RSP", 0
+str_tally:      .byte "OK      BAD", 0
 
 note_tab:
     .word str_n_blank, str_n_refused, str_n_lost, str_n_nocolour
     .word str_n_noperiod, str_n_nohold, str_n_unsupported, str_n_truncated
-    .word str_n_parade, str_n_gone
+    .word str_n_parade, str_n_gone, str_n_slipped
 
 str_n_blank:        .byte "", 0
 str_n_refused:      .byte "THE DEVICE REFUSED THAT", 0
@@ -1758,6 +2016,7 @@ str_n_unsupported:  .byte "THIS LED DOES NOT HAVE THAT MODE", 0
 str_n_truncated:    .byte "MORE LEDS THAN THIS SHOWS  A SEES THEM", 0
 str_n_parade:       .byte "WATCH THE DEVICE   ANY KEY STOPS", 0
 str_n_gone:         .byte "THE SESSION IS OVER", 0
+str_n_slipped:      .byte "A COMMAND WAS LOST  THE DEVICE IS BACK", 0
 
 ; Indexed by the refusal code, so the session's own come first, in the order
 ; app_defs.s numbers them, and this program's follow.
@@ -1773,7 +2032,7 @@ fail_tab:
 str_f_nodev:    .byte "NO DEVICE ANSWERED THE KNOCK", 0
 str_f_enter:    .byte "THE DEVICE REFUSED THE SESSION", 0
 str_f_version:  .byte "THE DEVICE SPEAKS A VERSION WE DO NOT", 0
-str_f_clash:    .byte "THE ROM ALREADY READS AS A REPLY", 0
+str_f_clash:    .byte "THE ROM STILL HOLDS A REPLY  RESET IT", 0
 str_f_slots:    .byte "THE DEVICE NEEDS TWO RAM SLOTS", 0
 str_f_noclean:  .byte "NO FLASH SLOT MATCHES THIS ROM", 0
 str_f_noleds:   .byte "THIS DEVICE HAS NO LEDS", 0

@@ -2,6 +2,16 @@
 
 This directory contains reference implementations of RBCP hosts for 6502-based systems. These implementations are intended to serve as examples and starting points for developers looking to implement their own RBCP hosts on 6502-based platforms.
 
+## C64 Implementation Note
+
+On every eighth raster line of the display window the C64's VIC-II video chip takes the bus off the processor for forty cycles or more. The address bus and the chip select change hands across that, and around the handover a device can see an access that was not one, see one access as two, or miss one, any of which slips the command frame by a byte. Measured on real machines, a C64 with the display on gets an RBCP command wrong somewhere between 1 in 500 and 1 in 20,000, depending on the C64 board type and socket the RBCP device is used in.
+
+Clearing bit 4 of `$D011` (display enable) around an exchange stops every fetch, and with the display off nothing slips. This causes a blank screen for as long as the exchange takes, which for a few commands should be imperceptible.
+
+Reading with the raster keeps the picture instead. Badlines fall on known raster lines, so a host that synchronises to the raster and counts its own cycles can place every command read clear of them. It is what tape loaders did to show anything while loading, and it is the harder of the two — the host has to know its own cycle counts exactly, and PAL and NTSC do not agree.
+
+Some of the C64 implementations in this directory use display disable approach.
+
 ## Contents
 
 - [6502 RBCP Host Routines](rbcp/README.md): Generic 6502 assembly routines for communicating with an RBCP device. These can be used as building blocks for implementing an RBCP host on any 6502-based system.

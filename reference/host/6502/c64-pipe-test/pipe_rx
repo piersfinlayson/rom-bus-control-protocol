@@ -100,9 +100,9 @@ def main():
             if now >= next_status:
                 rate = window_bytes / (STATUS_EVERY + (now - next_status))
                 print(
-                    "%7.0f B/s  total %-10d lines %-9d runs %-3d "
+                    "%8.0f bps  total %-10d lines %-9d runs %-3d "
                     "gaps %-4d missing %-6d repeats %-4d bad %d"
-                    % (rate, total, check.lines, check.runs, check.gaps,
+                    % (rate * 8, total, check.lines, check.runs, check.gaps,
                        check.missing, check.repeats, check.bad),
                     file=sys.stderr,
                 )

@@ -13,7 +13,7 @@
 ; The body is a digit ruler with one cell replaced by '#', at body column
 ; sequence mod 57.  On a terminal that is a diagonal stripe scrolling up the
 ; screen with a 57 line period, against a ruler that gives the reader a column
-; reference.  A dropped line shows twice over: the hex counter jumps and the
+; reference.  A dropped line shows twice over — the hex counter jumps and the
 ; diagonal breaks.
 ;
 ; Only three things change from line to line — the stripe leaves one cell and
@@ -55,7 +55,7 @@ tuned_mode:     .res 1      ; non-zero when writes mirror into the block
 ;
 ; The four sequence digits are line bytes 0 to 3, which are block 0's four
 ; payload operands at fixed addresses, so they would need no lookup.  The
-; stripe would not: it moves one line byte per line and crosses a block
+; stripe would not — it moves one line byte per line and crosses a block
 ; boundary every fourth.  A 128 byte table covers both without that arithmetic,
 ; at 24 cycles a patched byte against about 10 — 42 cycles a line, on a line
 ; that costs about 1500.  Two things are patched per line plus the sequence.

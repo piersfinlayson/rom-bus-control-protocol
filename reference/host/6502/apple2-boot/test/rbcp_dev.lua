@@ -83,11 +83,11 @@ local LED_TYPE = { [0] = 0x00, [1] = 0x01 }
 local MODE_NAME = { [0] = "off", "on", "blink", "breathe", "cycle", "beacon" }
 
 local ARGS = {                   -- [group][cmd] = argument count
-  [0x00] = { [0x01] = 9, [0x04] = 1 },
+  [0x00] = { [0x00] = 0, [0x01] = 9, [0x04] = 1 },
   [0x01] = { [0x00] = 0, [0x01] = 1, [0x03] = 0, [0x04] = 0, [0x05] = 0, [0x06] = 0 },
   [0x02] = { [0x02] = 2 },
   [0x03] = { [0x00] = 0, [0x01] = 3, [0x06] = 4 },
-  [0x04] = { [0x00] = 0, [0x02] = 6 },
+  [0x04] = { [0x00] = 0, [0x01] = 1, [0x02] = 6 },
   [0x06] = { [0x00] = 0, [0x01] = 1, [0x02] = 2, [0x03] = 8 },
   [0xAA] = { [0xAA] = 0 },
 }
@@ -132,7 +132,9 @@ local function execute()
     return
   end
 
-  if g == 0x00 and c == 0x01 then                 -- ENTER_CMD_RESP
+  if g == 0x00 and c == 0x00 then                 -- NOP
+    answer(true)
+  elseif g == 0x00 and c == 0x01 then             -- ENTER_CMD_RESP
     dev.cmd_resp = true
     log("ENTER_CMD_RESP page=$%02X bch=$%04X size=%d", a[1], a[3] | (a[4] << 8),
         a[6] | (a[7] << 8))
@@ -187,6 +189,14 @@ local function execute()
   elseif g == 0x04 and c == 0x00 then             -- GET_PIPE_CAPABILITY
     put_data(0, 1)
     answer(true)
+  elseif g == 0x04 and c == 0x01 then             -- GET_PIPE_INFO
+    if a[1] ~= 0 then answer(false) return end
+    put_data(0, 0)                                -- raw
+    put_data(1, 0x03 | 0x04 | 0x08)               -- both ways, far end attached
+    put_data(2, 0xFF)                             -- room to write
+    put_data(3, 0)                                -- nothing waiting
+    put_data(4, 1)                                -- USB CDC
+    answer(true)
   elseif g == 0x06 and c == 0x00 then             -- GET_LED_CAPABILITY
     put_data(0, 2)                                -- two LEDs
     put_data(1, 100)                              -- max period
@@ -237,7 +247,8 @@ local function byte_in(b)
         if dev.knock_at == #KNOCK then
           dev.knocked = true
           dev.knock_at = 0
-        end
+          return                  -- GROUP is the byte after the knock, not
+        end                       -- the last byte of it
       else
         dev.knock_at = (b == KNOCK[1]) and 1 or 0
       end

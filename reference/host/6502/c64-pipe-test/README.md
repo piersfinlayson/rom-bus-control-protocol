@@ -1,65 +1,114 @@
 # C64 RBCP Pipe Throughput Test
 
-Measures how fast a Commodore 64 can push bytes through an RBCP pipe, and prints the stream to a terminal on the other end.
-
-Build with `make`. Output is `build/rbcp_pipe_test.prg` and `build/rbcp-pipe-test.d64`.
-
-Run `./pipe_rx <port>` on the machine the device's USB is plugged into, then `LOAD"RBCP*",8` and `RUN` on the C64. Keys: `1` `2` `3` pick a send path, `RETURN` starts and stops, `T` runs for ten seconds, `Q` quits. RUN/STOP-RESTORE also stops a run.
+Measure the throughput a Commodore 64 achieves through an RBCP pipe.
 
 ---
 
-**Breadbin C64 only.** The device replaces the 8 KB BASIC ROM, a 2364 serving $A000–$BFFF. A combined 16 KB BASIC+KERNAL ROM needs the changes under [Other ROM types](#other-rom-types).
+**Untested on hardware.**
 
-Device also needs a pipe carrying OUT, two RAM slots, and the stock BASIC image in a flash slot. All checked at startup and named on screen if missing.
+In a longboard C64, the RBCP capable device should replace the 8 KB BASIC ROM — a 2364 serving $A000–$BFFF. [Other ROM Types](#other-rom-types) covers serving a combined 16KB BASIC/Kernal as used by a shortboard C64.
 
-## Send paths
+## Overview
 
-All three send the same stream. They differ in how much data each RBCP command carries, and in what builds it.
+The C64 sends a continuous stream of data to the host through an RBCP pipe. Each `PIPE_WRITE` command carries up to 4 bytes, so throughput depends both on how many bytes go in each command and on how fast the C64 can issue them.
 
-| Key | Path | What it does |
-|-----|------|--------------|
-| `1` | `LIB4` | Four bytes per command, the most `PIPE_WRITE` carries, sent through the shared 6502 library. |
-| `2` | `LIB1` | One byte per command, so four times as many commands for the same data. Shows how much of the time is protocol overhead rather than payload. |
-| `3` | `TUNED4` | Four bytes again, but hand-written send code in place of the library. Shows whether the library is what limits the rate. |
+Three send paths carry the same stream:
 
-Switching path is a keypress — the RBCP session stays open from startup to quit.
+| Key | Path | Bytes per command | Displays |
+| --- | --- | --- | --- |
+| `1` | `LIB4` | 4, the most `PIPE_WRITE` carries | the library's rate |
+| `2` | `LIB1` | 1, so four times the commands | how much of the time is protocol overhead |
+| `3` | `TUNED4` | 4, hand-written in place of the library | whether the library is the limit |
 
-## The stream
+## Requirements
 
-64-byte lines.
+The device needs:
 
-```
-NNNN 012345678901234567890123456789012345678901234567890123456<CR><LF>
-```
+- a pipe carrying data from the device to the host
+- the stock BASIC image in a flash slot
 
-Sequence in hex, then a digit ruler with one cell replaced by `#` at column `sequence mod 57` — a diagonal scrolling up the terminal. A dropped line jumps the counter and breaks the diagonal. Each run starts with a `####` line naming the run and path.
+Both are checked at startup, and flagged on screen if missing.
 
-## Measuring
+## Controls
 
-`pipe_rx` passes the stream to stdout and writes a status line to stderr each second. Redirect stdout to measure without the passthrough. Needs `pyserial`.
+| Key | Action |
+| --- | --- |
+| `1`, `2`, `3` | pick a send path |
+| `RETURN` | start, stop |
+| `T` | run for ten seconds |
+| `Q` | quit |
+| `RESTORE` | stop a run |
 
-```
-  12480 B/s  total 1248000  lines 19500  runs 1  gaps 0 missing 0 repeats 0 bad 0
-```
+## Dependencies
 
-This is the authoritative figure. The C64 shows its own alongside, which includes its bookkeeping — under 5%.
-
-PAL only has been tested.
+- [cc65](https://cc65.github.io/)
+- `c1541`, for the disk image. Inside the [VICE](https://vice-emu.sourceforge.io/) bundle.
+- `pyserial`, for `pipe_rx`
 
 ## Building
 
-Needs [cc65](https://cc65.github.io/), and `c1541` from [VICE](https://vice-emu.sourceforge.io/) for the disk image. `c1541` is inside the VICE bundle, not on a stock macOS PATH:
+Provide the path to `c1541` if it is not on your system's PATH.
 
 ```bash
 make C1541=/Applications/vice-arm64-gtk3-3.9/bin/c1541
 ```
 
-With no device it reports `NO DEVICE ANSWERED THE KNOCK` and waits at the menu, so screen and keys can be exercised under an emulator. Nothing past the knock can be.
+Output is `build/rbcp_pipe_test.prg` and `build/rbcp-pipe-test.d64`.
 
-## Other ROM types
+Without an RBCP capable device it reports `NO DEVICE ANSWERED THE KNOCK` and waits at the menu, to enable the screen and keys to be tested under VICE.
 
-A flash slot is only offered as a clean exit if it reports type 2364, and the served image is assumed to be the 8 KB at $A000–$BFFF. For another 8-bit ROM — a 23128 combined BASIC+KERNAL, say:
+## Measuring Throughput
 
-- `rbcp_config.s`: `CONFIG_ROM_SIZE` to the image size.
-- `src/pipe_defs.s`: `ROM_TYPE_2364` to that type's code from the spec.
-- `src/session.s`: `checksum_image` walks up from `CONFIG_ROM_BASE_HI`. A 16 KB image is not contiguous — $A000–$BFFF then $E000–$FFFF — so it must walk both halves in image order.
+`pipe_rx` is a Python script that receives the stream. Run it on the machine the device's USB is plugged into, then `LOAD"RBCP*",8` and `RUN` on the C64.
+
+```bash
+./pipe_rx /dev/ttyACM0
+```
+
+The argument is the serial port the device presents over USB — `/dev/ttyACM0` on Linux, `/dev/cu.usbmodem*` on macOS.
+
+It passes the stream to stdout and writes a status line to stderr each second. Redirect stdout to measure without the passthrough.
+
+```
+   99840 bps  total 1248000  lines 19500  runs 1  gaps 0 missing 0 repeats 0 bad 0
+```
+
+The script's figure is authoritative. The C64's own figure is indicative only.
+
+## Other ROM Types
+
+This build serves one 8 KB ROM at $A000–$BFFF. To serve a 16 KB 23128 covering BASIC and KERNAL:
+
+| Change | In | To |
+| --- | --- | --- |
+| `CONFIG_ROM_SIZE` | `rbcp_config.s` | the image size |
+| `ROM_TYPE_2364` | `src/pipe_defs.s` | that chip type's code, from the spec |
+| `checksum_image` | `src/session.s` | walk $A000–$BFFF, then $E000–$FFFF |
+
+A 16 KB image appears in two separate places in the C64's memory map, so the checksum must walk both, in image order.
+
+## Technical Details
+
+### The Stream
+
+The C64 sends 64 byte lines continuously, numbered so a dropped one can be spotted.
+
+```
+NNNN 012345678901234567890123456789012345678901234567890123456<CR><LF>
+```
+
+Each line starts with a sequence number in hex, followed by 57 digits. One digit is replaced by `#`, one place further right on each line, so as the terminal scrolls the `#` draws a diagonal. A dropped line breaks that diagonal, which is visible without reading the numbers.
+
+### Recovery
+
+A device that fails to answer a command is left waiting for argument bytes that never arrive, which breaks the framing of every command after it. The run ends and the program resets RBCP communications.
+
+`ERRORS` counts the runs that ended this way. A device that does not come back leaves the program unable to start another run.
+
+### Clean Exit
+
+RBCP works by replacing part of the ROM image being served by the device (BASIC here) with a data section for transmitting data from the device to the host.
+
+When exiting, it is important this section is replaced with the original data, or BASIC will not work properly afterwards.
+
+`Q` cleans the BASIC image on its way out.

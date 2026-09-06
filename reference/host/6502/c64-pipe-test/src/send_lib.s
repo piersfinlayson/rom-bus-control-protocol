@@ -10,7 +10,9 @@
 
 .import rbcp_cmd_pipe_write
 .import line_buf
-.import refusals
+.import fault_stall
+.import fault_stage
+.import fault_write_refused
 
 ; ---------------------------------------------------------------------------
 .bss
@@ -34,9 +36,13 @@ line_pos_next:  .res 1
 ; crossing penalty is reachable.  rbcp_cmd_pipe_write fills rbcp_arg4 and
 ; rbcp_arg5 itself, which is why the gather stops at rbcp_arg3.
 ;
-; A refusal is the pipe being full: PIPE_WRITE took none of the bytes, so the
-; same ones go again and a counter moves.  A token or progress timeout is the
-; device not answering, which ends the run.
+; PIPE_WRITE takes all four bytes or none, so a failure of any kind resends the
+; same ones.  fault.s decides how many times and for how long, and names the
+; reason when it decides the run is over.
+;
+; A retry goes back to the gather rather than to the send, because asking the
+; pipe how much room it has is itself a command and overwrites rbcp_arg0.  That
+; costs about fifty cycles on a path that has already lost a command.
 ;
 ; Returns carry clear, or carry set if the run should stop.
 ; Clobbers A, X, Y and the RBCP arguments.
@@ -46,6 +52,7 @@ line_pos_next:  .res 1
 send_lib_line:
     lda #0
     sta line_pos
+    sta fault_stall             ; the stall bound is per line
 
 @chunk:
     ldy line_pos
@@ -66,12 +73,18 @@ send_lib_line:
     bcc @taken
 
     lda rbcp_zp_5
-    cmp #3
-    bne @abort                  ; 1 or 2 — nothing answered, so no retry
-    inc refusals
-    bne @send
-    inc refusals + 1
-    jmp @send
+    cmp #STAGE_REFUSED
+    beq @refused                ; it answered, and said no
+
+    jsr fault_stage             ; 1 or 2 — nothing to retry to
+    sec
+    rts
+
+@refused:
+    lda chunk_count
+    jsr fault_write_refused
+    bcc @chunk                  ; the same bytes again, gathered afresh
+    rts                         ; carry set, with the reason in fault_stat
 
 @taken:
     lda line_pos_next
@@ -79,8 +92,4 @@ send_lib_line:
     cmp #64
     bne @chunk
     clc
-    rts
-
-@abort:
-    sec
     rts

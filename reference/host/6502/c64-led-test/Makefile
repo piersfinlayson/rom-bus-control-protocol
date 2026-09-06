@@ -9,7 +9,7 @@
 AS       = ca65
 LD       = ld65
 C1541    = c1541
-ASFLAGS  = --cpu 6502 -I . -I src -I ../common
+ASFLAGS  = --cpu 6502 -I . -I src -I ../common -D LED_DIAGS=$(LED_DIAGS)
 LDFLAGS  = -C led_test.cfg
 
 BUILD    = build
@@ -23,9 +23,11 @@ RBCP_LIB  = $(BUILD)/rbcp.lib
 
 BOARD   ?= 0
 SCRIPT  ?= 0
+LED_DIAGS ?= 0
 
-# BOARD and SCRIPT only reach the sources through the command line, so make
-# cannot see a change to either.  The stamp gives it something to depend on.
+# BOARD, SCRIPT and LED_DIAGS only reach the sources through the command line,
+# so make cannot see a change to any of them.  The stamp gives it something to
+# depend on.
 BOARD_STAMP = $(BUILD)/.board
 
 PRG      = $(BUILD)/rbcp_led_test.prg
@@ -45,7 +47,8 @@ COMMON_OBJS = $(BUILD)/led_test.o \
               $(BUILD)/c64_app.o \
               $(BUILD)/c64_keys.o
 
-OBJS      = $(COMMON_OBJS) $(BUILD)/leds_dev.o  $(BUILD)/rbcp_session.o
+OBJS      = $(COMMON_OBJS) $(BUILD)/leds_dev.o  $(BUILD)/rbcp_session.o \
+            $(BUILD)/rbcp_recover.o
 DEMO_OBJS = $(COMMON_OBJS) $(BUILD)/leds_fake.o $(BUILD)/rbcp_session_fake.o
 
 .PHONY: all demo clean FORCE
@@ -76,35 +79,38 @@ $(BUILD)/c64_keys.o: ../common/c64_keys.s ../common/app_defs.s | $(BUILD)
 $(BUILD)/rbcp_session.o: ../common/rbcp_session.s ../common/app_defs.s rbcp_config.s | $(BUILD)
 	$(AS) $(ASFLAGS) ../common/rbcp_session.s -o $@
 
+$(BUILD)/rbcp_recover.o: ../common/rbcp_recover.s ../common/rbcp_stage.s | $(BUILD)
+	$(AS) $(ASFLAGS) ../common/rbcp_recover.s -o $@
+
 $(BUILD)/rbcp_session_fake.o: ../common/rbcp_session_fake.s ../common/app_defs.s rbcp_config.s | $(BUILD)
 	$(AS) $(ASFLAGS) ../common/rbcp_session_fake.s -o $@
 
-$(BUILD)/led_test.o: src/led_test.s src/led_defs.s src/disc_glyphs.inc $(BOARD_STAMP) | $(BUILD)
+$(BUILD)/led_test.o: src/led_test.s src/led_defs.s ../common/rbcp_stage.s src/disc_glyphs.inc $(BOARD_STAMP) | $(BUILD)
 	$(AS) $(ASFLAGS) -D SCRIPT=$(SCRIPT) src/led_test.s -o $@
 
-$(BUILD)/display.o: src/display.s src/led_defs.s | $(BUILD)
+$(BUILD)/display.o: src/display.s src/led_defs.s ../common/rbcp_stage.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/display.s -o $@
 
-$(BUILD)/leds.o: src/leds.s src/led_defs.s | $(BUILD)
+$(BUILD)/leds.o: src/leds.s src/led_defs.s ../common/rbcp_stage.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/leds.s -o $@
 
-$(BUILD)/charset.o: src/charset.s src/led_defs.s src/disc_glyphs.inc src/disc_glyphs.inc | $(BUILD)
+$(BUILD)/charset.o: src/charset.s src/led_defs.s ../common/rbcp_stage.s src/disc_glyphs.inc src/disc_glyphs.inc | $(BUILD)
 	$(AS) $(ASFLAGS) src/charset.s -o $@
 
-$(BUILD)/ticker.o: src/ticker.s src/led_defs.s | $(BUILD)
+$(BUILD)/ticker.o: src/ticker.s src/led_defs.s ../common/rbcp_stage.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/ticker.s -o $@
 
 # The disc's characters are generated.  The rule is here so a change to the
 # generator rebuilds them, and the output is committed so a build needs only
 # cc65.
-$(BUILD)/disc_glyphs.o: src/disc_glyphs.s src/led_defs.s | $(BUILD)
+$(BUILD)/disc_glyphs.o: src/disc_glyphs.s src/led_defs.s ../common/rbcp_stage.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/disc_glyphs.s -o $@
 
 .PHONY: glyphs
 glyphs:
 	python3 tools/gen_disc.py src/disc_glyphs.s
 
-$(BUILD)/leds_dev.o: src/leds_dev.s src/led_defs.s | $(BUILD)
+$(BUILD)/leds_dev.o: src/leds_dev.s src/led_defs.s ../common/rbcp_stage.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/leds_dev.s -o $@
 
 $(BOARD_STAMP): FORCE | $(BUILD)
@@ -112,7 +118,7 @@ $(BOARD_STAMP): FORCE | $(BUILD)
 
 FORCE:
 
-$(BUILD)/leds_fake.o: src/leds_fake.s src/led_defs.s $(BOARD_STAMP) | $(BUILD)
+$(BUILD)/leds_fake.o: src/leds_fake.s src/led_defs.s ../common/rbcp_stage.s $(BOARD_STAMP) | $(BUILD)
 	$(AS) $(ASFLAGS) -D BOARD=$(BOARD) src/leds_fake.s -o $@
 
 $(PRG): $(OBJS) $(RBCP_LIB) led_test.cfg

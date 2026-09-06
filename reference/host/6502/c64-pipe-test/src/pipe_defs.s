@@ -17,6 +17,7 @@
 ; kernal screen call happens after the restore.
 
     .include "c64_defs.s"
+    .include "rbcp_stage.s"
 
 ; ---------------------------------------------------------------------------
 ; Application zero page — between the c64_hw.s scratch and the RBCP block
@@ -99,11 +100,28 @@ STAT_RAM_SLOTS  = $0A       ; fewer than two RAM slots
 STAT_DIRTY_EXIT = $0B       ; left command-response mode without a clean slot
 STAT_RUNNING    = $0C
 STAT_STOPPED    = $0D
-STAT_LOST       = $0E       ; the device stopped answering mid-run
+STAT_NO_ANSWER  = $0E       ; the token never moved, so nothing received it
 STAT_NOT_ARMED  = $0F
 STAT_VERIFYING  = $10       ; looking for a flash slot matching the served image
 STAT_NO_CLEAN   = $11       ; no flash slot matches, so there is no clean exit
-STAT_COUNT      = $12
+STAT_NO_COMPLETE = $12      ; the token moved and the command never finished
+STAT_BAD_REFUSAL = $13      ; a write refused while the pipe had room for it
+STAT_PIPE_STUCK = $14       ; the pipe stayed full for STALL_UNDERFLOWS
+STAT_NO_RECOVER = $15       ; the device did not come back after a reset
+STAT_COUNT      = $16
+
+; ---------------------------------------------------------------------------
+; What a failed write is given before the run ends.  See fault.s.
+; ---------------------------------------------------------------------------
+
+; Immediate retries of a refused write before the pipe is asked how much room
+; it has.  Eight of them cost about 800 cycles, which is under a millisecond.
+FAULT_BURST      = 8
+
+; How long a pipe that really is full may stay that way, in Timer A
+; underflows.  Timer A underflows 32 times a second, so this is five seconds.
+; Timer B's low byte is read to measure it, which is unambiguous below 256.
+STALL_UNDERFLOWS = 160
 
 ; ---------------------------------------------------------------------------
 ; Screen rows.  Only display.s uses these.

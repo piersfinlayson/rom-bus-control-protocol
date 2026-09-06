@@ -15,7 +15,7 @@
 ; written is the period minus one.
 ;
 ; Timer B counts Timer A underflows.  A window has closed when Timer B has
-; stepped 32 times, which is one read of its low byte: the byte alone only
+; stepped 32 times, which is one read of its low byte — the byte alone only
 ; becomes ambiguous after 256 underflows, and the check runs once per line.
 ;
 ; CIA2 rather than CIA1, which carries the keyboard matrix and the kernal's own

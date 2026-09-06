@@ -1,84 +1,116 @@
 # RBCP Auxiliary I/O Tester
 
-Drives and reads a device's auxiliary pins from a Commodore 64, and shows every pin of every group on screen as it happens.
-
-A pin is a ring. Filled means the level is high, hollow means low. The colour says who owns the pin: **green** the C64 is driving it, **white** it is free and only being read, **grey** the ROM is using it and it is not ours to touch. Ring size comes from how many drivable pins the group has, so a group of two fills the screen and a group of forty still fits.
-
-Keys: cursor left and right move between pins, up and down between groups, shift reverses as it does everywhere else on a C64. `L` `H` `Z` drive the pin low, high or release it. `B` blinks it, `T` runs a move test, `A` shows every pin including the ones the ROM owns, `R` resets the C64, `Q` quits.
+Drive a device's auxiliary pins from a Commodore 64.
 
 ---
 
 **Untested on hardware.**
 
-**Breadbin C64 only.** The device replaces the 8 KB BASIC ROM, a 2364 serving $A000–$BFFF.
+In a longboard C64, the RBCP capable device should replace the 8 KB BASIC ROM — a 2364 serving $A000–$BFFF. [Other ROM Types](#other-rom-types) covers serving a combined 16KB BASIC/Kernal as used by a shortboard C64.
 
-## The move test
+## Overview
 
-`T` drives the cursor pin low, then high, then releases it, scanning every pin at each step, and reports whether any *other* pin moved with it.
+Each pin is shown with:
 
-That question is the point. Reading back the pin just driven proves nothing: the answer comes from the same place the drive went, so a dead pad, a dry joint and a signal that never leaves the die all read back perfectly. A pin the device is not driving is an input, and only follows if the signal crossed a wire and came back.
+- its level, high or low
+- whether the C64 is driving it, it is free, or the ROM is using it
 
-So the test needs a wire: two drivable pins joined, with a 10k pull-up on the net, because the device pins are high impedance as inputs and pull nothing themselves. With that fitted, drive low reads 0 and drive high reads 1, and both drive directions are proven. Release also reads 1 and cannot be told from high by this route — its only witness is the `driven` byte the device reports.
+The information shown comes from RBCP's `GET_AUX_PIN_INFO` command, so directly from the device.
+
+## Controls
+
+| Key | Selects |
+| --- | --- |
+| cursor left, right | the pin |
+| cursor up, down | the group |
+
+| Key | Action |
+| --- | --- |
+| `L` | drive low |
+| `H` | drive high |
+| `Z` | release |
+| `B` | blink |
+| `T` | move test |
+| `A` | show every pin |
+| `R` | reset the C64 |
+| `Q` | quit |
 
 ## Wiring
 
-Auxiliary pins are whatever the device exposes and the protocol says nothing about what is attached to one, so the choice is yours and the consequences are too. On One ROM:
+Auxiliary pins are whatever the device exposes, and the protocol says nothing about what is attached to one. On One ROM:
 
-- **An LED** on any drivable pin, through a resistor to ground. This is the one a camera can see.
-- **The loopback pair** as above.
-- **The C64 reset line**, which must go to a 5V tolerant pin — SEL C, SEL D or an X pad. `R` drives it low, holds, and releases. It never drives it high: the C64 pulls that line up itself.
+| Attach | Where | Purpose |
+| --- | --- | --- |
+| an LED, through a resistor to ground | any drivable pin | visual feedback |
+| a loopback pair, with a 10k pull-up on the net | two drivable pins | the move test (`T`) |
+| the C64 reset line | a 5V tolerant pin | resetting the C64 (`R`) |
 
-## Reset
+Which pins are 5V tolerant varies by One ROM model. Check the board's documentation before connecting anything at 5V.
 
-`R` asks which image the machine should come back as, cursor keys pick among the flash slots holding a ROM of the served type, and RETURN goes. The chosen image is loaded into a spare RAM slot, then one `SET_AUX_SWITCH_EXIT` drives the pin low, activates that slot, and releases the pin — pin first, so the machine is held in reset for the whole switch.
+## Dependencies
 
-It has to be one command. After a slot switch the host can rely on neither the new image having a back-channel region nor the observed addresses being unchanged, so anything that must follow a switch has to travel with it.
-
-Picking the image the machine is already serving is the safe version: it reboots and comes back exactly as it was, which is the way to find out whether the reset wire works before anything else depends on it.
-
-## Leaving the ROM as it was found
-
-Every command writes the response header, and the header lives in the active RAM slot, so the served BASIC is dirty from the first command onwards. Repairing it is impossible — the write that would repair it is itself a command.
-
-So the program takes a Fletcher-16 of $A000–$BFFF before it knocks, then looks for a flash slot holding exactly that, loads it into a spare RAM slot and reads it back with `SLOT_PEEK` to be sure. `Q` switches to that slot on the way out: it has never held a back channel, and `SWITCH_AND_EXIT` writes no header. Without such a slot there is no clean way out, and the program says so and refuses to start rather than leaving you with a broken BASIC.
+- [cc65](https://cc65.github.io/)
+- `c1541`, for the disk image. Inside the [VICE](https://vice-emu.sourceforge.io/) bundle.
 
 ## Building
 
-Needs [cc65](https://cc65.github.io/), and `c1541` from [VICE](https://vice-emu.sourceforge.io/) for the disk image. `c1541` is inside the VICE bundle, not on a stock macOS PATH.
+Provide the path to `c1541` if it is not on your system's PATH.
 
 ```bash
 make C1541=/Applications/vice-arm64-gtk3-3.9/bin/c1541
 ```
 
-## The demo build
+## Demo Build
 
-`make demo` builds `rbcp_aux_demo.prg`, which answers its own questions instead of asking a device. It exists so that every screen can be looked at under an emulator, where there is no device and nothing past the knock can run. It is a separate binary and none of it is linked into the one that talks to hardware.
+For testing under VICE, where there is no device. `make demo` builds `rbcp_aux_demo.prg`, which answers its own questions. Separate binary, not linked into the one that talks to hardware.
 
-`BOARD` picks which imaginary board it describes, which is how each ring size and the empty-group case get exercised:
+`BOARD` picks the imaginary board:
 
-| BOARD | What it describes |
-|-------|-------------------|
-| `0` | Three groups: 30 GPIO of which 14 drivable, 4 image select, 2 X pads with a loopback fitted between them. |
-| `1` | Two groups, no X pads, and nothing in the GPIO group drivable. |
-| `2` | One group of 48 GPIO, 30 drivable, and a device that cannot time holds. |
+| BOARD | Board |
+|-------|-------|
+| `0` | Three groups: 30 GPIO of which 14 drivable, 4 image select, 2 X pads with a loopback between them. |
+| `1` | Two groups, no X pads, nothing in the GPIO group drivable. |
+| `2` | One group of 48 GPIO, 30 drivable. Cannot time holds. |
 
-`SCRIPT` puts the program into one named state at startup by calling the same dispatch the keyboard calls, so a screen can be captured without anything to press the keys.
+`SCRIPT` reaches one screen at startup, through the dispatch the keyboard uses.
+
+With VICE:
 
 ```bash
 make BOARD=0 SCRIPT=2 demo
 x64sc -warp -limitcycles 90000000 -exitscreenshot shot.png -autostart build/rbcp_aux_demo.prg
 ```
 
-`-keybuf` cannot reach this program: it reads the keyboard matrix directly with interrupts masked, so nothing the kernal buffers is ever seen. `SCRIPT` is the way in.
+Notes:
 
-## Other ROM types
+- `-keybuf` cannot reach this program, which reads the keyboard matrix directly with interrupts masked.
 
-A flash slot is only a candidate — for the clean exit or for the reset — if it reports type 2364, and the served image is assumed to be the 8 KB at $A000–$BFFF. For another 8-bit ROM, a 23128 combined BASIC+KERNAL say:
+## Other ROM Types
 
-- `rbcp_config.s`: `CONFIG_ROM_SIZE` to the image size.
-- `src/aux_defs.s`: `ROM_TYPE_2364` to that type's code from the spec.
-- `src/pins_dev.s`: `checksum_image` walks up from `CONFIG_ROM_BASE_HI`. A 16 KB image is not contiguous — $A000–$BFFF then $E000–$FFFF — so it must walk both halves in image order.
+This build serves one 8 KB ROM at $A000–$BFFF. To serve a 16 KB 23128 covering BASIC and KERNAL:
 
-## Limits
+| Change | In | To |
+| --- | --- | --- |
+| `CONFIG_ROM_SIZE` | `rbcp_config.s` | the image size |
+| `ROM_TYPE_2364` | `src/aux_defs.s` | that chip type's code, from the spec |
+| `checksum_image` | `src/pins_dev.s` | walk $A000–$BFFF, then $E000–$FFFF |
 
-Four groups and 64 pins a group. A device reporting more is shown up to the limit and says so on screen rather than truncating quietly. Four is one more than any One ROM board exposes, and 64 is what the smallest ring that still reads on video can show.
+A 16 KB image appears in two separate places in the C64's memory map, so the checksum must walk both, in image order.
+
+## Technical Details
+
+### Move Test
+
+`T` checks that a pin actually drives a wire. It drives the selected pin low, then high, then releases it, and reports whether any other pin moved with it. This needs the loopback pair fitted.
+
+Reading the pin back instead would prove nothing, because that answer comes from the device rather than from the wire.
+
+### Clean Exit
+
+RBCP works by replacing part of the ROM image being served by the device (BASIC here) with a data section for transmitting data from the device to the host.
+
+When exiting, it is important this section is replaced with the original data, or BASIC will not work properly afterwards.
+
+`Q` cleans the BASIC image on its way out.
+
+This is [`../common/rbcp_session.s`](../common/rbcp_session.s), shared with the LED tester.

@@ -1,10 +1,10 @@
 ; leds.s — the LED tables, and everything derived from them
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; The seam
-; --------
+; The interface
+; -------------
 ; This file owns the tables.  Two files fill them and only one of them is ever
-; linked: leds_dev.s talks to a real device over RBCP, leds_fake.s makes the
+; linked — leds_dev.s talks to a real device over RBCP, leds_fake.s makes the
 ; answers up.  Everything else in the program reads these tables and does not
 ; know which was built.
 ;
@@ -84,6 +84,35 @@ want_hold:      .res MAX_LEDS       ; 0 means until something changes it
 mode_takes_period: .res 1
 mode_min_period:   .res 1
 
+; What the device was asked and what it said, at the moment a command failed.
+; leds_dev.s fills these where a command goes wrong and display.s draws them.
+; A run that ends early leaves nothing else behind, and the host cannot ask the
+; device anything once it has stopped answering, so the header is copied at the
+; point of the failure rather than read again later.
+.export fail_stage
+.export fail_group
+.export fail_cmd
+.export fail_led
+.export fail_sent_tok
+.export fail_hdr
+.export leds_ok_lo
+.export leds_ok_hi
+.export leds_bad_lo
+.export leds_bad_hi
+.export fail_gone
+
+fail_gone:      .res 1          ; the reset and the re-entry did not bring it back
+fail_stage:     .res 1          ; 1 not taken, 2 never finished, 3 refused
+fail_group:     .res 1          ; the group and command the host sent
+fail_cmd:       .res 1
+fail_led:       .res 1          ; the LED it named
+fail_sent_tok:  .res 1          ; the token the host saw before sending
+fail_hdr:       .res 6          ; the response header, as it stood then
+leds_ok_lo:     .res 1          ; LED commands the device answered
+leds_ok_hi:     .res 1
+leds_bad_lo:    .res 1          ; and the ones it did not
+leds_bad_hi:    .res 1
+
 ; How each disc is to be drawn at this instant: the C64 colour, and which of
 ; the three halftones of the disc to draw it from.  led_test.s works these out
 ; from the mode, the brightness and where the animation has got to, and
@@ -157,18 +186,22 @@ leds_level:
 
 ; ---------------------------------------------------------------------------
 ; leds_nearest — A = LED.  Returns the palette entry closest to the colour the
-; device reports for it, which is what the disc is drawn in.
+; device reports for it, which is where the colour keys start.
+;
+; The palette is what the host can send, so this answers "which of the colours
+; this program could ask for is the one already showing".  What the screen says
+; the LED is showing is leds_shown's answer, out of a different table.
 ;
 ; All three zero means the device states no colour, and there is nothing to
-; approximate: entry 0 covers both that and the LED whose colour the host never
+; approximate — entry 0 covers both that and the LED whose colour the host never
 ; set.  Black is not in the palette, so it can never be the answer to anything
 ; else.
 ;
 ; The differences are quartered before they are added so that the total fits a
-; byte.  That is more than enough to pick between fifteen colours this far
-; apart, and it is a colour name and a disc that come out of it, not a match.
+; byte.  That is more than enough to pick between seven colours this far apart,
+; and it is a starting point that comes out of it, not a match.
 ;
-; Clobbers A, X, Y and ZP_APP4 to ZP_APP7.
+; Clobbers A, X, Y, ZP_APP0 and ZP_APP4 to ZP_APP7.
 ; ---------------------------------------------------------------------------
 
 .export leds_nearest
@@ -243,18 +276,139 @@ leds_nearest:
     rts
 
 ; ---------------------------------------------------------------------------
+; leds_shown — A = LED.  Returns what the device says the LED is showing, as an
+; entry in the LED colour table, or zero where it states no colour.
+;
+; The palette is no good for this.  It is a screen's colours, and a screen has
+; colours an LED does not make — a device reporting pure red finds brown nearer
+; in it than red, because the C64's red is dark and its brown is a dark orange.
+; Nothing with a lens on it is ever brown.  So the name on screen and the disc
+; under it both come from the table of colours an LED can be.
+;
+; A colour whose channels sit within a quarter of the strongest has no hue to
+; find, and is white.  Everything else is the nearest of the seven hues, the
+; differences quartered before they are added so the total fits a byte.
+;
+; Clobbers A, X, Y and ZP_APP4 to ZP_APP8.
+; ---------------------------------------------------------------------------
+
+.export leds_shown
+leds_shown:
+    tax
+    lda led_red, x
+    sta ZP_APP4
+    lda led_green, x
+    sta ZP_APP5
+    lda led_blue, x
+    sta ZP_APP6
+
+    ; The strongest channel and the weakest, which say whether there is a hue
+    ; here at all.  Blue is both to start with, and the other two take the
+    ; places they beat it to.
+    sta ZP_APP7
+    sta ZP_APP8
+
+    lda ZP_APP4
+    cmp ZP_APP7
+    bcc @r_under
+    sta ZP_APP7
+@r_under:
+    cmp ZP_APP8
+    bcs @r_over
+    sta ZP_APP8
+@r_over:
+    lda ZP_APP5
+    cmp ZP_APP7
+    bcc @g_under
+    sta ZP_APP7
+@g_under:
+    cmp ZP_APP8
+    bcs @g_over
+    sta ZP_APP8
+@g_over:
+
+    lda ZP_APP7
+    beq @none                   ; every channel zero, so no colour stated
+
+    sec
+    sbc ZP_APP8                 ; how far apart the channels are
+    sta ZP_APP8
+    lda ZP_APP7
+    lsr a
+    lsr a                       ; a quarter of the strongest
+    cmp ZP_APP8
+    bcc @hue
+    lda #LED_COL_WHITE
+    rts
+
+@hue:
+    ldy #0                      ; table row, so the entry number less one
+    lda #$FF
+    sta ZP_APP7                 ; best distance so far
+    ldx #0                      ; best entry so far
+@try:
+    lda led_col_r, y
+    sec
+    sbc ZP_APP4
+    bcs @r_pos
+    eor #$FF
+    adc #1
+@r_pos:
+    lsr a
+    lsr a
+    sta ZP_APP8
+
+    lda led_col_g, y
+    sec
+    sbc ZP_APP5
+    bcs @g_pos
+    eor #$FF
+    adc #1
+@g_pos:
+    lsr a
+    lsr a
+    clc
+    adc ZP_APP8
+    sta ZP_APP8
+
+    lda led_col_b, y
+    sec
+    sbc ZP_APP6
+    bcs @b_pos
+    eor #$FF
+    adc #1
+@b_pos:
+    lsr a
+    lsr a
+    clc
+    adc ZP_APP8
+
+    cmp ZP_APP7
+    bcs @next_col
+    sta ZP_APP7
+    tya
+    tax
+    inx                         ; entry 1 is the table's first row
+@next_col:
+    iny
+    cpy #(LED_COL_WHITE - 1)
+    bne @try
+    txa
+    rts
+@none:
+    lda #0
+    rts
+
+; ---------------------------------------------------------------------------
 .rodata
 ; ---------------------------------------------------------------------------
 
 ; The palette.  Entry 0 is the device's own choice, sent as three zeroes.
-; Entries 1 to 15 are the C64's own colours, so an entry's number is also its
-; colour number, and what goes on the wire is the colour the screen is showing
-; rather than an approximation of it.  Black is not offered: whether an LED is
-; lit is carried by its mode, so a colour being set is always one meant to be
-; seen.
-;
-; Values are VICE's, which is as close to a real machine as this can get
-; without measuring one.
+; Entries 1 to 7 are primaries, and an entry's number is also the C64 colour the
+; screen draws it in.  What goes on the wire is a full strength channel, because
+; an LED asked for the C64's own red lights a washed out white instead.  Black
+; is not offered — whether an LED is lit is carried by its mode, so a colour
+; being set is always one meant to be seen.
 
 ; The brighter partner of each colour, for an LED at full brightness.  Where a
 ; colour has none it is its own, so full and nearly full look the same on it
@@ -269,6 +423,20 @@ brighter:
 .export pal_r
 .export pal_g
 .export pal_b
-pal_r:  .byte $FF, $81, $75, $8E, $56, $2E, $ED, $8E, $55, $C4, $4A, $7B, $A9, $70, $B2
-pal_g:  .byte $FF, $33, $CE, $3C, $AC, $2C, $F1, $50, $38, $6C, $4A, $7B, $FF, $6D, $B2
-pal_b:  .byte $FF, $38, $C8, $97, $4D, $9B, $71, $29, $00, $71, $4A, $7B, $9F, $EB, $B2
+pal_r:  .byte $FF, $FF, $00, $FF, $00, $00, $FF
+pal_g:  .byte $FF, $00, $FF, $00, $FF, $00, $FF
+pal_b:  .byte $FF, $00, $FF, $FF, $00, $FF, $00
+
+; The colours an LED shows, and the C64 colour each one is drawn in.  Seven
+; hues and then white, which leds_shown reaches without matching anything.
+; Nothing here is black — an LED that is not lit is carried by its mode.
+.export led_col_r
+.export led_col_g
+.export led_col_b
+.export led_col_c64
+led_col_r:  .byte $FF, $FF, $FF, $00, $00, $00, $FF
+led_col_g:  .byte $00, $80, $FF, $FF, $FF, $00, $00
+led_col_b:  .byte $00, $00, $00, $00, $FF, $FF, $FF
+led_col_c64:
+    .byte COL_RED, COL_ORANGE, COL_YELLOW, COL_GREEN
+    .byte COL_CYAN, COL_BLUE, COL_PURPLE, COL_LIGHT_GREY

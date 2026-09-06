@@ -21,12 +21,12 @@
 CHARSET_ROM     = $D000         ; the character ROM, once CHAREN is clear
 
 ; $D018 selects the video matrix in bits 7-4 and the character base in bits
-; 3-1.  Screen stays at $0400, characters move to $3000.
-VIC_CHARSET_VAL = %00011100
+; 3-1.  Screen stays at $0400, characters move to $3800.
+VIC_CHARSET_VAL = %00011110
 
 ; ---------------------------------------------------------------------------
 ; The set itself.  led_test.cfg gives this segment a memory area of its own at
-; $3000, so the linker owns the address rather than this file guessing it, and a
+; $3800, so the linker owns the address rather than this file guessing it, and a
 ; program that grew into it would fail to link.
 ; ---------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ saved_memsetup: .res 1
 
 .export charset_build
 charset_build:
-    .assert charset_ram = $3000, error, "VIC_CHARSET_VAL names $3000"
+    .assert charset_ram = $3800, error, "VIC_CHARSET_VAL names $3800"
 
     lda VIC_MEMSETUP
     sta saved_memsetup

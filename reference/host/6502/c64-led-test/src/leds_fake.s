@@ -3,7 +3,7 @@
 ;
 ; Provides the leds.s interface out of a table instead of a device, so that
 ; every screen this program can draw is reachable under an emulator.  It is
-; never linked into the shipped binary: the Makefile builds rbcp_led_test.prg
+; never linked into the shipped binary — the Makefile builds rbcp_led_test.prg
 ; from leds_dev.s and rbcp_led_demo.prg from this.
 ;
 ; What it models, and why each part is here:
@@ -200,7 +200,7 @@ leds_scan:
 
 ; ---------------------------------------------------------------------------
 ; leds_set — A = LED.  Applies the want_ tables the way the protocol says a
-; device should: a monochrome LED keeps its own colour, three zeroes leave the
+; device should — a monochrome LED keeps its own colour, three zeroes leave the
 ; colour to the device, a brightness of zero leaves that to the device too, and
 ; a mode that takes no period reports none.
 ; ---------------------------------------------------------------------------

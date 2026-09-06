@@ -1,8 +1,8 @@
 ; display.s — everything this program puts on the screen
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; The seam
-; --------
+; The interface
+; -------------
 ; The counter block in timing.s is the interface.  This file reads it and never
 ; writes it.  The rest of the program passes a status code in A and never holds
 ; a string, a row, a column or a colour.
@@ -65,7 +65,7 @@ digit_tmp:  .res 4
 
 ; ---------------------------------------------------------------------------
 ; display_init — black border and background, white text.  White on black
-; rather than anything prettier: it is what reads on video.
+; rather than anything prettier — it is what reads on video.
 ; Clobbers A, X, Y and the c64_hw.s scratch.
 ; ---------------------------------------------------------------------------
 
@@ -163,7 +163,7 @@ display_labels:
 ; ---------------------------------------------------------------------------
 ; display_paths — the three send path names, the selected one in reverse video.
 ;
-; c64_highlight_row is no use here: it reverses all forty columns, and this row
+; c64_highlight_row is no use here — it reverses all forty columns, and this row
 ; needs one name out of three.
 ;
 ; Clobbers A, X, Y and the c64_hw.s scratch.
@@ -281,6 +281,8 @@ num16_at:
     sta num + 3
     jmp numv_go
 
+; num24_at is only used for the three rates, which are counted in bytes a
+; second and shown in bits, so it shifts by three on the way.
 num24_at:
     pha
     jsr load_num
@@ -289,6 +291,14 @@ num24_at:
     sta num + 2
     lda #0
     sta num + 3
+    ldx #3
+@bits:
+    asl num + 0
+    rol num + 1
+    rol num + 2
+    rol num + 3
+    dex
+    bne @bits
     jmp numv_go
 
 num32_at:
@@ -502,7 +512,7 @@ str_blank_row:
     .byte "                                        ", 0
 
 str_rate:
-    .byte "BYTES/SEC", 0
+    .byte "BPS", 0
 str_best:
     .byte "BEST", 0
 str_total:
@@ -533,10 +543,14 @@ str_status_tab:
     .word str_dirty_exit
     .word str_running
     .word str_stopped
-    .word str_lost
+    .word str_no_answer
     .word str_not_armed
     .word str_verifying
     .word str_no_clean
+    .word str_no_complete
+    .word str_bad_refusal
+    .word str_pipe_stuck
+    .word str_no_recover
 
 str_blank:
     .byte 0
@@ -566,11 +580,19 @@ str_running:
     .byte "RUNNING", 0
 str_stopped:
     .byte "STOPPED", 0
-str_lost:
-    .byte "DEVICE STOPPED ANSWERING - RUN ENDED", 0
+str_no_answer:
+    .byte "DEVICE DID NOT TAKE THE COMMAND", 0
 str_not_armed:
     .byte "NO SESSION - NOTHING TO RUN", 0
 str_verifying:
     .byte "LOOKING FOR A CLEAN IMAGE IN FLASH", 0
 str_no_clean:
     .byte "NO FLASH SLOT MATCHES - NO CLEAN EXIT", 0
+str_no_complete:
+    .byte "DEVICE NEVER FINISHED THE COMMAND", 0
+str_bad_refusal:
+    .byte "WRITE REFUSED WITH THE PIPE NOT FULL", 0
+str_pipe_stuck:
+    .byte "PIPE STAYED FULL - RUN ENDED", 0
+str_no_recover:
+    .byte "DEVICE DID NOT COME BACK - NO SESSION", 0

@@ -29,6 +29,8 @@ OBJS     = $(BUILD)/pipe_test.o \
            $(BUILD)/line.o \
            $(BUILD)/send_lib.o \
            $(BUILD)/send_tuned.o \
+           $(BUILD)/fault.o \
+           $(BUILD)/rbcp_recover.o \
            $(BUILD)/c64_hw.o
 
 .PHONY: all clean
@@ -48,6 +50,9 @@ $(RBCP_LIB): $(RBCP_OBJS)
 
 $(BUILD)/c64_hw.o: ../common/c64_hw.s ../common/c64_defs.s | $(BUILD)
 	$(AS) $(ASFLAGS) ../common/c64_hw.s -o $@
+
+$(BUILD)/rbcp_recover.o: ../common/rbcp_recover.s ../common/rbcp_stage.s | $(BUILD)
+	$(AS) $(ASFLAGS) ../common/rbcp_recover.s -o $@
 
 $(BUILD)/pipe_test.o: src/pipe_test.s src/pipe_defs.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/pipe_test.s -o $@
@@ -69,6 +74,9 @@ $(BUILD)/send_lib.o: src/send_lib.s src/pipe_defs.s | $(BUILD)
 
 $(BUILD)/send_tuned.o: src/send_tuned.s src/pipe_defs.s | $(BUILD)
 	$(AS) $(ASFLAGS) src/send_tuned.s -o $@
+
+$(BUILD)/fault.o: src/fault.s src/pipe_defs.s ../common/rbcp_stage.s | $(BUILD)
+	$(AS) $(ASFLAGS) src/fault.s -o $@
 
 $(PRG): $(OBJS) $(RBCP_LIB) pipe_test.cfg
 	$(LD) $(LDFLAGS) $(OBJS) $(RBCP_LIB) -o $@

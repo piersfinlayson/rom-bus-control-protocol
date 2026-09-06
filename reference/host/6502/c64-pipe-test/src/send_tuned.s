@@ -17,18 +17,22 @@
 ; Cycle budget per write, with the device answering on the first poll:
 ;   ten lda abs                     40
 ;   sta of the token                 3
-;   jsr / rts                       12
-;   poll, first time lucky          36
+;   jsr                              6
+;   poll and its rts                40
 ;   bcs not taken                    2
-;                                   93
+;                                   91
 ;
 ; The retry on refusal is a two byte branch back to the top of the same block,
-; which re-reads the token as a retry must.  PIPE_WRITE is all or nothing, so
-; the same four bytes go again.
+; which re-reads the token as a retry must.  Asking the pipe how much room it
+; has is a command in its own right, so the token has moved either way.
+; PIPE_WRITE is all or nothing, so the same four bytes go again — and whether
+; they go again at all is fault.s's decision, not this file's.
 
     .include "pipe_defs.s"
 
-.import refusals
+.import fault_note
+.import fault_stall
+.import fault_write_refused
 .import run_abort
 
 CMD_BASE = CONFIG_RBCP_CMD_PAGE * $100
@@ -50,13 +54,15 @@ tuned_tok = ZP_APP8
 
 ; ---------------------------------------------------------------------------
 ; send_tuned_line — sends the 64 bytes now held in the block operands.
-; Returns carry clear.  A timeout does not return here at all: tuned_poll
+; Returns carry clear.  A timeout does not return here at all — tuned_poll
 ; jumps to run_abort, which restores the stack pointer.
 ; ---------------------------------------------------------------------------
 
 .export send_tuned_line
 .export tuned_blocks
 send_tuned_line:
+    lda #0
+    sta fault_stall             ; the stall bound is per line
 tuned_blocks:
 .repeat 16
 :   lda RBCP_TOKEN_LSB_ADDR                     ; +0
@@ -80,53 +86,59 @@ tuned_blocks_end:
 ; ---------------------------------------------------------------------------
 ; tuned_poll — the protocol's polling sequence with nothing between the reads.
 ;
-; Nine or ten cycles an iteration, against the library's forty three: its
+; Nine or ten cycles an iteration, against the library's forty three — its
 ; progress loop calls pause on every iteration that does not see complete.
 ; Part of any LIB4 against TUNED4 gap is that, not send cost.
 ;
-; Returns carry set if the device refused the write, which is the pipe being
-; full and worth retrying.  A timeout is not a return value — it abandons the
-; run through run_abort.
+; Both loops count RBCP_POLL_TIMEOUT iterations, which is what rbcp_poll_token
+; and rbcp_poll_progress count, so the two paths give a device the same number
+; of chances to answer.  The wall time differs, and by exactly the pause the
+; library adds and this does not.
+;
+; Returns carry set if the write should go again.  A device that stopped
+; answering is not a return value — it abandons the run through run_abort, and
+; so does a refusal fault.s has decided not to retry.
 ;
 ; Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
 
+.assert RBCP_POLL_TIMEOUT > 0, error, "A run needs a bounded poll"
+
 tuned_poll:
-    ldx #0
-    ldy #0
+    ldx #<RBCP_POLL_TIMEOUT
 @token:
     lda RBCP_TOKEN_LSB_ADDR
     cmp tuned_tok
     bne @progress
     dex
     bne @token
-    dey
-    bne @token
+    lda #STAT_NO_ANSWER
+    jsr fault_note
     jmp run_abort
 
 @progress:
-    ldx #0
-    ldy #0
+    ldx #<RBCP_POLL_TIMEOUT
 @prog_loop:
     lda RBCP_PROGRESS_ADDR
     cmp #RBCP_COMPLETE
     beq @response
     dex
     bne @prog_loop
-    dey
-    bne @prog_loop
+    lda #STAT_NO_COMPLETE
+    jsr fault_note
     jmp run_abort
 
 @response:
     lda RBCP_RESPONSE_ADDR
     cmp #RBCP_STATUS_OK
     beq @ok
-    inc refusals
-    bne @refused
-    inc refusals + 1
-@refused:
-    sec
+    lda #RBCP_PIPE_WRITE_MAX
+    jsr fault_write_refused
+    bcs @lost
+    sec                         ; the same four bytes again
     rts
+@lost:
+    jmp run_abort
 @ok:
     clc
     rts
