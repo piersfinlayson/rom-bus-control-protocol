@@ -65,6 +65,12 @@ CIA2_CRA_RUN    = %00000001
 CIA2_CRB_RUN    = %01000001
 
 ; ---------------------------------------------------------------------------
+; VIC-II.  The display enable bit, and with it every fetch the VIC makes.
+; ---------------------------------------------------------------------------
+
+VIC_CTRL1_DEN   = %00010000
+
+; ---------------------------------------------------------------------------
 ; Keyboard.  $DC00 drives a column low, $DC01 reads rows low.  The kernal has
 ; already set CIA1 DDRA to output and DDRB to input, so neither is touched.
 ; ---------------------------------------------------------------------------

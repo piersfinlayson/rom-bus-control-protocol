@@ -4,8 +4,6 @@ Measure the throughput a Commodore 64 achieves through an RBCP pipe.
 
 ---
 
-**Untested on hardware.**
-
 In a longboard C64, the RBCP capable device should replace the 8 KB BASIC ROM — a 2364 serving $A000–$BFFF. [Other ROM Types](#other-rom-types) covers serving a combined 16KB BASIC/Kernal as used by a shortboard C64.
 
 ## Overview
@@ -19,6 +17,12 @@ Three send paths carry the same stream:
 | `1` | `LIB4` | 4, the most `PIPE_WRITE` carries | the library's rate |
 | `2` | `LIB1` | 1, so four times the commands | how much of the time is protocol overhead |
 | `3` | `TUNED4` | 4, hand-written in place of the library | whether the library is the limit |
+
+## Screen During a Run
+
+The display goes off and the border turns blue while the program is talking to the device. A VIC-II fetching characters takes the bus off the processor, and around that handover the device can misread the command frame — with the display off, the frames go out intact.
+
+Counters carry on being written while the screen is off and are there to read the moment a run ends. `RETURN` stops a run.
 
 ## Requirements
 

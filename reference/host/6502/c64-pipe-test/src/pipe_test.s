@@ -18,6 +18,8 @@
 .import display_labels
 .import display_paths
 .import display_counters
+.import display_dark
+.import display_light
 .import session_start
 .import session_end
 .import session_open
@@ -125,7 +127,9 @@ main:
     jsr timing_reset_run
     jsr display_counters
 
+    jsr display_dark
     jsr session_start
+    jsr display_light
     bcs menu                    ; the reason is already on the status row
     lda #1
     sta armed_flag
@@ -204,6 +208,7 @@ start_run:
     jsr display_status
     jmp menu
 @armed:
+    jsr display_dark            ; until run_finish, however the run ends
     inc run_number
 
     lda #STAT_STOPPED           ; how a run ends unless something says otherwise
@@ -322,6 +327,7 @@ run_finish:
     lda #STAT_NO_RECOVER
     jsr display_status
 @done:
+    jsr display_light
     jsr wait_no_key
     jmp menu
 
@@ -417,7 +423,9 @@ scan_return:
     rts
 
 quit:
+    jsr display_dark
     jsr session_end
+    jsr display_light
     ; fall through
 
 ; ---------------------------------------------------------------------------

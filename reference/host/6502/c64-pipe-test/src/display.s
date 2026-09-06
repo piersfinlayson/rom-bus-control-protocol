@@ -52,6 +52,10 @@
 num:        .res 4          ; what print_num renders
 digit_tmp:  .res 4
 
+dark_depth:  .res 1         ; how many callers have the screen off
+dark_ctrl:   .res 1         ; VIC_CTRL1 as the outermost one found it
+dark_border: .res 1         ; and the border colour
+
 ; ---------------------------------------------------------------------------
 .code
 ; ---------------------------------------------------------------------------
@@ -71,6 +75,8 @@ digit_tmp:  .res 4
 
 .export display_init
 display_init:
+    lda #0
+    sta dark_depth
     lda #COL_BLACK
     sta VIC_BORDER
     sta VIC_BACKGROUND
@@ -234,6 +240,63 @@ display_counters:
     ldx #<errors
     ldy #>errors
     jmp num16_at
+
+; ---------------------------------------------------------------------------
+; display_dark and display_light — the screen off while the host is talking to
+; the device, and back to however it was found afterwards.
+;
+; A VIC-II fetching characters takes the bus off the processor, and on a badline
+; it holds it for over forty cycles.  Across that handover the device can see an
+; access that was not one, see one as two, or miss one, and any of those slips
+; the command frame by a byte.  With the display off there are no fetches.
+;
+; A pair covers a whole operation — the session opening, a run, the exit — not a
+; command, so the screen never changes state at loop rate.  Counters carry on
+; being written while it is dark and are there to read the moment a run ends.
+;
+; The border goes blue because with the display off the whole screen takes the
+; border colour, and black in both states would look like a stopped machine.
+;
+; The pair nests, so an inner one cannot put the screen back early.  Neither
+; touches a register or a flag, so either can sit between a call and the branch
+; on its carry.
+; ---------------------------------------------------------------------------
+
+.export display_dark
+display_dark:
+    php
+    pha
+    inc dark_depth
+    lda dark_depth
+    cmp #1
+    bne @out
+    lda VIC_CTRL1
+    sta dark_ctrl
+    and #<(~VIC_CTRL1_DEN)
+    sta VIC_CTRL1
+    lda VIC_BORDER
+    sta dark_border
+    lda #COL_BLUE
+    sta VIC_BORDER
+@out:
+    pla
+    plp
+    rts
+
+.export display_light
+display_light:
+    php
+    pha
+    dec dark_depth
+    bne @out
+    lda dark_border
+    sta VIC_BORDER
+    lda dark_ctrl
+    sta VIC_CTRL1
+@out:
+    pla
+    plp
+    rts
 
 ; ---------------------------------------------------------------------------
 ; display_status — A = status code.  The row is blanked first, so a short
@@ -502,7 +565,7 @@ path_len_tab:
 str_title:
     .byte "RBCP PIPE THROUGHPUT TEST", 0
 str_keys:
-    .byte "1 2 3 SELECT  RET RUN  T 10 SEC  Q QUIT", 0
+    .byte "RET STARTS AND STOPS  T 10 SEC  Q QUIT", 0
 ; Digits are poked in at columns 5, 24 and 37, which is where the zeros sit.
 str_ram_slots:
     .byte "RAM 0 ACTIVE  EXIT RAM 0 FROM FLASH 0", 0
