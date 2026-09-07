@@ -1,7 +1,5 @@
 # VIC-20 RBCP Terminal
 
-This has not been run on real hardware.
-
 A ROM image for a Commodore VIC-20 that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into. It runs on an unexpanded machine.
 
 The device needs a pipe carrying bytes from the host to it. That is checked at startup and flagged on screen if it is missing.
