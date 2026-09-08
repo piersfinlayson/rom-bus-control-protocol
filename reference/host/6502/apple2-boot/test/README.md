@@ -2,9 +2,11 @@
 
 A fake RBCP device written in [MAME](https://mamedev.org)'s Lua, so the real binary can be run against an emulated Apple II and driven through the menu.
 
-`rbcp_dev.lua` watches every read in the ROM's address range, decodes the RBCP command stream out of the addresses, and answers by substituting bytes on reads of the back-channel region — which is what a device does. It implements the commands this bootloader calls and no others. Pipe writes are printed, so the log lines can be read.
+`rbcp_dev.lua` watches every read in the ROM's address range, decodes the RBCP command stream out of the addresses, and answers by substituting bytes on reads of the back-channel region — which is what a device does. It implements the commands the Apple II programs in this repository call, plus the auxiliary I/O group, and no others. Pipe writes are printed, so the log lines can be read.
 
 The device it pretends to be has five flash slots, two RAM slots, one pipe, a byte of writable non-volatile storage, and two LEDs of which the second is the RGB one — so the search for the lowest-numbered RGB LED is exercised rather than assumed to land on zero. One slot name is mixed case, since a name is drawn as the device gives it and inverse video treats the two cases differently.
+
+It also has three groups of auxiliary pins, shaped to catch a host that assumed an easy board: ten GPIO of which only the even ones from 2 upwards can be driven, four image-select pins with nothing drivable among them, and two pads. The pads are wired together, so driving pad 0 moves pad 1 and a host can be shown reading a pin it did not drive. A pin's state survives `RBCP_RESET`, as the protocol says it must, and a `SET_AUX` asking for a hold is not answered until the hold has elapsed and the device has applied the state that follows it.
 
 ## Running
 
@@ -73,6 +75,7 @@ Everything is an environment variable:
 | `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
 | `RBCP_REFUSE` | unset | `GG:CC` — the command the device answers with failed. |
 | `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said the command is complete, which is a device publishing the two out of order. |
+| `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails, which is what a host's no-pins path meets. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, so the machine boots something other than the bootloader again. |
 | `RBCP_SNAP` | unset | Save a screenshot at the end of the run. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |

@@ -41,11 +41,14 @@ DEPS = src/plat_defs.s ../common/rbcp_stage.s $(PIPE_DIR)/pipe_defs.s \
 all: $(TARGET_P) $(TARGET_N)
 
 # ---------------------------------------------------------------------------
+# One rule set per image.  The name has to differ from any variable this
+# Makefile reads, because $(NAME) of a define expands to the whole block.
+#
 # One rule set per image.  $(1) is the build directory, $(2) the extra ca65
 # flags, $(3) the image.
 # ---------------------------------------------------------------------------
 
-define IMAGE
+define IMAGE_RULES
 
 $(1)/rbcp/%.o: $$(RBCP_DIR)/%.s $$(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 	@mkdir -p $$(dir $$@)
@@ -78,8 +81,8 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE,$(BUILD_P),-D PAL=1,$(TARGET_P)))
-$(eval $(call IMAGE,$(BUILD_N),-D NTSC=1,$(TARGET_N)))
+$(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P)))
+$(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N)))
 
 clean:
 	rm -rf $(BUILD)

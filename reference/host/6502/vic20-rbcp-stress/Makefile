@@ -34,7 +34,7 @@ DEPS = src/plat_defs.s ../common/rbcp_stage.s $(STRESS_DIR)/stress_defs.s \
 
 all: $(TARGET_P) $(TARGET_N)
 
-define IMAGE
+define IMAGE_RULES
 
 $(1)/rbcp/%.o: $$(RBCP_DIR)/%.s $$(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 	@mkdir -p $$(dir $$@)
@@ -67,8 +67,8 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE,$(BUILD_P),-D PAL=1,$(TARGET_P)))
-$(eval $(call IMAGE,$(BUILD_N),-D NTSC=1,$(TARGET_N)))
+$(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P)))
+$(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N)))
 
 clean:
 	rm -rf $(BUILD)

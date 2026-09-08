@@ -12,7 +12,7 @@
 ; the demo build deliberately does not exercise it: hardware is the only thing
 ; that can.
 
-    .include "aux_defs.s"
+    .include "auxio_defs.s"
 
 .import sess_mark_gone
 .import sess_slot
@@ -91,7 +91,7 @@ pins_discover:
 @groups_ok:
     jsr pins_scan_all
     bcc @done
-    lda #SESS_FAIL_NO_DEVICE
+    lda #FAIL_NO_DEVICE
     sec
     rts
 @done:
@@ -151,12 +151,9 @@ read_groups:
 .export pins_scan
 pins_scan:
     sta scan_grp
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     sta scan_base
     ldx scan_grp
     lda pins_group_pins, x

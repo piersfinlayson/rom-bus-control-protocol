@@ -3,15 +3,17 @@
 ;
 ; Provides the pins.s interface out of a table instead of a device, so that
 ; every screen this program can draw is reachable under an emulator.  It is
-; never linked into the shipped binary: the Makefile builds rbcp_aux_test.prg
-; from pins_dev.s and rbcp_aux_demo.prg from this.
+; never linked into an image that talks to hardware: a machine's Makefile
+; builds that one from pins_dev.s and session.s, and its demo image from this
+; and session_fake.s.
 ;
 ; What it models, and why each part is here:
 ;
 ;   - Several boards, chosen by BOARD at assembly time, so that every ring tier
 ;     and the empty-group case can be looked at.
 ;   - A loopback: driving the pin named as the source moves the one named as
-;     the follower, which is what makes the move test worth running here.
+;     the follower, because a board can have two pads wired together and a
+;     screen that never showed one following would be a screen half tested.
 ;   - A cost per command close to the real one, so the refresh rate on screen
 ;     is the rate a device would give rather than an emulator's.
 ;
@@ -19,7 +21,7 @@
 ; knock, and every way a real device can refuse.  None of those are visible on
 ; screen, which is the whole reason this file can stand in.
 
-    .include "aux_defs.s"
+    .include "auxio_defs.s"
 
 .import pins_rebuild_drv
 
@@ -101,11 +103,19 @@ pins_discover:
     lda #0
     sta pins_truncated
 
+    ; A board with more pins in a group than this screen shows is clamped and
+    ; said so, the same way a real device reporting more is.
     ldx #0
 @groups:
     lda board_type, x
     sta pins_group_type, x
     lda board_pins, x
+    cmp #MAX_PINS + 1
+    bcc @fits
+    lda #1
+    sta pins_truncated
+    lda #MAX_PINS
+@fits:
     sta pins_group_pins, x
     inx
     cpx #BOARD_GROUPS
@@ -130,15 +140,12 @@ fake_reset_pins:
     ldy #0                      ; group
 @group:
     tya
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     sta ZP_APP0                 ; slice base
-    lda board_pins, y
-    sta ZP_APP1                 ; pins in this group
+    lda pins_group_pins, y      ; clamped, so it never runs off the slice
+    sta ZP_APP1
 
     ldx #0                      ; pin
 @pin:
@@ -173,14 +180,11 @@ fake_set_flags:
     ldy #0                      ; group
 @group:
     tya
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     sta ZP_APP0
-    lda board_pins, y
+    lda pins_group_pins, y      ; clamped, so it never runs off the slice
     sta ZP_APP1
     lda board_drv_lo, y
     sta ZP_APP2                 ; first drivable pin
@@ -239,12 +243,9 @@ fake_set_flags:
 .export pins_scan
 pins_scan:
     pha
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     sta ZP_APP0
     pla
     pha
@@ -320,12 +321,9 @@ pins_set:
     jsr fake_cost
 
     tya
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     clc
     adc ZP_APP5
     tax                         ; table index

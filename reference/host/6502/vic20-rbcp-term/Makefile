@@ -43,11 +43,14 @@ all: $(TARGET_P) $(TARGET_N)
 selftest: $(TARGET_S)
 
 # ---------------------------------------------------------------------------
+# One rule set per image.  The name has to differ from any variable this
+# Makefile reads, because $(NAME) of a define expands to the whole block.
+#
 # One rule set per image.  $(1) is the build directory, $(2) the extra ca65
 # flags, $(3) the image, and $(4) any object beyond the ones every image holds.
 # ---------------------------------------------------------------------------
 
-define IMAGE
+define IMAGE_RULES
 
 $(1)/rbcp/%.o: $$(RBCP_DIR)/%.s $$(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 	@mkdir -p $$(dir $$@)
@@ -79,9 +82,9 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE,$(BUILD_P),-D PAL=1,$(TARGET_P),))
-$(eval $(call IMAGE,$(BUILD_N),-D NTSC=1,$(TARGET_N),))
-$(eval $(call IMAGE,$(BUILD_S),-D PAL=1 -D SELFTEST=1,$(TARGET_S),$(BUILD_S)/term/selftest.o))
+$(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P),))
+$(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N),))
+$(eval $(call IMAGE_RULES,$(BUILD_S),-D PAL=1 -D SELFTEST=1,$(TARGET_S),$(BUILD_S)/term/selftest.o))
 
 clean:
 	rm -rf $(BUILD)

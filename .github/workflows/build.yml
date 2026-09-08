@@ -85,20 +85,11 @@ jobs:
       - name: Install cc65
         run: sudo apt-get install -y cc65
 
-      # The .prg targets only.  Packaging them into a .d64 needs c1541 from
-      # VICE, which is not worth installing to prove they assemble.
+      # The .prg target only.  Packaging it into a .d64 needs c1541 from VICE,
+      # which is not worth installing to prove it assembles.
       #
       # Every demo board too, because each one assembles different code and
       # only a build catches a board whose tables no longer match the program.
-      - name: Build c64-aux-test
-        working-directory: reference/host/6502/c64-aux-test
-        run: |
-          make build/rbcp_aux_test.prg
-          for board in 0 1 2; do
-            make clean
-            make BOARD=$board build/rbcp_aux_demo.prg
-          done
-
       - name: Build c64-led-test
         working-directory: reference/host/6502/c64-led-test
         run: |
@@ -178,6 +169,56 @@ jobs:
             reference/host/6502/vic20-rbcp-stress/build/vic20_meter_pal.bin
             reference/host/6502/vic20-rbcp-stress/build/vic20_meter_ntsc.bin
             reference/host/6502/apple2-rbcp-stress/build/apple2_meter.bin
+
+  build-rbcp-aux-io:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: sudo apt-get install -y cc65
+
+      # One program, three machines.  Each build has to be run, because the
+      # shared code is assembled against a different screen and a different
+      # ROM address every time.
+      #
+      # Every demo board too, because each one assembles different tables and
+      # only a build catches a board whose tables no longer match the program.
+      - name: Build c64-aux-io
+        working-directory: reference/host/6502/c64-aux-io
+        run: |
+          make
+          for board in 0 1 2; do
+            make BOARD=$board demo
+          done
+
+      - name: Build vic20-aux-io
+        working-directory: reference/host/6502/vic20-aux-io
+        run: |
+          make
+          for board in 0 1 2; do
+            make BOARD=$board demo
+          done
+
+      - name: Build apple2-aux-io
+        working-directory: reference/host/6502/apple2-aux-io
+        run: |
+          make
+          for board in 0 1 2; do
+            make BOARD=$board demo
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rbcp-aux-io
+          path: |
+            reference/host/6502/c64-aux-io/build/c64_auxio_kernal.bin
+            reference/host/6502/c64-aux-io/build/c64_auxio_basic.bin
+            reference/host/6502/c64-aux-io/build/c64_auxio_combined.bin
+            reference/host/6502/vic20-aux-io/build/vic20_auxio_pal.bin
+            reference/host/6502/vic20-aux-io/build/vic20_auxio_ntsc.bin
+            reference/host/6502/apple2-aux-io/build/apple2_auxio.bin
 
   build-rbcp-term:
     runs-on: ubuntu-latest

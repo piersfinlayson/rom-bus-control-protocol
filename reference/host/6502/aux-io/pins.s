@@ -30,10 +30,14 @@
 ; Indexing
 ; --------
 ; A pin is addressed by group * MAX_PINS + pin, in one byte, which is why
-; MAX_GROUPS is 4 and MAX_PINS is 64.  A device exposing more of either is
-; shown up to the limit with pins_truncated set, and the screen says so.
+; MAX_GROUPS is 4 and MAX_PINS is 64 or less.  MAX_PINS is a power of two so
+; that the index is a shift, and MAX_PINS_SHIFT says which.  A device exposing
+; more of either is shown up to the limit with pins_truncated set, and the
+; screen says so.
 
-    .include "aux_defs.s"
+    .include "auxio_defs.s"
+
+.import tier_cap
 
 ; ---------------------------------------------------------------------------
 .bss
@@ -79,12 +83,9 @@ pins_truncated:     .res 1              ; the device reported more than we show
 pins_index:
     pha
     txa
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a                       ; group * 64
+    .endrepeat
     sta ZP_APP4
     pla
     clc
@@ -102,12 +103,9 @@ pins_index:
 .export pins_rebuild_drv
 pins_rebuild_drv:
     sta ZP_APP5                 ; group
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     sta ZP_APP6                 ; group * 64, the slice base
 
     ldx ZP_APP5
@@ -116,6 +114,15 @@ pins_rebuild_drv:
 
     lda #0
     sta ZP_APP8                 ; drivable found so far
+
+    ; An image-select group is a number, and a number reads with its lowest
+    ; digit on the right, so its pins are listed highest first and the rings
+    ; come out in that order.  Every other group counts up from the left.
+    ldx ZP_APP5
+    lda pins_group_type, x
+    jsr pins_reversed
+    bcs @backwards
+
     ldy #0                      ; pin number
 @loop:
     cpy ZP_APP7
@@ -143,6 +150,29 @@ pins_rebuild_drv:
     sta pins_group_drv, x
     rts
 
+@backwards:
+    ldy ZP_APP7
+@bloop:
+    dey
+    tya
+    clc
+    adc ZP_APP6
+    tax
+    lda pin_flags, x
+    and #RBCP_AUX_FLAG_DRIVABLE
+    beq @bnext
+    lda ZP_APP8
+    clc
+    adc ZP_APP6
+    tax
+    tya
+    sta drv_list, x
+    inc ZP_APP8
+@bnext:
+    cpy #0
+    bne @bloop
+    beq @done
+
 ; ---------------------------------------------------------------------------
 ; pins_drv_at — A = index into the group's drivable list, X = group.
 ; Returns the pin number in A.  Clobbers A, and ZP_APP4.
@@ -152,12 +182,9 @@ pins_rebuild_drv:
 pins_drv_at:
     sta ZP_APP4
     txa
+    .repeat MAX_PINS_SHIFT
     asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
+    .endrepeat
     clc
     adc ZP_APP4
     tay
@@ -165,27 +192,43 @@ pins_drv_at:
     rts
 
 ; ---------------------------------------------------------------------------
+; pins_reversed — A = group type.  Carry set if that group's pins are drawn
+; right to left, which is every type whose pins read as a number with its low
+; end on the right.
+; Clobbers nothing but the flags.  A survives.
+; ---------------------------------------------------------------------------
+
+.export pins_reversed
+pins_reversed:
+    cmp #RBCP_AUX_TYPE_IMGSEL
+    beq @yes
+    cmp #RBCP_AUX_TYPE_XPADS
+    beq @yes
+    clc
+    rts
+@yes:
+    sec
+    rts
+
+; ---------------------------------------------------------------------------
 ; pins_tier — A = drivable pin count.  Returns the tier in A.
-; The thresholds are what each tier's bank count and per-row width allow
-; between ROW_RINGS and ROW_RINGS_END.
+;
+; The smallest ring that holds them all, from the machine's own tier_cap: how
+; many rings of each size fit between ROW_RINGS and ROW_RINGS_END on a screen
+; that wide.  A count past the last tier's capacity gets that tier anyway, and
+; whoever filled the tables has already set pins_truncated.
 ; ---------------------------------------------------------------------------
 
 .export pins_tier
 pins_tier:
-    cmp #9
-    bcc @big
-    cmp #21
-    bcc @mid
-    cmp #37
-    bcc @small
-    lda #TIER_DOT
-    rts
-@big:
-    lda #TIER_BIG
-    rts
-@mid:
-    lda #TIER_MID
-    rts
-@small:
-    lda #TIER_SMALL
+    ldx #0
+@try:
+    cmp tier_cap, x
+    beq @found
+    bcc @found
+    inx
+    cpx #TIER_DOT
+    bne @try
+@found:
+    txa
     rts

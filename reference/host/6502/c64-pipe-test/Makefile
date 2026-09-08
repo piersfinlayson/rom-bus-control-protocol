@@ -47,11 +47,14 @@ DEPS = src/plat_defs.s ../common/c64_defs.s ../common/rbcp_stage.s \
 all: $(TARGET_K) $(TARGET_B) $(TARGET_C)
 
 # ---------------------------------------------------------------------------
+# One rule set per image.  The name has to differ from any variable this
+# Makefile reads, because $(NAME) of a define expands to the whole block.
+#
 # One rule set per image.  $(1) is the build directory, $(2) the extra ca65
 # flags, $(3) the linker configuration, $(4) the image.
 # ---------------------------------------------------------------------------
 
-define IMAGE
+define IMAGE_RULES
 
 $(1)/rbcp/%.o: $$(RBCP_DIR)/%.s $$(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 	@mkdir -p $$(dir $$@)
@@ -83,9 +86,9 @@ $(4): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE,$(BUILD_K),,c64_pipe_kernal.cfg,$(TARGET_K)))
-$(eval $(call IMAGE,$(BUILD_B),-D BASIC_SOCKET=1,c64_pipe_basic.cfg,$(TARGET_B)))
-$(eval $(call IMAGE,$(BUILD_C),-D COMBINED=1,c64_pipe_combined.cfg,$(TARGET_C)))
+$(eval $(call IMAGE_RULES,$(BUILD_K),,c64_pipe_kernal.cfg,$(TARGET_K)))
+$(eval $(call IMAGE_RULES,$(BUILD_B),-D BASIC_SOCKET=1,c64_pipe_basic.cfg,$(TARGET_B)))
+$(eval $(call IMAGE_RULES,$(BUILD_C),-D COMBINED=1,c64_pipe_combined.cfg,$(TARGET_C)))
 
 clean:
 	rm -rf $(BUILD)

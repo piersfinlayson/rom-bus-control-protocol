@@ -21,7 +21,6 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/vic20-pipe-test/`](reference/host/6502/vic20-pipe-test/README.md) — A pipe throughput test for a VIC-20
   - [`6502/apple2-pipe-test/`](reference/host/6502/apple2-pipe-test/README.md) — A pipe throughput test for an Apple IIe
   - [`6502/pipe/`](reference/host/6502/pipe/README.md) — Pipe throughput test shared 6502 routines, and the script that receives the stream
-  - [`6502/c64-aux-test/`](reference/host/6502/c64-aux-test/README.md) — A C64 auxiliary I/O tester, driving and reading a device's pins and showing every one of them on screen
   - [`6502/c64-led-test/`](reference/host/6502/c64-led-test/README.md) — A C64 LED tester, driving a device's LEDs and showing on screen what each one should be doing
   - [`6502/apple2-boot/`](reference/host/6502/apple2-boot/README.md) — An Apple II bootloader, picking between monitor, dead test and other images, in a 2KB F8 ROM on a II or II+ and an 8KB EF ROM on a IIe
   - [`6502/apple2-boot/test/`](reference/host/6502/apple2-boot/test/README.md) — A fake RBCP device in MAME's Lua, which runs the Apple II bootloader against an emulated machine with no hardware attached
@@ -29,6 +28,9 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/vic20-rbcp-stress/`](reference/host/6502/vic20-rbcp-stress/README.md) — An RBCP reliability meter for a VIC-20
   - [`6502/apple2-rbcp-stress/`](reference/host/6502/apple2-rbcp-stress/README.md) — An RBCP reliability meter for an Apple IIe
   - [`6502/stress/`](reference/host/6502/stress/README.md) — Reliability meter shared 6502 routines
+  - [`6502/c64-aux-io/`](reference/host/6502/c64-aux-io/README.md) — A C64 auxiliary I/O tester ROM, driving and reading a device's pins and showing them on screen
+  - [`6502/vic20-aux-io/`](reference/host/6502/vic20-aux-io/README.md) — An auxiliary I/O tester for a VIC-20
+  - [`6502/apple2-aux-io/`](reference/host/6502/apple2-aux-io/README.md) — An auxiliary I/O tester for an Apple IIe
   - [`6502/c64-rbcp-term/`](reference/host/6502/c64-rbcp-term/README.md) — A C64 RBCP terminal ROM that sends what you type down an RBCP pipe and out of the device's USB port
   - [`6502/vic20-rbcp-term/`](reference/host/6502/vic20-rbcp-term/README.md) — An RBCP terminal for a VIC-20
   - [`6502/apple2-rbcp-term/`](reference/host/6502/apple2-rbcp-term/README.md) — An RBCP terminal for an Apple IIe
