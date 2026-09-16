@@ -77,7 +77,7 @@ Everything is an environment variable:
 | `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said the command is complete, which is a device publishing the two out of order. |
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails, which is what a host's no-pins path meets. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, so the machine boots something other than the bootloader again. |
-| `RBCP_SNAP` | unset | Save a screenshot at the end of the run. |
+| `RBCP_SNAP` | unset | Save a screenshot at the end of the run, to `build/<machine>/0000.png` at MAME's native 560x192. MAME runs in a window when this is set. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
 
 The screen is printed as 24 rows of 40 columns. Lower case marks inverse video, which is how the highlighted line and the title show up.

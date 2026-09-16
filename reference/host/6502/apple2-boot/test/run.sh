@@ -96,6 +96,15 @@ cp "$image" "$stage/$socket"
 rm -f "$roms/$machine.zip"
 (cd "$stage" && zip -q "../mame-roms/$machine.zip" ./*)
 
+# A snapshot needs a render target, which -video none does not give it.  In a
+# window MAME stops on the ROM hash warning screen, waiting for a keypress the
+# script cannot send, and -seconds_to_run under 300 skips that screen.
+if [ -n "$RBCP_SNAP" ]; then
+    video="-video soft -window -nomaximize -seconds_to_run 60"
+else
+    video="-video none"
+fi
+
 # MAME hashes every ROM file it is given and says so when one differs from the
 # dump it expects.  The bootloader is one of those files, and never matches.
 #
@@ -103,7 +112,7 @@ rm -f "$roms/$machine.zip"
 # both have ROMs of their own.  Neither is anything this test uses, so they are
 # left empty and the only files needed are the machine's own.
 mame "$machine" -rompath "$roms" -sl4 "" -sl6 "" \
-     -video none -sound none -skip_gameinfo \
+     $video -sound none -skip_gameinfo \
      -nothrottle -cfg_directory "$build/mame-cfg" -nvram_directory "$build/mame-nvram" \
      -snapshot_directory "$build" \
      -autoboot_script "$here/rbcp_dev.lua" 2>&1

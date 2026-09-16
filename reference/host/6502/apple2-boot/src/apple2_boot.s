@@ -55,7 +55,7 @@ ROCKS_COL        = 27
 
 ; The list runs from the third row to two rows above the footer, which leaves
 ; the gap the footer needs to read as separate from it.  A digit picks one of
-; the first ten and the cursor reaches the rest.
+; the first nine and the cursor reaches the rest.
 MENU_ENTRY_ROW0  = 3
 MAX_DISPLAY      = FOOTER_ROW - 2 - MENU_ENTRY_ROW0 + 1
 
@@ -135,6 +135,9 @@ var_nv_present:   .res 1    ; 0 = absent or read only, 1 = writable
 var_nv_stored:    .res 1    ; slot the device already has stored
 var_pipe_present: .res 1    ; 0 = device has no pipe, 1 = pipe 0 is available
 var_boot_flash:   .res 1    ; flash slot the countdown will boot
+.if CONFIG_ROM_SIZE > $0800
+var_log_slot:     .res 1    ; slot log_switch is naming
+.endif
 var_count:        .res 1
 .if CONFIG_ROM_SIZE > $0800
 var_led:          .res 1    ; lowest RGB LED, or $FF where the device has none
@@ -294,6 +297,12 @@ boot_ram_entry:
     beq @pipe_done
     lda #1
     sta var_pipe_present
+.if CONFIG_ROM_SIZE > $0800
+    ; A rule first, so the bootloader's lines are told apart from whatever the
+    ; device logged on its own way up.
+    set_ptr msg_rule
+    jsr log_line
+.endif
     set_ptr str_header
     jsr log_line
 @pipe_done:
@@ -358,6 +367,10 @@ boot_ram_entry:
 @disp_ok:
     sta var_num_display
 
+.if CONFIG_ROM_SIZE > $0800
+    jsr log_device
+.endif
+
     ; ------------------------------------------------------------------
     ; Which image does the device already have stored as the choice?
     ; A failure anywhere here leaves the default of flash slot 1.
@@ -394,6 +407,10 @@ boot_ram_entry:
     bcs @nv_done                    ; out of range
     sta var_boot_flash
 @nv_done:
+
+.if CONFIG_ROM_SIZE > $0800
+    jsr log_stored
+.endif
 
     ; Selection follows the stored slot, clamped to what is on screen.
     lda var_boot_flash
@@ -438,9 +455,24 @@ boot_ram_entry:
 
     jsr wait_a_second
     cmp #KEY_NONE
+.if CONFIG_ROM_SIZE > $0800
+    beq @counted
+    pha                             ; the key, which the log would lose
+    set_ptr msg_keypress
+    jsr log_line
+    pla
+    jmp path_menu                   ; any key stops the countdown
+@counted:
+.else
     bne path_menu                   ; any key stops the countdown
+.endif
     dec var_count
     bne @tick
+
+.if CONFIG_ROM_SIZE > $0800
+    set_ptr msg_expired
+    jsr log_line
+.endif
 
     ; The countdown ran out.  Boot what the device had stored, which is the
     ; highlighted line unless the stored slot is past the end of the list.
@@ -477,12 +509,12 @@ key_act:
     beq do_down
     cmp #KEY_SPACE
     beq do_down
-    cmp #KEY_0
+    cmp #KEY_1
     bcc key_loop
     cmp #KEY_9 + 1
     bcs key_loop
     sec
-    sbc #KEY_0              ; the digit is the entry
+    sbc #KEY_1              ; the digit is the entry
     cmp var_num_display
     bcs key_loop
     pha
@@ -533,6 +565,9 @@ do_boot:
     ; that will not remember the choice is still a device that can boot it, and
     ; refusing to boot what the user just picked is the worse of the two.
     jsr rbcp_cmd_nv_poke_commit_byte
+.if CONFIG_ROM_SIZE > $0800
+    jsr log_stored_upd      ; leaves the carry alone, and says nothing on a
+.endif                      ; write that failed
 .ifdef NV_FATAL_BUILD
     bcc boot_slot_entry
     jmp err_nv_commit
@@ -559,6 +594,11 @@ boot_slot:
     jsr led_set_colour
     lda ZP_TMP2
     jsr log_switch
+
+.if CONFIG_ROM_SIZE > $0800
+    set_ptr msg_resetting
+    jsr log_line
+.endif
 
     lda var_target_ram
     jsr rbcp_cmd_switch_and_exit
@@ -729,12 +769,16 @@ draw_list:
     jsr rbcp_cmd_get_flash_slot_info
     bcs @next
 
-    ; Images are numbered from zero, and only the first ten have a digit that
-    ; picks them.  The rest are reached with the cursor and show no number,
-    ; rather than one that does nothing.
+    ; The number shown is the flash slot the entry lives in, which is one more
+    ; than its place in the list because slot 0 is this bootloader.  That is the
+    ; number the device's own log names, and the number an image select jumper
+    ; setting picks, so one number means one image everywhere.
+    ;
+    ; Only the first nine have a digit that picks them.  The rest are reached
+    ; with the cursor and show no number, rather than one that does nothing.
     lda #')'
     ldx ZP_TMP2
-    cpx #10
+    cpx #9
     bcc @numbered
     lda #' '
 @numbered:
@@ -742,7 +786,7 @@ draw_list:
     txa
     bcs @blank
     clc
-    adc #'0'
+    adc #'1'
     bne @put                ; always
 @blank:
     lda #' '
@@ -761,6 +805,10 @@ draw_list:
     adc #MENU_ENTRY_ROW0
     ldx #MENU_ENTRY_COL
     jsr print_str
+
+.if CONFIG_ROM_SIZE > $0800
+    jsr log_entry
+.endif
 
 @next:
     inc ZP_TMP2
@@ -815,30 +863,45 @@ wait_a_second:
 ; ===========================================================================
 
 ; ---------------------------------------------------------------------------
-; log_switch — sends "SWITCHING TO SLOT $XX" with A holding the slot.
+; log_switch — sends "Switching to slot N" with A holding the slot.  The 8KB
+; build follows it with the slot's name, in quotes, on the next line.
 ;
-; The last thing sent before SWITCH_AND_EXIT, which is the last moment
-; anything can be sent: the switch ends the session, and the image that
+; The name is asked for again rather than kept.  The back-channel holds one
+; slot record at a time, and the one sitting there is whichever the menu drew
+; last, not the slot the user went on to pick.  A device that will not answer
+; leaves the number standing on its own.
+;
+; There is no room in an F8 ROM for the second query and its strings.
+;
+; Everything sent from here goes before SWITCH_AND_EXIT, which is the last
+; moment anything can be sent: the switch ends the session, and the image that
 ; follows need not have a back-channel at all.
 ; ---------------------------------------------------------------------------
 
 log_switch:
-    pha
-    lda var_pipe_present
-    beq @done
+    pha                     ; the stack, rather than a byte of RAM, because an
+    lda var_pipe_present    ; F8 ROM has room for one and not the other
+    beq @nopipe
     set_ptr msg_switching
     jsr pipe_puts
     pla
-    jsr hex_to_args
-    lda #13
-    sta rbcp_arg2
-    lda #10
-    sta rbcp_arg3
-    lda #4
-    ldx #0                  ; pipe 0
-    jsr rbcp_cmd_pipe_write
-    rts
+.if CONFIG_ROM_SIZE > $0800
+    sta var_log_slot        ; wanted again once the number is out
+.endif
+    jsr log_dec
+    jsr log_crlf
+.if CONFIG_ROM_SIZE > $0800
+    lda var_log_slot
+    jsr rbcp_cmd_get_flash_slot_info
+    bcs @done
+    set_ptr msg_name_open   ; indented, so it reads as the line above's
+    jsr pipe_puts
+    set_ptr RBCP_DATA_ADDR + 1      ; the name, past the ROM type byte
+    jmp log_name_end
 @done:
+.endif
+    rts
+@nopipe:
     pla
     rts
 
@@ -850,15 +913,186 @@ log_line:
     lda var_pipe_present
     beq @done
     jsr pipe_puts
+    jmp log_crlf
+@done:
+    rts
+
+; ---------------------------------------------------------------------------
+; log_crlf — ends a line.
+; ---------------------------------------------------------------------------
+
+log_crlf:
     lda #13
     sta rbcp_arg0
     lda #10
     sta rbcp_arg1
     lda #2
-    ldx #0
-    jsr rbcp_cmd_pipe_write
+    ldx #0                  ; pipe 0
+    jmp rbcp_cmd_pipe_write
+
+; ---------------------------------------------------------------------------
+; log_dec — sends A as decimal, one or two digits, with no leading zero.  Slot
+; and RAM slot counts are the only things logged this way and none of them
+; reaches a hundred.
+; ---------------------------------------------------------------------------
+
+log_dec:
+    ldx #0                  ; tens
+@tens:
+    cmp #10
+    bcc @units
+    sbc #10                 ; the compare set the carry
+    inx
+    bne @tens               ; always
+@units:
+    clc
+    adc #'0'
+    tay                     ; the units digit, which X might displace
+    txa
+    beq @one
+    clc
+    adc #'0'
+    sta rbcp_arg0
+    sty rbcp_arg1
+    lda #2
+    bne @send               ; always
+@one:
+    sty rbcp_arg0
+    lda #1
+@send:
+    ldx #0                  ; pipe 0
+    jmp rbcp_cmd_pipe_write
+
+.if CONFIG_ROM_SIZE > $0800
+; ---------------------------------------------------------------------------
+; log_name_end — sends the name at (ZP_PTR_LO/HI), a closing quote and a CRLF.
+; The opening quote belongs to whatever prefix the caller sent.
+; ---------------------------------------------------------------------------
+
+log_name_end:
+    jsr pipe_puts
+    lda #'"'
+    sta rbcp_arg0
+    lda #13
+    sta rbcp_arg1
+    lda #10
+    sta rbcp_arg2
+    lda #3
+    ldx #0                  ; pipe 0
+    jmp rbcp_cmd_pipe_write
+
+; ---------------------------------------------------------------------------
+; log_device — one line naming the device and what it holds:
+; "One ROM v0.7.2, 6 flash ROM slots, 2 RAM slots".
+;
+; The type and version are asked for here rather than kept from draw_device,
+; which runs later and makes its own queries.  A device that will not name
+; itself still has its counts logged.
+; ---------------------------------------------------------------------------
+
+log_device:
+    lda var_pipe_present
+    beq @done
+    jsr rbcp_cmd_get_device_type
+    bcs @counts
+    set_ptr RBCP_DATA_ADDR
+    jsr pipe_puts
+    jsr rbcp_cmd_get_device_version
+    bcs @sep
+    set_ptr msg_sp
+    jsr pipe_puts
+    set_ptr RBCP_DATA_ADDR
+    jsr pipe_puts
+@sep:
+    set_ptr msg_comma
+    jsr pipe_puts
+@counts:
+    lda var_total_flash
+    jsr log_dec
+    set_ptr msg_flash_slots
+    jsr pipe_puts
+    lda var_total_ram
+    jsr log_dec
+    set_ptr msg_ram_slots
+    jmp log_line
 @done:
     rts
+
+; ---------------------------------------------------------------------------
+; log_stored — what the device had remembered, read before the menu is drawn.
+; A device with no storage and one that has never been written to are
+; different things, so they get different messages.
+;
+; The stored byte is tested the same way the boot path tests it.  An untouched
+; device reads $FF, which is not a slot, and a log that printed it as one would
+; disagree with the slot the bootloader goes on to use.
+; ---------------------------------------------------------------------------
+
+log_stored:
+    lda var_pipe_present
+    beq @done
+    lda var_nv_present
+    beq @cannot
+    lda var_nv_stored
+    beq @unset
+    cmp var_total_flash
+    bcs @unset
+    set_ptr msg_stored
+    jsr pipe_puts
+    lda var_nv_stored
+    jsr log_dec
+    jmp log_crlf
+@cannot:
+    set_ptr msg_nv_none
+    jmp log_line
+@unset:
+    set_ptr msg_nv_unset
+    jmp log_line
+@done:
+    rts
+
+; ---------------------------------------------------------------------------
+; log_stored_upd — says the choice was written, with the carry as
+; NV_POKE_COMMIT_BYTE left it.  A failed write is not reported, since nothing
+; happened.  The carry is passed through, since NV_FATAL reads it after this
+; returns.
+; ---------------------------------------------------------------------------
+
+log_stored_upd:
+    bcs @done
+    lda var_pipe_present
+    beq @ok
+    set_ptr msg_stored_upd
+    jsr pipe_puts
+    lda var_boot_flash
+    jsr log_dec
+    jsr log_crlf
+@ok:
+    clc
+@done:
+    rts
+
+; ---------------------------------------------------------------------------
+; log_entry — one line per menu entry, with ZP_TMP2 holding its place in the
+; list.  The name is still in the back-channel from the query that drew it.
+; ---------------------------------------------------------------------------
+
+log_entry:
+    lda var_pipe_present
+    beq @done
+    set_ptr msg_indent
+    jsr pipe_puts
+    lda ZP_TMP2
+    clc
+    adc #1                  ; the flash slot, the number the screen shows
+    jsr log_dec
+    set_ptr msg_sp_quote
+    jsr pipe_puts
+    set_ptr RBCP_DATA_ADDR + 1      ; the name, past the ROM type byte
+    jmp log_name_end
+@done:
+    rts
+.endif
 
 ; ---------------------------------------------------------------------------
 ; pipe_puts — sends the null-terminated string at (ZP_PTR_LO/HI) to pipe 0.
@@ -897,32 +1131,6 @@ pipe_puts:
     cmp #RBCP_PIPE_WRITE_MAX
     beq @chunk              ; a full chunk, so there may be more
 @done:
-    rts
-
-; ---------------------------------------------------------------------------
-; hex_to_args — A as two upper case hex characters in rbcp_arg0 and arg1.
-; Clobbers: A, X, Y
-; ---------------------------------------------------------------------------
-
-hex_to_args:
-    tay
-    lsr a
-    lsr a
-    lsr a
-    lsr a
-    jsr @nibble
-    sta rbcp_arg0
-    tya
-    and #$0F
-    jsr @nibble
-    sta rbcp_arg1
-    rts
-@nibble:
-    cmp #10
-    bcc @digit
-    adc #6                  ; carry is set, so this adds 7
-@digit:
-    adc #'0'
     rts
 
 ; ===========================================================================
@@ -1152,12 +1360,29 @@ str_counting:   .byte "BOOTING IN 0 - ANY KEY FOR MENU", 0
 .if CONFIG_ROM_SIZE > $0800
 str_rocks:      .byte "piers.rocks", 0
 .endif
-str_entry:      .byte "0) ", 0
+str_entry:      .byte "1) ", 0
 str_footer:     .byte "RETURN BOOTS, ARROWS OR 0-9 PICK", 0
 
 ; The log is not the screen, so it is not held to upper case the way a string
 ; a II or II+ displays is.
-msg_switching:  .byte "Switching to slot $", 0
+msg_switching:  .byte "Switching to slot ", 0
+.if CONFIG_ROM_SIZE > $0800
+msg_rule:       .byte "-----", 0
+msg_resetting:  .byte "Bootloader finished - resetting system", 0
+msg_expired:    .byte "Countdown expired - auto-booting", 0
+msg_keypress:   .byte "Auto-boot interrupted by keypress", 0
+msg_name_open:  .byte "  ", $22, 0
+msg_indent:     .byte "  ", 0
+msg_sp_quote:   .byte " ", $22, 0
+msg_sp:         .byte " ", 0
+msg_comma:      .byte ", ", 0
+msg_flash_slots: .byte " flash ROM slots, ", 0
+msg_ram_slots:  .byte " RAM slots", 0
+msg_stored:     .byte "Stored choice: slot ", 0
+msg_stored_upd: .byte "Stored choice updated: slot ", 0
+msg_nv_none:    .byte "Stored choice: not supported", 0
+msg_nv_unset:   .byte "Stored choice: none", 0
+.endif
 
 .ifdef DIAGS_BUILD
 str_err:            .byte "RBCP ERROR 00", 0
