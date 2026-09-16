@@ -1145,6 +1145,8 @@ and [GET_RAM_SLOT_INFO](#get_ram_slot_info-response-format) responses.
 | 0x22 | HM7641 |
 | 0x23 | 62256 |
 | 0x24 | 23C1010 |
+| 0x25 | 27C400Pin31A17 |
+| 0x26 | 27C200Pin31NC |
 | 0x25–0x7F | Reserved |
 | 0x80–0xFE | Reserved for implementation-specific use |
 | 0xFF | Invalid/ROM not being served |
