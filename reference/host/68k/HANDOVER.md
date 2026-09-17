@@ -20,8 +20,7 @@ command-response mode; the data-section un-swap reader (device type, version,
 slot names all correct); the menu renders; RGB LED cycles then breathes a
 per-image colour; USB pipe log; both-buttons opens the menu; no-hold boots at
 once; the boot switch at 256KB and 512KB, including loading and serving a 512KB
-DiagROM. NV query works; the NV *write* path has never been exercised (needs a
-keypress).
+DiagROM. NV query and the NV write path both work.
 
 ## Open bugs (from the last session, all in `amiga_boot.s`)
 
@@ -45,6 +44,7 @@ the first suspect.
 - Rewrite both READMEs (`amiga-boot/README.md`, `68k/README.md`). The current
   ones are poor.
 - Ship both a 256KB and a 512KB build (CI/release), not one or the other.
+- Re-verify the NV write path on hardware.
 - Fix the three bugs above.
 - Mouse pointer (a real sprite + reading the mouse counters + row hit-test) is
   wanted eventually; deferred.
