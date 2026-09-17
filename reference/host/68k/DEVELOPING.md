@@ -26,8 +26,6 @@ The Amiga bootloader is in `amiga-boot/`, the RBCP library it links in
 - **The bootloader runs from chip RAM at `$8000`**, so replacing the served ROM
   under it is safe. It hands over through the new image's reset vector with the
   chipset quiet, and leaves OVL alone.
-- **The left mouse button is CIA-A PRA bit 6, the right is `POTGOR` bit 10**,
-  with `POTGO` driven `$FF00`.
 - **`key_loop` polls `amiga_getkey` every 10-20us.** A click lasts tens of
   milliseconds and so spans thousands of polls — a click that appears lost is
   contact bounce. `LMB_DEBOUNCE` sets how long the button reads up before
@@ -49,3 +47,20 @@ The Amiga bootloader is in `amiga-boot/`, the RBCP library it links in
 N sits at CPU `BCH_ABS + (N XOR 1)`. The code is `rbcp_read_data` and
 `rbcp_region_addr` in `rbcp/rbcp.s`, driven by five constants in
 `amiga-boot/rbcp_config.s`.
+
+## Building the Amiga bootloader with parts left out
+
+| Switch | Default | Effect |
+| --- | --- | --- |
+| `ART` | 1 | the heading and the logo |
+| `BALL` | 1 | the bouncing ball. `BALL=0` takes the shadow with it |
+| `SHADOW` | 0 | a drop shadow under the ball |
+| `CHIME` | 1 | the chime as the menu comes up |
+| `DEV` | 0 | `DEV=1` always shows the menu, whatever the mouse buttons say |
+
+```
+make ROM_KB=512 BALL=0
+```
+
+The artwork in `amiga-boot/assets/` is checked in. `amiga-boot/tools/README.md`
+covers the generators.

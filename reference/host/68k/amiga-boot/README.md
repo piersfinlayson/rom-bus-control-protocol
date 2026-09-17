@@ -12,7 +12,7 @@ held it boots either the first non-bootloader image, or last booted image.
 | --- | --- |
 | left click, or cursor up/down | move the highlight |
 | right click, or RETURN | boot the highlighted image |
-| `1`-`9` | pick one of the first nine images |
+| `1`-`8` | pick a ROM image |
 
 ## LED
 

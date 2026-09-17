@@ -31,12 +31,43 @@ ROM_KB    ?= $(shell sed -n 's/^CONFIG_ROM_KB[[:space:]][[:space:]]*EQU[[:space:
 ROM_BYTES := $(shell expr $(ROM_KB) \* 1024)
 ASFLAGS  += -DCONFIG_ROM_KB=$(ROM_KB)
 
+# DEV=1 builds a bench copy whose menu always appears, however the mouse
+# buttons read.  See CONFIG_DEV_ALWAYS_MENU in amiga_config.s.
+DEV       ?= 0
+ASFLAGS  += -DCONFIG_DEV_ALWAYS_MENU=$(DEV)
+
+# Build switches, each one covering its own code and artwork.  See
+# amiga_config.s.
+#   ART=0     no tagline heading and no logo
+#   BALL=0    no bouncing ball, and so no shadow either
+#   SHADOW=1  adds a drop shadow under the ball
+#   CHIME=0   no chime as the menu comes up
+ART       ?= 1
+BALL      ?= 1
+SHADOW    ?= 0
+CHIME     ?= 1
+ASFLAGS  += -DCONFIG_BANNER_ART=$(ART)       \
+            -DCONFIG_BANNER_BALL=$(BALL)     \
+            -DCONFIG_BANNER_SHADOW=$(SHADOW) \
+            -DCONFIG_BOOT_CHIME=$(CHIME)
+
+# The artwork is checked in, so a build never regenerates it — but a
+# regenerated asset has to force a re-assemble.
+ASSETS    = assets/logo.s            assets/logo.bin            \
+            assets/logo_mask.bin                                \
+            assets/tagline_wide.s    assets/tagline_wide.bin    \
+            assets/ball.s            assets/ball.bin            \
+            assets/ball_mask.bin                                \
+            assets/chime.s           assets/chime.bin
+
 DEPS      = amiga_boot.s        \
+            amiga_config.s      \
             amiga_defs.s        \
             amiga_hw.s          \
             rbcp_config.s       \
             ../rbcp/rbcp_defs.s \
             ../rbcp/rbcp.s      \
+            $(ASSETS)           \
             $(FONT)
 
 .PHONY: all clean

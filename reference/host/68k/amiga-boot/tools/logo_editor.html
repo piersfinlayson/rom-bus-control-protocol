@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>One ROM logo editor</title>
+<style>
+  :root{--bg:#16181c;--panel:#1e2127;--line:#343a44;--ink:#e8e6e1;--dim:#9aa0ab;--gold:#FFBB00}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+       display:flex;flex-direction:column}
+  header{flex:none;background:var(--panel);border-bottom:1px solid var(--line);
+         padding:10px 14px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .grp{display:flex;gap:6px;align-items:center}
+  .grp>span.lbl{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.09em}
+  .pen{display:flex;align-items:center;gap:6px;padding:5px 9px 5px 5px;
+       background:#252932;border:2px solid transparent;border-radius:3px;
+       color:var(--ink);font:inherit;cursor:pointer}
+  .pen[aria-pressed="true"]{border-color:var(--gold);background:#2f343d}
+  .sw{width:18px;height:18px;border:1px solid #666;flex:none}
+  .sw.tr{background:repeating-conic-gradient(#888 0 25%,#444 0 50%) 0 0/8px 8px}
+  button.b{padding:7px 12px;background:#252932;color:var(--ink);
+           border:1px solid var(--line);border-radius:3px;font:inherit;cursor:pointer}
+  button.b:hover{background:#2f343d}
+  button.save{background:var(--gold);color:#16181c;border-color:var(--gold);font-weight:700}
+  input[type=range]{width:110px;accent-color:var(--gold)}
+  main{flex:1;overflow:auto;padding:14px;display:flex;align-items:flex-start;justify-content:center}
+  canvas{image-rendering:pixelated;cursor:crosshair;flex:none;
+         background:repeating-conic-gradient(#2a2d33 0 25%,#22252a 0 50%) 0 0/16px 16px}
+  footer{flex:none;background:var(--panel);border-top:1px solid var(--line);
+         padding:7px 14px;color:var(--dim);font-size:12px;display:flex;gap:16px;flex-wrap:wrap}
+  kbd{background:#2f343d;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+</style>
+<header>
+  <div class="grp" id="pens"></div>
+  <div class="grp"><span class="lbl">Zoom</span>
+    <input type="range" id="z" min="2" max="16" value="6"><span id="zl">6x</span></div>
+  <div class="grp"><label><input type="checkbox" id="g" checked> grid</label></div>
+  <div class="grp">
+    <button class="b" id="undo">Undo</button>
+    <button class="b" id="reset">Reset</button>
+    <button class="b save" id="save">Save PNG</button>
+  </div>
+</header>
+<main><canvas id="c"></canvas></main>
+<footer>
+  <span>Drag to paint. <kbd>Alt</kbd>-click picks a pen. <kbd>Cmd</kbd>+<kbd>Z</kbd> undoes.</span>
+  <span id="stat"></span>
+</footer>
+<script>
+const B64="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";
+const W=112,H=92;
+const PENS=[
+ {n:0,name:"transparent",rgba:[0,0,0,0],  tr:true},
+ {n:0,name:"black",      rgba:[0,0,0,255]},
+ {n:3,name:"outline",    rgba:[17,17,17,255]},
+ {n:4,name:"chip body",  rgba:[51,51,51,255]},
+ {n:5,name:"pins",       rgba:[221,221,221,255]},
+ {n:2,name:"One ROM gold",rgba:[255,187,0,255]},
+];
+let cur=PENS[3], zoom=6, grid=true, painting=false;
+const c=document.getElementById('c'), ctx=c.getContext('2d');
+const off=document.createElement('canvas'); off.width=W; off.height=H;
+const octx=off.getContext('2d',{willReadFrequently:true});
+let original=null, undoStack=[];
+
+const img=new Image();
+img.onload=()=>{octx.drawImage(img,0,0);original=octx.getImageData(0,0,W,H);draw();stat();};
+img.src="data:image/png;base64,"+B64;
+
+function draw(){
+  c.width=W*zoom; c.height=H*zoom;
+  ctx.imageSmoothingEnabled=false;
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.drawImage(off,0,0,c.width,c.height);
+  if(grid&&zoom>=5){
+    ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let x=0;x<=W;x++){ctx.moveTo(x*zoom+.5,0);ctx.lineTo(x*zoom+.5,H*zoom);}
+    for(let y=0;y<=H;y++){ctx.moveTo(0,y*zoom+.5);ctx.lineTo(W*zoom,y*zoom+.5);}
+    ctx.stroke();
+  }
+}
+function push(){ undoStack.push(octx.getImageData(0,0,W,H)); if(undoStack.length>60)undoStack.shift(); }
+function at(e){
+  const r=c.getBoundingClientRect();
+  return [Math.floor((e.clientX-r.left)/zoom), Math.floor((e.clientY-r.top)/zoom)];
+}
+function put(x,y){
+  if(x<0||y<0||x>=W||y>=H)return;
+  const d=octx.createImageData(1,1);
+  d.data.set(cur.rgba); octx.putImageData(d,x,y);
+}
+function pick(x,y){
+  const p=octx.getImageData(x,y,1,1).data;
+  const m=PENS.find(q=>q.rgba[3]===0?p[3]===0:(p[3]>0&&q.rgba[0]===p[0]&&q.rgba[1]===p[1]&&q.rgba[2]===p[2]));
+  if(m){cur=m;paint();}
+}
+c.addEventListener('mousedown',e=>{
+  const [x,y]=at(e);
+  if(e.altKey){pick(x,y);return;}
+  push(); painting=true; put(x,y); draw(); stat();
+});
+addEventListener('mousemove',e=>{ if(!painting)return; const[x,y]=at(e); put(x,y); draw(); });
+addEventListener('mouseup',()=>{ if(painting){painting=false; stat();} });
+c.addEventListener('contextmenu',e=>e.preventDefault());
+
+function paint(){
+  document.querySelectorAll('.pen').forEach(b=>
+    b.setAttribute('aria-pressed', b.dataset.pen===cur.name));
+}
+const holder=document.getElementById('pens');
+PENS.forEach(p=>{
+  const b=document.createElement('button');
+  b.className='pen'; b.dataset.pen=p.name;
+  b.innerHTML=`<span class="sw ${p.tr?'tr':''}" ${p.tr?'':`style="background:rgb(${p.rgba.slice(0,3)})"`}></span>
+               <span>${p.name}</span>`;
+  b.onclick=()=>{cur=p;paint();};
+  holder.appendChild(b);
+});
+paint();
+
+document.getElementById('z').oninput=e=>{zoom=+e.target.value;document.getElementById('zl').textContent=zoom+'x';draw();};
+document.getElementById('g').onchange=e=>{grid=e.target.checked;draw();};
+document.getElementById('undo').onclick=()=>{const s=undoStack.pop(); if(s){octx.putImageData(s,0,0);draw();stat();}};
+document.getElementById('reset').onclick=()=>{if(original){push();octx.putImageData(original,0,0);draw();stat();}};
+document.getElementById('save').onclick=()=>{
+  off.toBlob(b=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download='logo_112x92.png'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  },'image/png');
+};
+function stat(){
+  const d=octx.getImageData(0,0,W,H).data; const n={};
+  for(let i=0;i<d.length;i+=4){
+    const p=PENS.find(q=>q.rgba[3]===0?d[i+3]===0:(d[i+3]>0&&q.rgba[0]===d[i]&&q.rgba[1]===d[i+1]&&q.rgba[2]===d[i+2]));
+    const k=p?p.name:'OFF PALETTE'; n[k]=(n[k]||0)+1;
+  }
+  document.getElementById('stat').textContent=
+    Object.entries(n).map(([k,v])=>`${k} ${v}`).join('  ·  ');
+}
+
+addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){
+    e.preventDefault(); document.getElementById('undo').click();
+  }
+});
+
+</script>

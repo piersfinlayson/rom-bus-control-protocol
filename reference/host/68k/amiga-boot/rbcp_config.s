@@ -96,8 +96,9 @@ CONFIG_RBCP_SCRATCH_SIZE    EQU 32
 ; transposition, so response records and strings are read with a plain
 ; incrementing pointer — exactly as an 8-bit host reads them in place.  One
 ; 32-byte slot record is the largest thing read, so 48 bytes covers every
-; response with room to spare.  It sits in the application area, clear of the
-; bitplane below it and the stack above.
+; response with room to spare.  It sits in the application variable area, so
+; the 68000 reaches it with absolute short addressing — see the chip RAM
+; layout in amiga_defs.s.
 ; ---------------------------------------------------------------------------
-CONFIG_RBCP_DATA_BUF        EQU $00005F00
+CONFIG_RBCP_DATA_BUF        EQU $00002200
 CONFIG_RBCP_DATA_BUF_SIZE   EQU 48

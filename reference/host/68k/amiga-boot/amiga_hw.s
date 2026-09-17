@@ -2,10 +2,9 @@
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
 ; ROM-only routines executed before the RAM section is copied.
-; All custom chip registers are accessed via absolute long addressing
-; (e.g. MOVE.W #$7FFF,INTENA) rather than indexed from A0, because the
-; register equates are absolute 24-bit addresses that exceed the 16-bit
-; signed displacement range of d(An) addressing.
+; Custom chip registers are reached by absolute long addressing rather than
+; indexed from A0, because the register equates are 24-bit addresses and
+; d(An) has only a 16-bit signed displacement.
 
 ; ---------------------------------------------------------------------------
 ; a500_hw_init — one-time hardware setup at cold start
@@ -13,24 +12,25 @@
 ; ---------------------------------------------------------------------------
 a500_hw_init:
         ORI.W   #$2700,SR
-        MOVE.W  #COL_WHITE,COLOR00  ; WHITE — CPU is alive, a500_hw_init entered
+        MOVE.W  #COL_WHITE,COLOR00  ; WHITE — the CPU is alive
 
-        ; Silence custom chips via absolute register addresses
-        MOVE.W  #$7FFF,INTENA       ; disable all interrupt enables
-        MOVE.W  #$7FFF,INTREQ       ; acknowledge all pending requests
-        MOVE.W  #$03FF,DMACON       ; disable all DMA channels
-        MOVE.W  #$7FFF,ADKCON       ; clear audio/disk control
+        ; These registers take bit 15 as set-or-clear, so a value with it
+        ; clear clears every bit named.  The chipset goes quiet.
+        MOVE.W  #$7FFF,INTENA
+        MOVE.W  #$7FFF,INTREQ
+        MOVE.W  #$03FF,DMACON
+        MOVE.W  #$7FFF,ADKCON
         MOVE.W  #$FF00,POTGO        ; drive pot pins weak-high so a mouse button
                                     ; reads low when pressed, high when released
         CLR.L   COP1LCH             ; stop the copper
 
-        ; Clear OVL: CIA-A PRA bit 0 = 0 (chip RAM at $0); bit 1 = 1 (LED off)
+        ; Clear OVL: PRA bit 0 = 0 (chip RAM at $0), bit 1 = 1 (LED off)
         MOVE.B  #$03,CIAA_DDRA
         MOVE.B  #$02,CIAA_PRA
 
-        MOVE.W  #COL_GREEN,COLOR00  ; GREEN — stack is set up
+        MOVE.W  #COL_GREEN,COLOR00  ; GREEN
 
-        ; Install exc_halt in all exception vectors $8-$3FF (vectors 2-255)
+        ; exc_halt into every exception vector, $8-$3FF
         LEA.L   exc_halt,A0
         MOVEA.L #$00000008,A1
         MOVE.W  #(256-2)-1,D0
@@ -42,10 +42,10 @@ a500_hw_init:
         RTS
 
 ; ---------------------------------------------------------------------------
-; exc_halt — minimal exception handler: red border, halt CPU
+; exc_halt — every exception lands here.  Purple screen, and stop.
 ; ---------------------------------------------------------------------------
 exc_halt:
-        MOVE.W  #COL_PURPLE,COLOR00      ; Purple
+        MOVE.W  #COL_PURPLE,COLOR00
 .eh_spin:
         STOP    #$2700
         BRA.S   .eh_spin
@@ -64,15 +64,17 @@ kbd_init:
         RTS
 
 ; ---------------------------------------------------------------------------
-; screen_init — copy copper template to chip RAM, patch BPL1PT, enable DMA
-; copper_template, font_data, and screen_clear are forward references
-; resolved in the second pass; all are within BSR.W range for our image size.
-; Clobbers (saved/restored): D0/A0-A2
+; screen_init — copy the copper template to chip RAM, point the four bitplane
+; pointers into the interleaved bitmap, set the display height from the Agnus
+; fitted, and enable DMA.
+;
+; copper_template, font_data and screen_clear are forward references, all
+; within BSR.W range for our image size.
+; Clobbers (saved/restored): D0-D2/A0-A2
 ; ---------------------------------------------------------------------------
 screen_init:
-        MOVEM.L D0/A0-A2,-(SP)
+        MOVEM.L D0-D2/A0-A2,-(SP)
 
-        ; Copy copper template from ROM to chip RAM
         LEA.L   copper_template,A0
         LEA.L   COPPER_BASE,A1
         MOVE.W  #(copper_template_end-copper_template)/2-1,D0
@@ -80,23 +82,41 @@ screen_init:
         MOVE.W  (A0)+,(A1)+
         DBF     D0,.si_copy
 
-        ; Patch BPL1PTH and BPL1PTL in the chip RAM copper list
-        MOVE.L  #BITPLANE_BASE,D0
-        LEA.L   COPPER_BASE,A1
-        SWAP    D0
-        MOVE.W  D0,2(A1)            ; BPL1PTH data word
-        SWAP    D0
-        MOVE.W  D0,6(A1)            ; BPL1PTL data word
+        ; Each plane starts at its own 40 bytes within the bitmap's first pixel
+        ; row, and BPL1MOD/BPL2MOD in the template skip the other three.
+        LEA.L   COPPER_BASE+COP_OFF_BPL1PTH,A1
+        MOVE.L  #BITPLANE_BASE,D1
+        MOVEQ   #SCREEN_PLANES-1,D0
+.si_ptr:
+        MOVE.L  D1,D2
+        SWAP    D2
+        MOVE.W  D2,(A1)             ; BPLnPTH data word
+        MOVE.W  D1,4(A1)            ; BPLnPTL data word
+        ADDA.W  #8,A1
+        ADD.L   #SCREEN_BPL_W,D1
+        DBF     D0,.si_ptr
 
-        ; Point Agnus at copper list and strobe
+        ; The template holds the NTSC stop, so only a PAL Agnus needs writing.
+        ; Which one is fitted is kept, because the chime's sample period and
+        ; the ball's bottom limit both follow from it.
+        MOVE.W  (VPOSR).L,D0
+        ANDI.W  #VPOSR_PAL,D0
+        BEQ.S   .si_ntsc
+        MOVE.W  #DIW_STOP_PAL,(COPPER_BASE+COP_OFF_DIWSTOP).W
+        MOVE.B  #1,VAR_IS_PAL
+        BRA.S   .si_height
+.si_ntsc:
+        CLR.B   VAR_IS_PAL
+.si_height:
+
         MOVE.L  #COPPER_BASE,COP1LCH
         TST.W   COPJMP1
 
-        ; Clear bitplane (forward BSR to screen_clear in RAM section)
         BSR     screen_clear
 
-        ; Enable DMA: MASTER + COPEN + BPLEN
-        MOVE.W  #$8380,DMACON
+        ; MASTER + COPEN + BPLEN + BLTEN.  Audio DMA goes on only while the
+        ; chime is playing.
+        MOVE.W  #$83C0,DMACON
 
-        MOVEM.L (SP)+,D0/A0-A2
+        MOVEM.L (SP)+,D0-D2/A0-A2
         RTS
