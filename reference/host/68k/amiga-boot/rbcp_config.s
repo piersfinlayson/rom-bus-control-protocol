@@ -13,7 +13,9 @@
 ; $F80000.  The Makefile reads CONFIG_ROM_KB from this file to size-check the
 ; output image, so keep the "EQU <number>" form on that line.
 ; ---------------------------------------------------------------------------
+    ifnd CONFIG_ROM_KB
 CONFIG_ROM_KB               EQU 256             ; 256 or 512
+    endc
 CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
 
 ; ---------------------------------------------------------------------------
@@ -85,3 +87,17 @@ CONFIG_RBCP_CMD_PAUSE       EQU $100            ; inter-command gap, cmd mode
 ; ---------------------------------------------------------------------------
 CONFIG_RBCP_SCRATCH_BASE    EQU $00001000
 CONFIG_RBCP_SCRATCH_SIZE    EQU 32
+
+; ---------------------------------------------------------------------------
+; Un-swap buffer for the response data section
+;
+; rbcp_read_data copies a run of device bytes out of the back-channel data
+; section into this linear chip RAM buffer, undoing the word-ROM byte
+; transposition, so response records and strings are read with a plain
+; incrementing pointer — exactly as an 8-bit host reads them in place.  One
+; 32-byte slot record is the largest thing read, so 48 bytes covers every
+; response with room to spare.  It sits in the application area, clear of the
+; bitplane below it and the stack above.
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_DATA_BUF        EQU $00005F00
+CONFIG_RBCP_DATA_BUF_SIZE   EQU 48

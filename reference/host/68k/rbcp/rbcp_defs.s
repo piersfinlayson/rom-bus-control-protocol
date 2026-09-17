@@ -143,6 +143,7 @@ RBCP_CMD_ENTER_CMD_RESP     EQU $01
 RBCP_CMD_EXIT_CMD_RESP_ACK  EQU $02
 RBCP_CMD_EXIT_SILENT        EQU $03
 RBCP_CMD_SWITCH_AND_EXIT    EQU $04
+RBCP_CMD_LOAD_AND_EXIT      EQU $05
 
 ; ---------------------------------------------------------------------------
 ; Group 0x01 — Read
@@ -176,9 +177,60 @@ RBCP_CMD_NV_POKE_DISCARD    EQU $05
 RBCP_CMD_NV_POKE_COMMIT_BYTE EQU $06
 
 ; ---------------------------------------------------------------------------
+; Group 0x04 — Pipes
+; ---------------------------------------------------------------------------
+RBCP_GRP_PIPES              EQU $04
+RBCP_CMD_GET_PIPE_CAP       EQU $00
+RBCP_CMD_GET_PIPE_INFO      EQU $01
+RBCP_CMD_PIPE_WRITE         EQU $02
+RBCP_PIPE_WRITE_MAX         EQU 4
+
+; ---------------------------------------------------------------------------
+; Group 0x06 — LEDs
+; ---------------------------------------------------------------------------
+RBCP_GRP_LEDS               EQU $06
+RBCP_CMD_GET_LED_CAP        EQU $00
+RBCP_CMD_GET_LED_INFO       EQU $01
+RBCP_CMD_GET_LED_MODE_INFO  EQU $02
+RBCP_CMD_SET_LED            EQU $03
+
+; ---------------------------------------------------------------------------
 ; Group 0xAA — Reset
 ; ---------------------------------------------------------------------------
 RBCP_CMD_RESET              EQU $AA
+
+; ---------------------------------------------------------------------------
+; Response data-section field offsets, relative to the start of the data
+; section (region byte 8).  Read a linear buffer that rbcp_read_data has
+; un-swapped, so these are the same numbers the specification gives.
+; ---------------------------------------------------------------------------
+; GET_RAM_SLOT_INFO_ALL
+RBCP_RAM_TOTAL              EQU 0
+RBCP_RAM_ACTIVE            EQU 1
+RBCP_RAM_ROM_TYPE          EQU 2
+; GET_FLASH_SLOT_INFO record
+RBCP_FLASH_ROM_TYPE        EQU 0
+RBCP_FLASH_NAME            EQU 1
+; GET_NV_CAPABILITY
+RBCP_NV_CAP_SIZE_LO        EQU 0
+RBCP_NV_CAP_SIZE_HI        EQU 1
+RBCP_NV_CAP_WRITABLE       EQU 2
+; GET_PIPE_CAPABILITY
+RBCP_PIPE_CAP_COUNT        EQU 0
+; GET_LED_CAPABILITY
+RBCP_LED_CAP_COUNT         EQU 0
+; GET_LED_INFO
+RBCP_LED_INFO_TYPE         EQU 0
+RBCP_LED_INFO_MODE         EQU 1
+; LED types and modes
+RBCP_LED_TYPE_MONO         EQU $00
+RBCP_LED_TYPE_RGB          EQU $01
+RBCP_LED_OFF               EQU $00
+RBCP_LED_ON                EQU $01
+RBCP_LED_BLINK             EQU $02
+RBCP_LED_BREATHE           EQU $03
+RBCP_LED_CYCLE             EQU $04
+RBCP_LED_BEACON            EQU $05
 
 ; ---------------------------------------------------------------------------
 ; Back-channel response header — CPU addresses

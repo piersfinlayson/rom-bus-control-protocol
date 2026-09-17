@@ -28,8 +28,11 @@ TARGET    = $(BUILD)/amiga_boot.bin
 SWAPPED   = $(BUILD)/amiga_boot_swapped.bin
 FONT      = font_8x8.bin
 
-ROM_KB    := $(shell sed -n 's/^CONFIG_ROM_KB[[:space:]][[:space:]]*EQU[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p' rbcp_config.s)
+# ROM size in KB, 256 or 512.  Defaults to the value in rbcp_config.s; override
+# on the command line for a 512 KB (27C400) socket:  make ROM_KB=512
+ROM_KB    ?= $(shell sed -n 's/^CONFIG_ROM_KB[[:space:]][[:space:]]*EQU[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p' rbcp_config.s)
 ROM_BYTES := $(shell expr $(ROM_KB) \* 1024)
+ASFLAGS  += -DCONFIG_ROM_KB=$(ROM_KB)
 
 DEPS      = amiga_boot.s        \
             amiga_defs.s        \

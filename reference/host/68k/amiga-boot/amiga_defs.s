@@ -24,6 +24,8 @@ DDFSTRT             EQU CUSTOM+$092
 DDFSTOP             EQU CUSTOM+$094
 COP1LCH             EQU CUSTOM+$080
 COPJMP1             EQU CUSTOM+$088
+POTGO               EQU CUSTOM+$034     ; write: pot-pin direction and start
+POTGOR              EQU CUSTOM+$016     ; read: pot-pin levels (POTINP)
 
 ; ---------------------------------------------------------------------------
 ; CIA-A registers
@@ -40,6 +42,7 @@ CIAA_CRA            EQU CIAA_BASE+$E00      ; control register A
 CIAA_PRA_OVL        EQU 0                   ; overlay: 1=ROM at $0, 0=RAM at $0
 CIAA_PRA_LED        EQU 1                   ; power LED: 0=on, 1=off
 CIAA_PRA_LMB        EQU 6                   ; left mouse button: 0=pressed
+POTGOR_RMB          EQU 10                  ; right mouse button in POTGOR: 0=pressed
 
 ; CIA-A ICR bit position
 CIAA_ICR_SP         EQU 3                   ; serial port: 1=byte received
@@ -92,35 +95,28 @@ BITPLANE_BASE       EQU $000010A0           ; mono bitplane
 
 APP_BASE            EQU $000056A0           ; first byte after the bitplane
 
-; Application buffer layout (all absolute chip RAM addresses).
-; Reserved now, used from the slot-enumeration milestone onwards.
-SLOT_NAME_BUF       EQU APP_BASE+$0000      ; 14 * 32 = 448 bytes ($1C0)
-SLOT_NAME_MAX       EQU 14
-SLOT_NAME_SZ        EQU 32
+; Single-byte application variables.  Response records and strings are read
+; through the RBCP library's own un-swap buffer (CONFIG_RBCP_DATA_BUF), so the
+; application keeps only these few state bytes of its own.
+VAR_BASE            EQU APP_BASE+$0000
 
-DEVICE_TYPE_BUF     EQU APP_BASE+$01C0      ; 24 bytes
-DEVICE_VER_BUF      EQU APP_BASE+$01D8      ; 24 bytes
-
-; Single-byte application variables
-VAR_BASE            EQU APP_BASE+$01F0
-
-; Milestone 1
-VAR_ENTER_RESULT    EQU VAR_BASE+0          ; 0 = entered command-response
-VAR_ENTER_STAGE     EQU VAR_BASE+1          ; RBCP_ERROR_CODE at failure
-VAR_NOP_RESULT      EQU VAR_BASE+2
-VAR_NOP_STAGE       EQU VAR_BASE+3
-
-; Later milestones
-VAR_TOTAL_RAM       EQU VAR_BASE+4
-VAR_ACTIVE_RAM      EQU VAR_BASE+5
-VAR_TARGET_RAM      EQU VAR_BASE+6
-VAR_TOTAL_FLASH     EQU VAR_BASE+7
-VAR_WHOLE_FLASH     EQU VAR_BASE+8
-VAR_NUM_DISPLAY     EQU VAR_BASE+9
-VAR_SELECTION       EQU VAR_BASE+10
-VAR_LMB_HELD        EQU VAR_BASE+11         ; 0=held, non-zero=not held
-VAR_NV_PRESENT      EQU VAR_BASE+12
-VAR_BOOT_FLASH      EQU VAR_BASE+13         ; 1-based flash slot for auto-boot
+VAR_TOTAL_RAM       EQU VAR_BASE+0          ; RAM slots the device has
+VAR_ACTIVE_RAM      EQU VAR_BASE+1          ; the active RAM slot
+VAR_TARGET_RAM      EQU VAR_BASE+2          ; RAM slot a load stages into
+VAR_SINGLE_SLOT     EQU VAR_BASE+3          ; 1 = only one RAM slot, use LOAD_AND_EXIT
+VAR_TOTAL_FLASH     EQU VAR_BASE+4          ; flash slots the device has
+VAR_NUM_DISPLAY     EQU VAR_BASE+5          ; menu entries shown
+VAR_SELECTION       EQU VAR_BASE+6          ; 0-based index into the shown list
+VAR_LMB_HELD        EQU VAR_BASE+7          ; 1 while the left button stays down
+VAR_RMB_HELD        EQU VAR_BASE+17         ; 1 while the right button stays down
+VAR_NV_PRESENT      EQU VAR_BASE+8          ; 1 = the device can remember a choice
+VAR_NV_STORED       EQU VAR_BASE+9          ; slot the device already had stored
+VAR_PIPE_PRESENT    EQU VAR_BASE+10         ; 1 = pipe 0 is available for logging
+VAR_BOOT_FLASH      EQU VAR_BASE+11         ; 1-based flash slot to boot
+VAR_LED             EQU VAR_BASE+12         ; lowest RGB LED, or $FF if none
+VAR_SAVED_KEY       EQU VAR_BASE+14         ; key held across a logging call
+VAR_LOG_SLOT        EQU VAR_BASE+15         ; slot a log line is naming
+VAR_ERR_NUM        EQU VAR_BASE+16         ; error number, for the diagnostics
 
 STACK_TOP           EQU $00007F00           ; supervisor stack, grows down
 
@@ -128,31 +124,35 @@ STACK_TOP           EQU $00007F00           ; supervisor stack, grows down
 RAM_CODE_BASE       EQU $00008000
 
 ; ---------------------------------------------------------------------------
-; Milestone 1 screen layout (row indices, 0-based)
+; Menu screen layout (row indices, 0-based)
+;
+; The NTSC copper shows 200 lines, so everything sits within the first 24 rows
+; of the 8x8 text grid.  The list runs from MENU_ROW0 to two rows above the
+; footer, leaving a gap so the footer reads as separate.
 ; ---------------------------------------------------------------------------
-ROW_CFG_A           EQU 2                   ; ROM geometry, device-side values
-ROW_CFG_B           EQU 3                   ; mapped CPU addresses
-ROW_BEFORE_LBL      EQU 5
-ROW_BEFORE_HEX      EQU 6
-ROW_AFTER_LBL       EQU 8
-ROW_AFTER_HEX       EQU 9
-ROW_HEADER          EQU 11                  ; decoded response header
-ROW_RESULT          EQU 13                  ; ENTER_CMD_RESP outcome
-ROW_NOP             EQU 16                  ; NOP outcome
-
-STAGE_COL           EQU 46                  ; column for the stage digit
-
-; ---------------------------------------------------------------------------
-; Menu screen layout — reserved for the menu milestone
-; ---------------------------------------------------------------------------
-MENU_HEADER_ROW     EQU 1
-MENU_COPY_ROW       EQU 3
-MENU_PROMPT_ROW     EQU 5
-MENU_ENTRY_ROW0     EQU 7                   ; first slot entry row
-MENU_FOOTER_ROW     EQU 23
-MENU_DEVICE_ROW     EQU 26
+TITLE_ROW           EQU 0
+TITLE_COL           EQU 26
+MENU_ROW0           EQU 3
+MENU_COL            EQU 6                    ; where the name starts
+MENU_NUM_COL        EQU 3                    ; where the "N)" starts
+FOOTER_ROW          EQU 21
+FOOTER_COL          EQU 20
+DEVICE_ROW          EQU 23
+DEVICE_COL          EQU 2
+ROCKS_COL           EQU 68                   ; "piers.rocks" is 11 chars
 
 MAX_DISPLAY         EQU 14
+
+
+; Error numbers, indices into the error message table.
+ERR_NO_CMD_RESP     EQU 0
+ERR_VERSION         EQU 1
+ERR_RAM_INFO        EQU 2
+ERR_FLASH_INFO      EQU 3
+ERR_NO_IMAGES       EQU 4
+ERR_LOAD            EQU 5
+ERROR_ROW           EQU 10
+ERROR_COL           EQU 8
 
 ; ---------------------------------------------------------------------------
 ; Input token constants — reserved for the menu milestone
@@ -163,6 +163,7 @@ KEY_DOWN            EQU 2
 KEY_RETURN          EQU 3
 KEY_ESC             EQU 4
 KEY_LMB             EQU 5
+KEY_RMB             EQU 6
 
 ; Amiga keyboard scancodes (key press, bit 7 clear)
 KBD_RETURN          EQU $44

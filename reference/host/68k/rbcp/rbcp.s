@@ -76,7 +76,8 @@ rbcp_knock:
 ; ---------------------------------------------------------------------------
 rbcp_send_cmd:
         MOVEM.L D0-D2/A0/A5,-(SP)
-        MOVE.B  D0,D2               ; save argument count
+        MOVEQ   #0,D2               ; count clean for a later word DBF
+        MOVE.B  D0,D2               ; argument count
         MOVEA.L #CONFIG_RBCP_CMD_PAGE_ABS,A5
 
         MOVE.B  RBCP_GROUP,D0
@@ -88,13 +89,15 @@ rbcp_send_cmd:
         TST.B   D2
         BEQ.S   .rsc_done
         MOVEA.L #RBCP_ARG0,A0
-        MOVEQ   #0,D1
-        MOVE.B  D2,D1
-        SUBQ.W  #1,D1
+        ; The loop counter lives in D2, not D1.  rbcp_send_byte_internal reads
+        ; the command page with MOVE.W (A5,D1.W),D1, so it returns with D1
+        ; holding the ROM word — zero on the command page — which as a counter
+        ; ends the loop after one argument.  D2 it leaves alone.
+        SUBQ.W  #1,D2
 .rsc_loop:
         MOVE.B  (A0)+,D0
         BSR.S   rbcp_send_byte_internal
-        DBF     D1,.rsc_loop
+        DBF     D2,.rsc_loop
 .rsc_done:
         MOVEM.L (SP)+,D0-D2/A0/A5
         RTS
@@ -444,3 +447,276 @@ rbcp_cmd_exit_cmd_resp_ack:
         MOVE.B  #RBCP_CMD_EXIT_CMD_RESP_ACK,RBCP_CMD
         MOVEQ   #0,D0
         BRA     rbcp_issue_cmd
+
+; ===========================================================================
+; Reading the response data section
+;
+; On a word-organised ROM the data section's bytes are transposed in CPU
+; address space, and a linear index into it is not a linear CPU offset.  These
+; two routines undo that: rbcp_region_addr maps one region byte to its CPU
+; address, and rbcp_read_data copies a run of the data section into a linear
+; chip RAM buffer so the application reads records and strings with a plain
+; incrementing pointer, exactly as an 8-bit host reads them in place.
+; ===========================================================================
+
+; ---------------------------------------------------------------------------
+; rbcp_region_addr — CPU address of one back-channel region byte
+; Input : D0.W = region byte index N
+; Output: A0   = CPU address of that byte
+; Clobbers (saved/restored): D1-D2
+; ---------------------------------------------------------------------------
+rbcp_region_addr:
+        MOVEM.L D1-D2,-(SP)
+        MOVE.W  D0,D1
+    ifne CONFIG_RBCP_DEV_SHIFT
+        LSR.W   #CONFIG_RBCP_DEV_SHIFT,D1   ; which bus cycle
+    endc
+    ifne CONFIG_RBCP_BUS_SHIFT
+        LSL.W   #CONFIG_RBCP_BUS_SHIFT,D1   ; CPU bytes per bus cycle
+    endc
+        MOVE.W  D0,D2
+        ANDI.W  #CONFIG_RBCP_DEV_MASK,D2     ; byte within the device word
+        EORI.W  #CONFIG_RBCP_ENDIAN_XOR,D2   ; big-endian 68K transposes it
+        ADD.W   D2,D1
+    ifne CONFIG_RBCP_LANE_OFF
+        ADDI.W  #CONFIG_RBCP_LANE_OFF,D1     ; this device's lane on the bus
+    endc
+        MOVEA.L #CONFIG_RBCP_BCH_ABS,A0
+        ADDA.W  D1,A0
+        MOVEM.L (SP)+,D1-D2
+        RTS
+
+; ---------------------------------------------------------------------------
+; rbcp_read_data — un-swap the data section into CONFIG_RBCP_DATA_BUF
+; Input : D0.W = number of data bytes to copy (1..CONFIG_RBCP_DATA_BUF_SIZE)
+; Output: CONFIG_RBCP_DATA_BUF holds those bytes in linear order
+; Clobbers (saved/restored): D0-D4/A0-A1
+;
+; Call it after a command succeeds and before the next command is issued, as
+; the next command overwrites the region.  Data byte i is region byte 8+i.
+; ---------------------------------------------------------------------------
+rbcp_read_data:
+        MOVEM.L D0-D4/A0-A1,-(SP)
+        MOVEA.L #CONFIG_RBCP_DATA_BUF,A1
+        MOVE.W  D0,D4
+        SUBQ.W  #1,D4               ; DBF counter
+        MOVEQ   #0,D3               ; data byte index i
+.rrd_loop:
+        MOVE.W  D3,D0
+        ADDQ.W  #8,D0               ; region byte N = 8 + i
+        BSR     rbcp_region_addr
+        MOVE.B  (A0),(A1)+
+        ADDQ.W  #1,D3
+        DBF     D4,.rrd_loop
+        MOVEM.L (SP)+,D0-D4/A0-A1
+        RTS
+
+; ===========================================================================
+; Read-group command helpers (group 0x01)
+; Each returns D0=0/Z=1 on success, and leaves the answer in the back-channel
+; data section for rbcp_read_data.
+; ===========================================================================
+
+rbcp_cmd_get_proto_version:
+        MOVE.B  #RBCP_GRP_READ,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_PROTO_VERSION,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+rbcp_cmd_get_ram_info_all:
+        MOVE.B  #RBCP_GRP_READ,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_RAM_INFO_ALL,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+rbcp_cmd_get_flash_count:
+        MOVE.B  #RBCP_GRP_READ,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_FLASH_COUNT,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+; rbcp_cmd_get_flash_info — D0.B = flash slot
+rbcp_cmd_get_flash_info:
+        MOVE.B  D0,RBCP_ARG0
+        MOVE.B  #RBCP_GRP_READ,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_FLASH_INFO,RBCP_CMD
+        MOVEQ   #1,D0
+        BRA     rbcp_issue_cmd
+
+rbcp_cmd_get_device_type:
+        MOVE.B  #RBCP_GRP_READ,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_DEVICE_TYPE,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+rbcp_cmd_get_device_version:
+        MOVE.B  #RBCP_GRP_READ,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_DEVICE_VERSION,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+; ---------------------------------------------------------------------------
+; rbcp_check_protocol_version — is the device's protocol version one this
+; library supports?  Major must match exactly.  With major 0 the minor must
+; match and the patch be at least ours; otherwise minor at least ours decides.
+; Output: D0=0/Z=1 compatible, D0=1/Z=0 not
+; Clobbers (saved/restored): D1-D2/A0-A1
+; ---------------------------------------------------------------------------
+rbcp_check_protocol_version:
+        MOVEM.L D1-D2/A0-A1,-(SP)
+        BSR     rbcp_cmd_get_proto_version
+        TST.B   D0
+        BNE.S   .rcpv_fail
+        MOVEQ   #4,D0
+        BSR     rbcp_read_data          ; major, minor, patch, reserved
+        MOVEA.L #CONFIG_RBCP_DATA_BUF,A0
+        MOVE.B  (A0),D1                 ; device major
+        CMPI.B  #RBCP_SUPPORTED_MAJOR,D1
+        BNE.S   .rcpv_fail
+    ifeq RBCP_SUPPORTED_MAJOR
+        MOVE.B  1(A0),D1                ; major 0: minor must match
+        CMPI.B  #RBCP_SUPPORTED_MINOR,D1
+        BNE.S   .rcpv_fail
+        MOVE.B  2(A0),D1                ; patch at least ours
+        CMPI.B  #RBCP_SUPPORTED_PATCH,D1
+        BCS.S   .rcpv_fail
+    else
+        MOVE.B  1(A0),D1                ; device minor at least ours
+        CMPI.B  #RBCP_SUPPORTED_MINOR,D1
+        BCS.S   .rcpv_fail
+        BNE.S   .rcpv_ok                ; device minor greater, patch irrelevant
+        MOVE.B  2(A0),D1
+        CMPI.B  #RBCP_SUPPORTED_PATCH,D1
+        BCS.S   .rcpv_fail
+    endc
+.rcpv_ok:
+        MOVEQ   #0,D0
+        MOVEM.L (SP)+,D1-D2/A0-A1
+        RTS
+.rcpv_fail:
+        MOVEQ   #1,D0
+        MOVEM.L (SP)+,D1-D2/A0-A1
+        RTS
+
+; ===========================================================================
+; Modify-group helpers (group 0x02) and terminal control commands
+; ===========================================================================
+
+; rbcp_cmd_load_slot — D0.B = RAM slot, D1.B = flash slot
+rbcp_cmd_load_slot:
+        MOVE.B  D0,RBCP_ARG0
+        MOVE.B  D1,RBCP_ARG1
+        MOVE.B  #RBCP_GRP_MODIFY,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_LOAD_SLOT,RBCP_CMD
+        MOVEQ   #2,D0
+        BRA     rbcp_issue_cmd
+
+; rbcp_cmd_switch_and_exit — D0.B = RAM slot.  Terminal, send only, then pause.
+rbcp_cmd_switch_and_exit:
+        MOVE.B  D0,RBCP_ARG0
+        MOVE.B  #RBCP_GRP_CTRL,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_SWITCH_AND_EXIT,RBCP_CMD
+        MOVEQ   #1,D0
+        BSR     rbcp_send_cmd
+        BRA     rbcp_pause
+
+; rbcp_cmd_load_and_exit — D0.B = RAM slot, D1.B = flash slot.  Loads the
+; flash image into the RAM slot and exits.  Where the RAM slot is the active
+; one this replaces the whole served image, which is how a single-slot device
+; boots a chosen image.  Terminal, send only, then pause.
+rbcp_cmd_load_and_exit:
+        MOVE.B  D0,RBCP_ARG0
+        MOVE.B  D1,RBCP_ARG1
+        MOVE.B  #RBCP_GRP_CTRL,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_LOAD_AND_EXIT,RBCP_CMD
+        MOVEQ   #2,D0
+        BSR     rbcp_send_cmd
+        BRA     rbcp_pause
+
+; ===========================================================================
+; NV-group helpers (group 0x03)
+; ===========================================================================
+
+rbcp_cmd_get_nv_cap:
+        MOVE.B  #RBCP_GRP_NV,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_NV_CAP,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+; rbcp_cmd_nv_peek — caller sets RBCP_ARG0=count, ARG1=locLSB, ARG2=locMSB
+rbcp_cmd_nv_peek:
+        MOVE.B  #RBCP_GRP_NV,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_NV_PEEK,RBCP_CMD
+        MOVEQ   #3,D0
+        BRA     rbcp_issue_cmd
+
+; rbcp_cmd_nv_poke_commit_byte — caller sets ARG0=byte, ARG1=locLSB,
+; ARG2=locMSB, ARG3=RAM slot.  A flash erase can take milliseconds, so it
+; waits on the long poll.
+rbcp_cmd_nv_poke_commit_byte:
+        MOVE.B  #RBCP_GRP_NV,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_NV_POKE_COMMIT_BYTE,RBCP_CMD
+        MOVEQ   #4,D0
+        BRA     rbcp_issue_cmd_long_poll
+
+; ===========================================================================
+; Pipe-group helpers (group 0x04)
+; ===========================================================================
+
+rbcp_cmd_get_pipe_cap:
+        MOVE.B  #RBCP_GRP_PIPES,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_PIPE_CAP,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+; rbcp_cmd_pipe_write — caller sets RBCP_ARG0..3 = payload.
+; Input: D0.B = count (1..4), D1.B = pipe.  All or nothing.
+rbcp_cmd_pipe_write:
+        MOVE.B  D1,RBCP_ARG4        ; pipe
+        MOVE.B  D0,RBCP_ARG5        ; count (final argument, so never 0xAA)
+        MOVE.B  #RBCP_GRP_PIPES,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_PIPE_WRITE,RBCP_CMD
+        MOVEQ   #6,D0
+        BRA     rbcp_issue_cmd
+
+; ===========================================================================
+; LED-group helpers (group 0x06)
+; ===========================================================================
+
+rbcp_cmd_get_led_cap:
+        MOVE.B  #RBCP_GRP_LEDS,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_LED_CAP,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+; rbcp_cmd_get_led_info — D0.B = LED.  The LED number is the final argument,
+; where 0xAA is the reset marker, so this refuses it and sends nothing.
+rbcp_cmd_get_led_info:
+        CMPI.B  #$AA,D0
+        BEQ.S   .rgli_refuse
+        MOVE.B  D0,RBCP_ARG0
+        MOVE.B  #RBCP_GRP_LEDS,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_LED_INFO,RBCP_CMD
+        MOVEQ   #1,D0
+        BRA     rbcp_issue_cmd
+.rgli_refuse:
+        MOVE.B  #RBCP_ERR_RESPONSE,RBCP_ERROR_CODE
+        MOVEQ   #1,D0
+        RTS
+
+; rbcp_cmd_set_led — caller sets RBCP_ARG0=mode, ARG1=red, ARG2=green,
+; ARG3=blue, ARG4=brightness, ARG5=period, ARG6=hold.  Input: D0.B = LED.
+; The LED number is the final argument, where 0xAA is the reset marker, so
+; this refuses it and sends nothing.
+rbcp_cmd_set_led:
+        CMPI.B  #$AA,D0
+        BEQ.S   .rsl_refuse
+        MOVE.B  D0,RBCP_ARG7
+        MOVE.B  #RBCP_GRP_LEDS,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_SET_LED,RBCP_CMD
+        MOVEQ   #8,D0
+        BRA     rbcp_issue_cmd
+.rsl_refuse:
+        MOVE.B  #RBCP_ERR_RESPONSE,RBCP_ERROR_CODE
+        MOVEQ   #1,D0
+        RTS

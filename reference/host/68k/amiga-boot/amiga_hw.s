@@ -20,6 +20,8 @@ a500_hw_init:
         MOVE.W  #$7FFF,INTREQ       ; acknowledge all pending requests
         MOVE.W  #$03FF,DMACON       ; disable all DMA channels
         MOVE.W  #$7FFF,ADKCON       ; clear audio/disk control
+        MOVE.W  #$FF00,POTGO        ; drive pot pins weak-high so a mouse button
+                                    ; reads low when pressed, high when released
         CLR.L   COP1LCH             ; stop the copper
 
         ; Clear OVL: CIA-A PRA bit 0 = 0 (chip RAM at $0); bit 1 = 1 (LED off)
