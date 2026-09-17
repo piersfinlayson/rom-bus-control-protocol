@@ -268,17 +268,25 @@ jobs:
           make -C vasm CPU=m68k SYNTAX=mot
           echo "$PWD/vasm" >> "$GITHUB_PATH"
 
-      # onerom is absent here, so the byte-swapped image is skipped with a
-      # warning and only the 68K byte order image is built.
+      # Both sizes, in the device's byte order.  The target goes as well as
+      # the swapped image, or the next size is taken as up to date and never
+      # built.
       - name: Build amiga-boot
         working-directory: reference/host/68k/amiga-boot
-        run: make
+        run: |
+          make ROM_KB=512
+          mv build/amiga_boot_swapped.bin build/amiga_boot_512k.bin
+          rm build/amiga_boot.bin
+          make
+          mv build/amiga_boot_swapped.bin build/amiga_boot_256k.bin
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: amiga-boot
-          path: reference/host/68k/amiga-boot/build/amiga_boot.bin
+          path: |
+            reference/host/68k/amiga-boot/build/amiga_boot_256k.bin
+            reference/host/68k/amiga-boot/build/amiga_boot_512k.bin
 
   build-romsel:
     runs-on: ubuntu-latest

@@ -8,11 +8,8 @@
 #   font_8x8.bin  2048-byte CP437/ASCII 8x8 bitmap font (256 glyphs * 8 bytes,
 #                 no header)
 #
-# Optional:
-#   onerom        used to produce the byte-swapped image.  The 68K is
-#                 big-endian and the device stores the slot in its own byte
-#                 order, so the natural image must be swapped before it is
-#                 written to the device.  Skipped with a warning if absent.
+# The device stores a slot in its own byte order, so the build also writes a
+# swapped image.  That is the one to program.
 #
 # Build:   make
 # Clean:   make clean
@@ -57,14 +54,8 @@ $(TARGET): $(DEPS) | $(BUILD)
 	     echo "ERROR: wrong image size — check ORG directives and CONFIG_ROM_KB"; \
 	     exit 1; \
 	 fi
-	@if command -v onerom >/dev/null 2>&1; then \
-	     onerom image swap-bytes --input $(TARGET) --output $(SWAPPED) && \
-	     echo "Swapped: $(SWAPPED)"; \
-	 else \
-	     echo "WARNING: onerom not found — $(SWAPPED) not produced."; \
-	     echo "         $(TARGET) is in 68K byte order and must be byte-swapped"; \
-	     echo "         before it is written to the device."; \
-	 fi
+	@dd if=$(TARGET) of=$(SWAPPED) conv=swab status=none
+	@echo "Swapped: $(SWAPPED)"
 
 clean:
 	@echo "Cleaning build artifacts..."

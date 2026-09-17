@@ -326,6 +326,7 @@ boot_ram_entry:
         BSR     wait_buttons_release
         CLR.B   VAR_LMB_HELD
         CLR.B   VAR_RMB_HELD
+        CLR.W   VAR_LMB_UP_CNT
         BRA     key_loop
 
 ; ---------------------------------------------------------------------------
@@ -547,42 +548,78 @@ draw_device:
         BRA     invert_row
 
 ; ---------------------------------------------------------------------------
-; draw_list — one line per image, each asked for as it is drawn.  The
-; back-channel holds one slot record at a time, so the names arrive one
-; command at a time and go straight to the screen and the log.  D7 holds the
-; 0-based display index across the loop; the command helpers preserve it.
+; draw_list — the images as one block, left-aligned and centred on the screen.
+; The start column falls out of the widest name, and one command carries one
+; name, so every name is read before any is drawn.  D7 is the 0-based display
+; index across both passes, which the command helpers preserve.
 ; ---------------------------------------------------------------------------
 draw_list:
-        MOVEM.L D5-D7,-(SP)
+        MOVEM.L D3-D7/A0-A1,-(SP)
+        CLR.B   (NAME_MAX).W
+
+        ; --- pass one: read every name, and note the widest ---
         MOVEQ   #0,D7
-.dl_loop:
+.dl_fetch:
         MOVE.B  VAR_NUM_DISPLAY,D0
         CMP.B   D7,D0
-        BLS     .dl_done                ; D7 >= num_display
+        BLS     .dl_place               ; D7 >= num_display
+        LEA     (NAME_LEN_TAB).W,A1
+        CLR.B   (A1,D7.W)               ; no entry until the device names one
         MOVE.B  D7,D0
         ADDQ.B  #1,D0                   ; flash slot
         BSR     rbcp_cmd_get_flash_info
         TST.B   D0
-        BNE     .dl_next                ; a slot that will not describe: skip
+        BNE.S   .dl_fnext               ; a slot that will not describe: skip
         MOVEQ   #32,D0
         BSR     rbcp_read_data
 
-        ; Centre the entry: an "N) " prefix of three columns and the name.
         LEA     (CONFIG_RBCP_DATA_BUF+RBCP_FLASH_NAME).W,A0
+        BSR     name_slot_addr          ; A1 = this entry's room in NAME_BUF
         MOVEQ   #0,D5
-.dl_len:
-        TST.B   (A0)+
-        BEQ.S   .dl_gotlen
+.dl_copy:
+        MOVE.B  (A0)+,D0
+        MOVE.B  D0,(A1)+
+        BEQ.S   .dl_copied
         ADDQ.W  #1,D5
-        BRA.S   .dl_len
-.dl_gotlen:
-        MOVEQ   #SCREEN_COLS-3,D6
-        SUB.W   D5,D6
-        LSR.W   #1,D6                   ; D6 = start column
+        CMPI.W  #NAME_STRIDE-1,D5
+        BCS.S   .dl_copy
+        CLR.B   (A1)                    ; terminate a name that filled its room
+.dl_copied:
+        LEA     (NAME_LEN_TAB).W,A1
+        MOVE.B  D5,(A1,D7.W)
+        CMP.B   (NAME_MAX).W,D5
+        BLS.S   .dl_log
+        MOVE.B  D5,(NAME_MAX).W
+.dl_log:
+        BSR     log_entry               ; name is still in the un-swap buffer
+.dl_fnext:
+        ADDQ.B  #1,D7
+        BRA     .dl_fetch
+
+        ; --- pass two: draw them all from the one start column ---
+.dl_place:
+        MOVEQ   #0,D0
+        MOVE.B  (NAME_MAX).W,D0
+        ADDQ.W  #MENU_PREFIX,D0         ; the prefix in front of the widest
+        MOVEQ   #SCREEN_COLS,D6
+        SUB.W   D0,D6
+        BPL.S   .dl_col
+        MOVEQ   #0,D6                   ; wider than the screen: start at 0
+.dl_col:
+        LSR.W   #1,D6                   ; D6 = the column every entry starts at
+
+        MOVEQ   #0,D7
+.dl_draw:
+        MOVE.B  VAR_NUM_DISPLAY,D0
+        CMP.B   D7,D0
+        BLS     .dl_done
+        LEA     (NAME_LEN_TAB).W,A1
+        TST.B   (A1,D7.W)
+        BEQ.S   .dl_dnext               ; the device named nothing for this one
 
         ; The number shown is the flash slot, one more than the list place
-        ; because slot 0 is the bootloader.  Only the first nine have a digit
-        ; that picks them; the rest are reached with the cursor.
+        ; because slot 0 is the bootloader.  The first nine have a digit that
+        ; picks them, the rest are reached with the cursor.
         MOVE.B  D7,D0
         CMPI.B  #9,D0
         BCC.S   .dl_blank
@@ -596,7 +633,7 @@ draw_list:
 .dl_putnum:
         MOVE.B  D7,D2
         ADDI.B  #MENU_ROW0,D2
-        MOVE.B  D6,D1                   ; start column
+        MOVE.B  D6,D1
         BSR     screen_putchar          ; the digit or a space
         MOVE.B  D3,D0
         MOVE.B  D7,D2
@@ -605,19 +642,30 @@ draw_list:
         ADDQ.B  #1,D1
         BSR     screen_putchar          ; the bracket or a space
 
-        LEA     (CONFIG_RBCP_DATA_BUF+RBCP_FLASH_NAME).W,A0
+        BSR     name_slot_addr
+        MOVEA.L A1,A0
         MOVE.B  D7,D2
         ADDI.B  #MENU_ROW0,D2
         MOVE.B  D6,D1
-        ADDQ.B  #3,D1                   ; after the "N) " prefix
+        ADDQ.B  #MENU_PREFIX,D1
         BSR     screen_print
-
-        BSR     log_entry               ; name is still in the buffer
-.dl_next:
+.dl_dnext:
         ADDQ.B  #1,D7
-        BRA     .dl_loop
+        BRA     .dl_draw
 .dl_done:
-        MOVEM.L (SP)+,D5-D7
+        MOVEM.L (SP)+,D3-D7/A0-A1
+        RTS
+
+; name_slot_addr — D7.B = display index, returns A1 = that entry's name in
+; NAME_BUF.  Every data register is preserved.
+name_slot_addr:
+        MOVEM.L D0,-(SP)
+        MOVEQ   #0,D0
+        MOVE.B  D7,D0
+        MULU    #NAME_STRIDE,D0
+        LEA     (NAME_BUF).W,A1
+        ADDA.W  D0,A1
+        MOVEM.L (SP)+,D0
         RTS
 
 highlight_selection:
@@ -652,12 +700,11 @@ invert_row:
         MOVEM.L (SP)+,D0-D2/A0
         RTS
 
-; draw_footer — the controls line.
+; draw_footer — the controls line, centred.
 draw_footer:
         LEA     (str_footer).L,A0
-        MOVE.B  #FOOTER_COL,D1
         MOVE.B  #FOOTER_ROW,D2
-        BRA     screen_print
+        BRA     screen_print_centred
 
 ; ---------------------------------------------------------------------------
 ; amiga_getkey — one poll of the keyboard and the mouse buttons.
@@ -682,7 +729,7 @@ amiga_getkey:
         NOT.B   D0
         ROR.B   #1,D0                   ; keycode = ror(~raw)
         BTST    #7,D0
-        BNE.S   .gk_none                ; a key release, ignore
+        BNE     .gk_none                ; a key release, ignore
         ANDI.B  #$7F,D0
         CMPI.B  #KBD_UP,D0
         BEQ.S   .gk_up
@@ -691,9 +738,9 @@ amiga_getkey:
         CMPI.B  #KBD_RETURN,D0
         BEQ.S   .gk_ret
         TST.B   D0                      ; digit scancodes are $01..$09
-        BEQ.S   .gk_none
+        BEQ     .gk_none
         CMPI.B  #$0A,D0
-        BCC.S   .gk_none
+        BCC     .gk_none
         ADDI.B  #'0',D0                 ; scancode n -> '1'..'9'
         BRA.S   .gk_out
 .gk_up:
@@ -710,12 +757,20 @@ amiga_getkey:
 .gk_lmb:
         BTST    #CIAA_PRA_LMB,(CIAA_PRA).L
         BNE.S   .gk_lmbup               ; bit set = not pressed
+        CLR.W   VAR_LMB_UP_CNT          ; down again: the settle count restarts
         TST.B   VAR_LMB_HELD
         BNE.S   .gk_rmb                 ; already reported this press
         MOVE.B  #1,VAR_LMB_HELD
         MOVEQ   #KEY_LMB,D0
         BRA.S   .gk_out
 .gk_lmbup:
+        ; Arm the next press once the button has read up long enough for the
+        ; contact to have settled.  Bounce on either edge restarts the count.
+        TST.B   VAR_LMB_HELD
+        BEQ.S   .gk_rmb                 ; already armed
+        ADDQ.W  #1,VAR_LMB_UP_CNT
+        CMPI.W  #LMB_DEBOUNCE,VAR_LMB_UP_CNT
+        BCS.S   .gk_rmb                 ; still settling
         CLR.B   VAR_LMB_HELD
 .gk_rmb:
         MOVE.W  (POTGOR).L,D1
@@ -1321,6 +1376,29 @@ screen_print:
         BRA.S   .sp_loop
 .sp_done:
         MOVEM.L (SP)+,D0-D2/A0
+        RTS
+
+; screen_print_centred — A0 = string, D2.B = row.  Centres the string across
+; the screen.  A string wider than the screen starts at column 0.
+screen_print_centred:
+        MOVEM.L D0-D1/A0-A1,-(SP)
+        MOVEA.L A0,A1                   ; keep the start
+        MOVEQ   #0,D0
+.spc_len:
+        TST.B   (A0)+
+        BEQ.S   .spc_got
+        ADDQ.W  #1,D0
+        BRA.S   .spc_len
+.spc_got:
+        MOVEQ   #SCREEN_COLS,D1
+        SUB.W   D0,D1
+        BPL.S   .spc_col
+        MOVEQ   #0,D1
+.spc_col:
+        LSR.W   #1,D1
+        MOVEA.L A1,A0
+        BSR     screen_print
+        MOVEM.L (SP)+,D0-D1/A0-A1
         RTS
 
         EVEN

@@ -29,6 +29,14 @@ jobs:
           echo "LIB=$HOME/watcom/lib286:$HOME/watcom/lib286/dos" >> "$GITHUB_ENV"
           echo "$HOME/watcom/binl64" >> "$GITHUB_PATH"
 
+      # vasm is not packaged, and upstream ships a tarball rather than a repo.
+      - name: Build vasm
+        run: |
+          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
+          tar xzf vasm.tar.gz
+          make -C vasm CPU=m68k SYNTAX=mot
+          echo "$PWD/vasm" >> "$GITHUB_PATH"
+
       - name: Build c64-boot
         working-directory: reference/host/6502/c64-boot
         run: make
@@ -77,6 +85,18 @@ jobs:
         working-directory: reference/host/6502/apple2-rbcp-term
         run: make
 
+      # Both sizes, in the device's byte order.  The target goes as well as
+      # the swapped image, or the next size is taken as up to date and never
+      # built.
+      - name: Build amiga-boot
+        working-directory: reference/host/68k/amiga-boot
+        run: |
+          make ROM_KB=512
+          mv build/amiga_boot_swapped.bin build/amiga_boot_512k.bin
+          rm build/amiga_boot.bin
+          make
+          mv build/amiga_boot_swapped.bin build/amiga_boot_256k.bin
+
       - name: Build romsel
         working-directory: reference/host/x86/romsel
         run: wmake
@@ -114,4 +134,6 @@ jobs:
             reference/host/6502/vic20-rbcp-term/build/vic20_term_pal.bin
             reference/host/6502/vic20-rbcp-term/build/vic20_term_ntsc.bin
             reference/host/6502/apple2-rbcp-term/build/apple2_term.bin
+            reference/host/68k/amiga-boot/build/amiga_boot_256k.bin
+            reference/host/68k/amiga-boot/build/amiga_boot_512k.bin
             reference/host/x86/romsel/build/romsel.exe

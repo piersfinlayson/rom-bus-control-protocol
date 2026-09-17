@@ -117,6 +117,12 @@ VAR_LED             EQU VAR_BASE+12         ; lowest RGB LED, or $FF if none
 VAR_SAVED_KEY       EQU VAR_BASE+14         ; key held across a logging call
 VAR_LOG_SLOT        EQU VAR_BASE+15         ; slot a log line is naming
 VAR_ERR_NUM        EQU VAR_BASE+16         ; error number, for the diagnostics
+VAR_LMB_UP_CNT      EQU VAR_BASE+18         ; polls the left button has read up
+
+; Polls the left button must read up before another press is taken, so the
+; bounce either side of a click reads as one press.  A loop count, like the
+; RBCP timeouts, not a unit.
+LMB_DEBOUNCE        EQU 1500
 
 STACK_TOP           EQU $00007F00           ; supervisor stack, grows down
 
@@ -136,12 +142,18 @@ MENU_ROW0           EQU 3
 MENU_COL            EQU 6                    ; where the name starts
 MENU_NUM_COL        EQU 3                    ; where the "N)" starts
 FOOTER_ROW          EQU 21
-FOOTER_COL          EQU 20
 DEVICE_ROW          EQU 23
 DEVICE_COL          EQU 2
 ROCKS_COL           EQU 68                   ; "piers.rocks" is 11 chars
 
 MAX_DISPLAY         EQU 14
+MENU_PREFIX         EQU 3                    ; the "N) " in front of a name
+
+; Menu name store — one slot name per entry, as read from the device.
+NAME_STRIDE         EQU 32                   ; room per name, as read
+NAME_LEN_TAB        EQU APP_BASE+$20         ; MAX_DISPLAY lengths, 0 = no entry
+NAME_MAX            EQU APP_BASE+$30         ; the widest name found
+NAME_BUF            EQU APP_BASE+$40         ; MAX_DISPLAY*NAME_STRIDE bytes
 
 
 ; Error numbers, indices into the error message table.
