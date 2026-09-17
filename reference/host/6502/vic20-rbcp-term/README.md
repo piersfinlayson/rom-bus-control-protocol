@@ -1,6 +1,6 @@
 # VIC-20 RBCP Terminal
 
-A ROM image for a Commodore VIC-20 that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into. It runs on an unexpanded machine.
+A ROM image for a Commodore VIC-20 that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into, and displays what that terminal sends back. It runs on an unexpanded machine.
 
 The device needs a pipe carrying bytes from the host to it. That is checked at startup and flagged on screen if it is missing.
 
@@ -35,13 +35,13 @@ RBCP 0.1.2
 
 
 
-
- HELLO FROM THE VIC
+>HELLO FROM THE VIC
+<HELLO FROM PC
 >THE SECOND LINE
  READY        05 LEFT
 ```
 
-Lines that have been sent scroll up, so the newest is always directly above the one being typed.
+Lines that have been sent scroll up, so the newest is always directly above the one being typed. `>` marks a line that was sent, `<` one that arrived. Arriving lines are reversed.
 
 ## Images
 

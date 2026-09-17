@@ -13,15 +13,17 @@
 ; Pipes — group $04
 ;
 ; A pipe runs from the host, through the device, to the pipe's far end, and
-; carries the OUT direction, the IN direction or both. This library sends on a
-; pipe and does not read from one. The host cannot observe the far end:
-; PIPE_WRITE says only whether the bytes were taken, not that they arrived.
+; carries the OUT direction, the IN direction or both. The host cannot observe
+; the far end: PIPE_WRITE says only whether the bytes were taken, not that they
+; arrived, and PIPE_READ says only what the device was holding when it asked.
 ;
-; No routine here waits or retries. A write that cannot be taken reports and
-; returns, and the caller decides what to do about it — rbcp_zp_5 tells the two
+; No routine here waits or retries. A command the device will not take reports
+; and returns, and the caller decides what to do about it — rbcp_zp_5 tells the
 ; cases apart:
 ;   1 or 2 = the device did not answer, so retrying is pointless
-;   3      = the pipe is full, so retrying may work once something drains it
+;   3      = the device said no. For a write that is a full pipe, so retrying
+;            may work once something drains it. For a read it is the pipe or
+;            the data section being wrong, which retrying will not mend
 ;   4      = the library refused the arguments and sent nothing
 ;
 ; There is deliberately no routine for sending a whole string. The chunking

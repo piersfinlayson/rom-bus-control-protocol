@@ -149,7 +149,7 @@ local ARGS = {                   -- [group][cmd] = argument count
              [0x06] = 0 },
   [0x02] = { [0x02] = 2 },
   [0x03] = { [0x00] = 0, [0x01] = 3, [0x06] = 4 },
-  [0x04] = { [0x00] = 0, [0x01] = 1, [0x02] = 6 },
+  [0x04] = { [0x00] = 0, [0x01] = 1, [0x02] = 6, [0x03] = 2 },
   [0x05] = { [0x00] = 0, [0x01] = 1, [0x02] = 2, [0x03] = 5, [0x04] = 5, [0x05] = 7 },
   [0x06] = { [0x00] = 0, [0x01] = 1, [0x02] = 2, [0x03] = 8 },
   [0xAA] = { [0xAA] = 0 },
@@ -158,6 +158,30 @@ local ARGS = {                   -- [group][cmd] = argument count
 local function log(fmt, ...) print(string.format("[dev] " .. fmt, ...)) end
 
 local function put_data(i, v) bch[8 + i] = v & 0xFF end
+
+-- What the far end has to say to the machine, as RBCP_SEND holds it.  "\n" in
+-- that variable is a line feed, which is what ends a line at the far end of a
+-- real pipe.  PIPE_READ hands it over a read at a time and GET_PIPE_INFO says
+-- how much of it is left.
+local rx_text = (os.getenv("RBCP_SEND") or ""):gsub("\\n", "\n")
+local rx_at = 1
+
+-- The most PIPE_READ can be asked for here: the data section, less the eight
+-- bytes the command puts in front of the bytes themselves.
+local PIPE_READ_ROOM = BCH_SIZE - 8 - 8
+
+local function rx_waiting()
+  local n = #rx_text - rx_at + 1
+  if n < 0 then n = 0 end
+  if n > 0xFF then n = 0xFF end
+  return n
+end
+
+local function printable(s)
+  return (s:gsub("[^\32-\126]", function (ch)
+    return ch == "\n" and "\\n" or "."
+  end))
+end
 
 local function put_string(i, s)
   for n = 1, #s do put_data(i + n - 1, s:byte(n)) end
@@ -314,8 +338,27 @@ local function execute()
     put_data(0, 0)                                -- raw
     put_data(1, 0x03 | 0x04 | 0x08)               -- both ways, far end attached
     put_data(2, 0xFF)                             -- room to write
-    put_data(3, 0)                                -- nothing waiting
+    put_data(3, rx_waiting())                     -- what RBCP_SEND has left
     put_data(4, 1)                                -- USB CDC
+    answer(true)
+  elseif g == 0x04 and c == 0x03 then             -- PIPE_READ
+    local want, pipe = a[1], a[2]
+    if pipe ~= 0 then answer(false) return end
+    if want == 0 then want = 256 end
+    if want > PIPE_READ_ROOM then answer(false) return end
+    local n = rx_waiting()
+    if n > want then n = want end
+    for i = 0, n - 1 do
+      put_data(8 + i, rx_text:byte(rx_at + i))
+    end
+    rx_at = rx_at + n
+    put_data(0, n & 0xFF)
+    put_data(1, (n == want) and 0x02 or 0x00)     -- bit 0 is never set here
+    put_data(2, rx_waiting())
+    for i = 3, 7 do put_data(i, 0) end
+    if n > 0 then
+      io.write("[pipe<] " .. printable(rx_text:sub(rx_at - n, rx_at - 1)) .. "\n")
+    end
     answer(true)
   elseif g == 0x05 and c == 0x00 then             -- GET_AUX_CAPABILITY
     put_data(0, aux_count)

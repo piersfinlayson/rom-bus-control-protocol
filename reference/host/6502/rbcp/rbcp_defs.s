@@ -149,6 +149,7 @@ RBCP_GRP_PIPES                      = $04
 RBCP_CMD_GET_PIPE_CAPABILITY        = $00
 RBCP_CMD_GET_PIPE_INFO              = $01
 RBCP_CMD_PIPE_WRITE                 = $02
+RBCP_CMD_PIPE_READ                  = $03
 
 ; Largest payload PIPE_WRITE carries, and so the largest valid count.
 RBCP_PIPE_WRITE_MAX                 = 4
@@ -206,6 +207,16 @@ RBCP_PIPE_FLAG_OUT          = $01   ; pipe carries OUT, host to device
 RBCP_PIPE_FLAG_IN           = $02   ; pipe carries IN, device to host
 RBCP_PIPE_FLAG_ATTACH_KNOWN = $04   ; device answers whether the far end is attached
 RBCP_PIPE_FLAG_ATTACHED     = $08   ; far end is attached; read only with ATTACH_KNOWN set
+
+; PIPE_READ response field offsets (relative to RBCP_DATA_ADDR)
+RBCP_PIPE_READ_COUNT   = 0      ; bytes returned, where READ_FLAG_FULL is clear
+RBCP_PIPE_READ_FLAGS   = 1
+RBCP_PIPE_READ_WAITING = 2      ; IN bytes left after this read, saturating at $FF
+RBCP_PIPE_READ_DATA    = 8      ; the bytes themselves
+
+; PIPE_READ flag bits
+RBCP_PIPE_READ_FLAG_OVERRUN = $01   ; bytes were thrown away before the host read them
+RBCP_PIPE_READ_FLAG_FULL    = $02   ; the whole count asked for came back
 
 ; Pipe types
 RBCP_PIPE_TYPE_RAW   = $00

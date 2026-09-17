@@ -9,9 +9,10 @@
 ; RAM slot from flash at power-on, so switching off is the repair.
 ;
 ; What is left is the knock, command-response mode, the version check, the
-; three strings the device calls itself, and the two questions this program has
-; that no other host asks: whether there is a pipe at all, and whether pipe 0
-; takes bytes from the host.
+; three strings the device calls itself, and the one question this program has
+; that no other host asks: which of the device's pipes carries what.  Without
+; one taking bytes from the host there is no terminal, so that ends the
+; session.  Without one bringing them back the terminal only sends.
 ;
 ; Everything here runs with interrupts masked and the terminal executing from
 ; RAM.  Once the knock has gone out, the only reads of the served image are the
@@ -39,12 +40,22 @@
 .export device_version_buf
 .export proto_ver_buf
 .export session_open
+.export pipe_out
+.export pipe_in
 
 device_type_buf:    .res 25     ; 24 ASCII bytes and a terminator
 device_version_buf: .res 25
 proto_ver_buf:      .res 12     ; "RBCP n.n.n" and a terminator
 
 session_open:       .res 1      ; non-zero once ENTER_CMD_RESP has succeeded
+
+; The pipes the scan settled on, or PIPE_NONE.  A line goes out of pipe_out and
+; the far end's bytes come back on pipe_in.
+pipe_out:           .res 1
+pipe_in:            .res 1
+
+pipe_count:         .res 1      ; what GET_PIPE_CAPABILITY said
+scan_idx:           .res 1      ; the pipe being asked about
 
 ; ---------------------------------------------------------------------------
 .code
@@ -103,18 +114,67 @@ session_start:
     jmp fail
 
 @have_pipe:
-    lda #0                      ; pipe 0
-    jsr rbcp_cmd_get_pipe_info
-    bcs @pipe_dir_bad
-    lda RBCP_DATA_ADDR + RBCP_PIPE_INFO_FLAGS
-    and #RBCP_PIPE_FLAG_OUT
+    sta pipe_count
+    jsr scan_pipes
+
+    lda pipe_out
+    cmp #PIPE_NONE
     bne @pipe_ok
-@pipe_dir_bad:
     lda #STAT_PIPE_DIR
     jmp fail
 
 @pipe_ok:
     clc
+    rts
+
+; ---------------------------------------------------------------------------
+; scan_pipes — pipe_out and pipe_in, each the lowest numbered pipe carrying
+; that direction, or PIPE_NONE where no pipe does.
+;
+; One ROM puts the outbound pipe at 0 and the inbound one at 1, but nothing
+; requires that, so neither number is assumed.  A pipe that will not describe
+; itself is passed over rather than ending the scan.
+;
+; Clobbers A, X, Y and the RBCP arguments.
+; ---------------------------------------------------------------------------
+
+scan_pipes:
+    lda #PIPE_NONE
+    sta pipe_out
+    sta pipe_in
+    lda #0
+    sta scan_idx
+
+@pipe:
+    lda scan_idx
+    jsr rbcp_cmd_get_pipe_info
+    bcs @next
+
+    lda RBCP_DATA_ADDR + RBCP_PIPE_INFO_FLAGS
+    tax                         ; the flags, kept across the first test
+    and #RBCP_PIPE_FLAG_OUT
+    beq @in
+    lda pipe_out
+    cmp #PIPE_NONE
+    bne @in
+    lda scan_idx
+    sta pipe_out
+
+@in:
+    txa
+    and #RBCP_PIPE_FLAG_IN
+    beq @next
+    lda pipe_in
+    cmp #PIPE_NONE
+    bne @next
+    lda scan_idx
+    sta pipe_in
+
+@next:
+    inc scan_idx
+    lda scan_idx
+    cmp pipe_count
+    bcc @pipe
     rts
 
 fail:

@@ -32,7 +32,7 @@ Some of the C64 implementations in this directory use display disable approach.
 - [VIC-20 Auxiliary I/O Tester](vic20-aux-io/README.md): The same tester for a VIC-20, PAL and NTSC, on a machine with the 3K expansion.
 - [Apple IIe Auxiliary I/O Tester](apple2-aux-io/README.md): The same tester for an Apple IIe, which can be run against the fake RBCP device in MAME's Lua.
 - `aux-io/`: Code shared by the auxiliary I/O testers.
-- [C64 RBCP Terminal](c64-rbcp-term/README.md): A ROM that sends what you type down an RBCP pipe (for example to USB).
+- [C64 RBCP Terminal](c64-rbcp-term/README.md): A ROM that sends what you type down an RBCP pipe (for example to USB), and displays what the other end sends.
 - [VIC-20 RBCP Terminal](vic20-rbcp-term/README.md): The same terminal for a VIC-20, PAL and NTSC, on an unexpanded machine.
 - [Apple IIe RBCP Terminal](apple2-rbcp-term/README.md): The same terminal for an Apple IIe, which can be run against the fake RBCP device in MAME's Lua.
 - `term/`: Code shared by the terminal programs.

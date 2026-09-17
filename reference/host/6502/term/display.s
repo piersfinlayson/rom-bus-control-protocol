@@ -9,6 +9,14 @@
 ; The screen is a title bar, a text area holding the lines that have gone, the
 ; line being typed, and a status bar.  Both bars are reversed, so that the text
 ; area is the only part of the screen that looks like text.
+;
+; The text area carries both directions, so every row in it opens with a mark
+; saying which way it went: > for a line that has gone and < for bytes that
+; arrived.  The mark sits in column 0, under the prompt on the input row, so a
+; line keeps the mark it was typed at as it scrolls up.
+;
+; What arrived is reversed as well, mark and all, as far along the row as the
+; text goes.  A line that has gone is left plain.
 
     .include "term_defs.s"
 
@@ -32,6 +40,11 @@
 text_row_now: .res 1        ; the row text_new_row last handed out
 stat_code:  .res 1          ; what the status bar is saying
 
+; The column the next received byte goes in, on the bottom row of the text
+; area.  Zero means no row is open, which works because the first byte of one
+; goes in column 1.
+rx_col:     .res 1
+
 ; ---------------------------------------------------------------------------
 .code
 ; ---------------------------------------------------------------------------
@@ -51,6 +64,8 @@ stat_code:  .res 1          ; what the status bar is saying
 .export display_init
 display_init:
     jsr plat_cls
+    lda #0                      ; nothing clears .bss, so the row starts closed
+    sta rx_col
 
     set_ptr str_title
     lda #ROW_TITLE
@@ -229,8 +244,13 @@ draw_cursor:
 
 .export display_sent
 display_sent:
+    lda #0                      ; the received row, if one is open, is finished
+    sta rx_col                  ; with: the sent line goes below it
     jsr text_new_row
     jsr plat_row
+    ldy #0
+    lda #'>'
+    jsr plat_put
     ldy #1
     ldx #0
 @char:
@@ -242,6 +262,116 @@ display_sent:
     inx
     bne @char
 @done:
+    rts
+
+; ---------------------------------------------------------------------------
+; display_rx_byte — A = a byte off the pipe, on the screen in inverse.
+;
+; A carriage return or a line feed ends the row rather than drawing anything,
+; so a far end sending both ends one row and not two.  A row that fills up runs
+; on to the next, and carries its own < so that a line running over two rows is
+; marked on both.  Anything the screen cannot draw becomes a full stop, so a
+; byte that arrived is always a mark on the screen and never a gap.
+;
+; The cell is turned over one at a time rather than the row at the end, because
+; the row has no end until the far end sends one.
+; Clobbers A, X, Y and the app zero page.
+; ---------------------------------------------------------------------------
+
+.export display_rx_byte
+display_rx_byte:
+    and #$7F                    ; the screens hold 7 bit characters
+    cmp #13
+    beq display_rx_close
+    cmp #10
+    beq display_rx_close
+
+    jsr rx_filter
+    pha
+
+    lda rx_col
+    bne @have_row
+    jsr rx_open_row
+@have_row:
+    lda rx_col
+    cmp #SCREEN_COLS
+    bcc @have_cell
+    jsr rx_open_row             ; the row is full, so it runs on to a new one
+
+@have_cell:
+    lda #ROW_TEXT_BOT
+    jsr plat_row
+    ldy rx_col
+    pla
+    jsr plat_put
+    lda #ROW_TEXT_BOT
+    ldx rx_col
+    ldy #1
+    jsr plat_reverse
+    inc rx_col
+    rts
+
+; ---------------------------------------------------------------------------
+; display_rx_close — the received row is finished with, so the next byte starts
+; a new one.  Called on a carriage return or a line feed, and wherever the
+; session stops.
+; Clobbers A.
+; ---------------------------------------------------------------------------
+
+.export display_rx_close
+display_rx_close:
+    lda #0
+    sta rx_col
+    rts
+
+; ---------------------------------------------------------------------------
+; rx_open_row — the text area up one, and the row that frees at the bottom
+; marked as received and ready for the bytes.  Clobbers A, X, Y.
+; ---------------------------------------------------------------------------
+
+rx_open_row:
+    jsr text_new_row
+    jsr plat_row
+    ldy #0
+    lda #'<'
+    jsr plat_put
+    lda #ROW_TEXT_BOT
+    ldx #0
+    ldy #1
+    jsr plat_reverse
+    lda #1
+    sta rx_col
+    rts
+
+; ---------------------------------------------------------------------------
+; rx_filter — A = a byte, out as a character this screen draws.
+;
+; The screens hold one case and it is upper, and they draw $20-$3F and $41-$5A
+; as themselves.  Everything else, control codes included, becomes a full stop.
+; Clobbers A.
+; ---------------------------------------------------------------------------
+
+rx_filter:
+    cmp #'a'
+    bcc @not_lower
+    cmp #'z' + 1
+    bcs @not_lower
+    sec
+    sbc #$20
+    rts
+@not_lower:
+    cmp #CHAR_FIRST
+    bcc @dot
+    cmp #CHAR_PUNCT_END
+    bcc @out
+    cmp #CHAR_ALPHA
+    bcc @dot
+    cmp #CHAR_ALPHA_END
+    bcs @dot
+@out:
+    rts
+@dot:
+    lda #'.'
     rts
 
 ; ---------------------------------------------------------------------------
@@ -378,6 +508,8 @@ str_status_tab:
     .word str_pipe_full
     .word str_not_armed
     .word str_no_recover
+    .word str_send_only
+    .word str_rx_fail
 
 str_brand:
     .byte "PIERS.ROCKS", 0
@@ -414,6 +546,10 @@ str_not_armed:
     .byte "NO SESSION - NOTHING TO SEND", 0
 str_no_recover:
     .byte "DEVICE DID NOT COME BACK", 0
+str_send_only:
+    .byte "READY - NOTHING COMES BACK", 0
+str_rx_fail:
+    .byte "DEVICE REFUSED A READ", 0
 
 .else
 
@@ -441,5 +577,9 @@ str_not_armed:
     .byte "NO SESSION", 0
 str_no_recover:
     .byte "DEVICE GONE", 0
+str_send_only:
+    .byte "SEND ONLY", 0
+str_rx_fail:
+    .byte "READ REFUSED", 0
 
 .endif

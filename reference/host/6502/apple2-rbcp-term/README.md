@@ -1,6 +1,6 @@
 # Apple IIe RBCP Terminal
 
-A ROM image for an Apple IIe that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into.
+A ROM image for an Apple IIe that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into, and displays what that terminal sends back.
 
 The device needs a pipe carrying bytes from the host to it. That is checked at startup and flagged on screen if it is missing.
 
@@ -36,13 +36,13 @@ A line holds 38 characters and the status bar shows what's left. A line scrolls 
 
 
 
-
- HELLO FROM THE APPLE
+>HELLO FROM THE APPLE
+<HELLO FROM THE PC
 >THE SECOND LINE
  READY                           23 LEFT
 ```
 
-Lines that have been sent scroll up, so the newest is always directly above the one being typed.
+Lines that have been sent scroll up, so the newest is always directly above the one being typed. `>` marks a line that was sent, `<` one that arrived. Arriving lines are reversed.
 
 ## Images
 
@@ -74,4 +74,10 @@ An example to get mame to type on the emulated Apple IIe:
 
 ```
 RBCP_KEYS='HELLO FROM THE APPLE{Return}' test/run.sh /path/to/apple2/roms build/apple2_term.bin
+```
+
+`RBCP_SEND` is the other direction: what the fake device hands over when the terminal reads the pipe, `\n` for a line feed. Each read is printed as a `[pipe<]` line.
+
+```
+RBCP_SEND='HELLO FROM THE PC\nSECOND LINE\n' test/run.sh /path/to/apple2/roms
 ```

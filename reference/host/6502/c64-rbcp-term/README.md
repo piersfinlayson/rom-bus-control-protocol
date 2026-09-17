@@ -1,6 +1,6 @@
 # C64 RBCP Terminal
 
-A ROM image for a Commodore 64 that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into.
+A ROM image for a Commodore 64 that sends what you type down an RBCP pipe, so that it arrives in a terminal on the machine the device's USB is plugged into, and displays what that terminal sends back.
 
 The device needs a pipe carrying bytes from the host to it. That is checked at startup and flagged on screen if it is missing.
 
@@ -36,14 +36,14 @@ A line holds 38 characters and the status bar shows what's left. A line scolls u
 
 
 
-
- HELLO FROM THE C64
- THE SECOND LINE
+>HELLO FROM THE C64
+<HELLO FROM THE PC
+>THE SECOND LINE
 >THE THIRD LINE
  READY                           24 LEFT
 ```
 
-Lines that have been sent scroll up, so the newest is always directly above the one being typed.
+Lines that have been sent scroll up, so the newest is always directly above the one being typed. `>` marks a line that was sent, `<` one that arrived. Arriving lines are reversed.
 
 ## Display blanking
 

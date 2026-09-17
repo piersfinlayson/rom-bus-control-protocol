@@ -76,6 +76,10 @@ VIC_V_CENTER_VAL    = $19
 ; There is nothing for blanking the screen to fix.
 PLAT_DARK       = 0
 
+; Passes of the main loop between reads of the receive pipe.  A pass walks the
+; key matrix, as on the C64.  About a second on a VIC-20.
+PLAT_POLL_LOOPS = 1200
+
 ; ---------------------------------------------------------------------------
 ; Screen and colour RAM
 ; ---------------------------------------------------------------------------

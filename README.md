@@ -31,7 +31,7 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/c64-aux-io/`](reference/host/6502/c64-aux-io/README.md) — A C64 auxiliary I/O tester ROM, driving and reading a device's pins and showing them on screen
   - [`6502/vic20-aux-io/`](reference/host/6502/vic20-aux-io/README.md) — An auxiliary I/O tester for a VIC-20
   - [`6502/apple2-aux-io/`](reference/host/6502/apple2-aux-io/README.md) — An auxiliary I/O tester for an Apple IIe
-  - [`6502/c64-rbcp-term/`](reference/host/6502/c64-rbcp-term/README.md) — A C64 RBCP terminal ROM that sends what you type down an RBCP pipe and out of the device's USB port
+  - [`6502/c64-rbcp-term/`](reference/host/6502/c64-rbcp-term/README.md) — A C64 RBCP terminal ROM that sends what you type down an RBCP pipe and out of the device's USB port, and displays what the other end sends
   - [`6502/vic20-rbcp-term/`](reference/host/6502/vic20-rbcp-term/README.md) — An RBCP terminal for a VIC-20
   - [`6502/apple2-rbcp-term/`](reference/host/6502/apple2-rbcp-term/README.md) — An RBCP terminal for an Apple IIe
   - [`68k/rbcp/`](reference/host/68k/rbcp/README.md) — Generic 68K RBCP routines, including the bus mapping needed where the device is narrower than the host's bus

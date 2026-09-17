@@ -27,7 +27,9 @@ STAT_NO_COMPLETE = $09      ; the token moved and the command never finished
 STAT_PIPE_FULL  = $0A       ; the pipe would not take the line
 STAT_NOT_ARMED  = $0B       ; there is no session to send down
 STAT_NO_RECOVER = $0C       ; the device did not come back after a reset
-STAT_COUNT      = $0D
+STAT_SEND_ONLY  = $0D       ; open, but no pipe brings bytes the other way
+STAT_RX_FAIL    = $0E       ; the device refused a read, so reading stopped
+STAT_COUNT      = $0F
 
 ; ---------------------------------------------------------------------------
 ; The line
@@ -47,6 +49,33 @@ LINE_BUF_SIZE   = LINE_MAX + 2
 ;
 ; A byte counting down from zero gives 256 tries.
 FULL_TRIES      = 256
+
+; ---------------------------------------------------------------------------
+; Receiving
+;
+; Bytes come the other way through a second pipe, and the screen shows them in
+; inverse so that what the far end said is never mistaken for what was typed.
+; ---------------------------------------------------------------------------
+
+; No pipe carries this direction.  A device may expose at most 170 pipes, so a
+; number this high is one no device can have.
+PIPE_NONE       = $FF
+
+; The most one PIPE_READ can ask for.  The command needs eight bytes of its own
+; at the front of the data section, ahead of the bytes themselves, and the
+; count is a single argument byte, so no machine asks for more than 255.
+RX_ROOM         = CONFIG_RBCP_BCH_SIZE - 8 - 8
+.if RX_ROOM > 255
+RX_MAX          = 255
+.else
+RX_MAX          = RX_ROOM
+.endif
+
+; Reads to run back to back while the device says more is waiting.  A poll a
+; second would otherwise take a second per read to clear a burst, and this
+; drains one at the speed the back channel allows.  The keyboard is unread for
+; the whole of it, which is why it is not longer.
+RX_BURST_MAX    = 8
 
 ; ---------------------------------------------------------------------------
 ; Keys.  plat_key returns ASCII, and the machine's own matrix, or whatever else

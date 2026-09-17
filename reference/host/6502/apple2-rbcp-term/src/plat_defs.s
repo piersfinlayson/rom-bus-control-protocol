@@ -24,6 +24,10 @@ LORES           = $C056     ; low resolution rather than hi-res
 ; an unbroken command frame with the display on.
 PLAT_DARK       = 0
 
+; Passes of the main loop between reads of the receive pipe.  A pass is one
+; read of the keyboard register, so about a second on a 1MHz IIe.
+PLAT_POLL_LOOPS = 28000
+
 ; ---------------------------------------------------------------------------
 ; Text screen.  Rows are not contiguous.  Row R starts at $0400 +
 ; (R AND 7) * $80 + (R / 8) * $28.

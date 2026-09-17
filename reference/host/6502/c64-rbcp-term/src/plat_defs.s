@@ -25,6 +25,11 @@ VIC_DEN_LINE    = $30
 ; A line goes out with the display off.  See plat_dark.
 PLAT_DARK       = 1
 
+; Passes of the main loop between reads of the receive pipe.  A pass walks the
+; key matrix, which is why this is so much lower than the Apple IIe's.  About
+; a second on a PAL C64.
+PLAT_POLL_LOOPS = 1200
+
 ; ---------------------------------------------------------------------------
 ; The screen.  Forty columns by twenty-five rows: a title bar, a row naming the
 ; device, twenty-one rows of what has been sent, the line being typed, and a
