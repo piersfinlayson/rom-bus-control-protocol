@@ -14,6 +14,29 @@ a500_hw_init:
         ORI.W   #$2700,SR
         MOVE.W  #COL_WHITE,COLOR00  ; WHITE — the CPU is alive
 
+        ; A cold start can find the blitter already busy, and every later
+        ; blit waits on it.  Giving it a blit of its own — one word, into
+        ; scratch — puts it into a state we set rather than one we found.
+        ; Nothing of ours is in chip RAM yet, so the write can do no harm.
+        ; The count is a bound, not a unit, so a blitter that never goes idle
+        ; does not hang the machine.
+        MOVE.W  #$8240,DMACON       ; master and blitter DMA on
+        CLR.W   BLTCON1
+        MOVE.W  #$0100,BLTCON0      ; D only, every minterm clear
+        CLR.W   BLTAMOD
+        CLR.W   BLTBMOD
+        CLR.W   BLTCMOD
+        CLR.W   BLTDMOD
+        MOVE.L  #$00007000,BLTDPTH  ; scratch, nothing of ours is here yet
+        MOVE.W  #$0041,BLTSIZE      ; one row of one word
+        MOVE.L  #$00040000,D0
+.ahi_blt:
+        BTST    #6,(DMACONR).L      ; BBUSY, bit 14 of the word
+        BEQ.S   .ahi_blt_done
+        SUBQ.L  #1,D0
+        BNE.S   .ahi_blt
+.ahi_blt_done:
+
         ; These registers take bit 15 as set-or-clear, so a value with it
         ; clear clears every bit named.  The chipset goes quiet.
         MOVE.W  #$7FFF,INTENA
@@ -37,6 +60,8 @@ a500_hw_init:
 .iv_loop:
         MOVE.L  A0,(A1)+
         DBF     D0,.iv_loop
+
+        BSR     tod_start           ; the one clock that runs on its own
 
         MOVE.W  #COL_BLUE,COLOR00   ; BLUE — a500_hw_init done
         RTS

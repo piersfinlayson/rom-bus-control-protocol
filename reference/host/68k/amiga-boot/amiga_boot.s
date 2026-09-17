@@ -326,72 +326,208 @@ boot_ram_entry:
         BSR     log_line
         BSR     led_cycle
         ; The ball goes last, so nothing it has to pass behind is drawn after
-        ; it starts moving.  The buttons are still held at this point, so the
-        ; wait for their release comes after the menu is up.
+        ; it starts moving.
         BSR     banner_show
         BSR     menu_draw_text
         BSR     draw_footer
         BSR     draw_device
         BSR     banner_start
-        BSR     wait_buttons_release
+        ; The buttons are still held, so the menu opens in the state that
+        ; watches for them coming up.  The loop animates throughout.
+        MOVE.L  #RELEASE_LIMIT,VAR_REL_CNT
+        CLR.B   VAR_PEND_KEY
+        MOVE.B  #ST_RELEASE,VAR_STATE
+        ; fall through
+
+; ---------------------------------------------------------------------------
+; main_loop — the one loop the menu runs in, and the only place anything
+; periodic happens.
+;
+; Nothing it calls waits.  A routine that cannot finish this pass records
+; where it got to and returns, so every pass is short and every pass reaches
+; tick_periodic.  Adding a state below cannot stop the ball, because keeping
+; the ball moving is not that state's business.
+; ---------------------------------------------------------------------------
+main_loop:
+        BSR     tick_periodic
+        CMPI.B  #ST_RELEASE,VAR_STATE
+        BNE.S   .ml_menu
+        BSR     release_step
+        BRA.S   main_loop
+.ml_menu:
+        BSR     state_menu
+        BRA.S   main_loop
+
+; ---------------------------------------------------------------------------
+; tick_periodic — everything that has to keep happening, whatever state the
+; loop is in.  Called once a pass from main_loop and from nowhere else.
+;
+; The hook itself is outside the art switches.  A build without a ball drops
+; what is inside it, not the hook, so periodic work always has somewhere to go.
+; ---------------------------------------------------------------------------
+tick_periodic:
+    ifne CONFIG_BOOT_CHIME
+        BSR     chime_tick              ; silence it once it has played out
+    endc
+    ifne CONFIG_BANNER_BALL
+        BSR     banner_tick             ; one step of the animation
+    endc
+        RTS
+
+    ifne CONFIG_BOOT_CHIME
+; ---------------------------------------------------------------------------
+; chime_tick — start the chime when its wait is up, and switch the channel off
+; one pass later.
+;
+; Paula has no way to play a sample once.  It repeats for as long as the
+; channel is on, so a single chime means switching the channel off after one
+; pass, and the length of a pass is known exactly from the sample and the
+; period.  The counter is free running, so both moments are right however long
+; the loop spent elsewhere.
+; ---------------------------------------------------------------------------
+chime_tick:
+        TST.B   VAR_CHIME_ON
+        BEQ     .cht_out
+        MOVEM.L D0-D1,-(SP)
+        BSR     tod_now
+        SUB.L   VAR_CHIME_END,D0
+        ANDI.L  #$00FFFFFF,D0
+        CMPI.L  #$00800000,D0
+        BCC     .cht_done               ; the moment has not come round yet
+        CMPI.B  #1,VAR_CHIME_ON
+        BNE     .cht_off
+
+        ; --- time to play it ---
+        MOVE.W  #INTF_AUD0,INTREQ
+        MOVE.L  #CHIP_CHIME,AUD0LCH
+        MOVE.W  #CHIME_LEN_WORDS,AUD0LEN
+        MOVE.W  #CHIME_VOLUME,AUD0VOL
+        MOVE.W  #CHIME_PERIOD_NTSC,AUD0PER
+        TST.B   VAR_IS_PAL
+        BEQ     .cht_on
+        MOVE.W  #CHIME_PERIOD,AUD0PER
+.cht_on:
+        MOVE.W  #$8000+DMAF_AUD0,DMACON
+        BSR     tod_now                 ; and off again one pass later
+        ADDI.L  #CHIME_TICKS_NTSC,D0
+        TST.B   VAR_IS_PAL
+        BEQ     .cht_end
+        SUBI.L  #CHIME_TICKS_NTSC-CHIME_TICKS_PAL,D0
+.cht_end:
+        ANDI.L  #$00FFFFFF,D0
+        MOVE.L  D0,VAR_CHIME_END
+        MOVE.B  #2,VAR_CHIME_ON
+        BRA     .cht_done
+
+        ; --- one pass done, switch it off ---
+.cht_off:
+        CLR.W   AUD0VOL
+        MOVE.W  #DMAF_AUD0,DMACON
+        CLR.B   VAR_CHIME_ON
+.cht_done:
+        MOVEM.L (SP)+,D0-D1
+.cht_out:
+        RTS
+    endc
+
+; ---------------------------------------------------------------------------
+; release_step — one test of the mouse buttons the menu was asked for with.
+; The menu takes no input until they are up, or until the count runs out.
+; ---------------------------------------------------------------------------
+release_step:
+        MOVEM.L D1,-(SP)
+        BTST    #CIAA_PRA_LMB,(CIAA_PRA).L
+        BEQ.S   .rs_held                ; left still down
+        MOVE.W  (POTGOR).L,D1
+        BTST    #POTGOR_RMB,D1
+        BNE.S   .rs_up                  ; both up
+.rs_held:
+        SUBQ.L  #1,VAR_REL_CNT
+        BNE.S   .rs_out
+.rs_up:
+        BSR.S   release_settle
         CLR.B   VAR_LMB_HELD
         CLR.B   VAR_RMB_HELD
         CLR.W   VAR_LMB_UP_CNT
-        BRA     key_loop
+        MOVE.B  #ST_MENU,VAR_STATE
+.rs_out:
+        MOVEM.L (SP)+,D1
+        RTS
+
+; release_settle — the settle after the buttons read up.  It waits for
+; nothing, it is the same length every time and it runs once.
+release_settle:
+        MOVEM.L D0,-(SP)
+        MOVE.W  #RELEASE_SETTLE,D0
+.rst_loop:
+        SUBQ.W  #1,D0
+        BNE.S   .rst_loop
+        MOVEM.L (SP)+,D0
+        RTS
 
 ; ---------------------------------------------------------------------------
-; Menu — a left click or the arrows change the choice, a right click or RETURN
-; boots it, and a digit picks one of the first nine.
+; state_menu — one poll of the keyboard and the mouse, and what it asks for.
+; A left click or the arrows change the choice, a right click or RETURN boots
+; it, and a digit picks one of the first nine.
+;
+; Acting on a key redraws, which needs the blitter, so a key that arrives
+; mid-frame is held until the frame is on screen rather than waited out on
+; BBUSY.  That is at most one frame's blits, and no key is lost: the keyboard
+; is left un-acknowledged until the held one has been dealt with.
 ; ---------------------------------------------------------------------------
-key_loop:
-    ifne CONFIG_BANNER_BALL
-        BSR     banner_tick
-    endc
+state_menu:
+        TST.B   VAR_PEND_KEY
+        BNE.S   .sm_ready
         BSR     amiga_getkey
-key_act:
         TST.B   D0
-        BEQ.S   key_loop
+        BEQ.S   .sm_done
+        MOVE.B  D0,VAR_PEND_KEY
+.sm_ready:
+    ifne CONFIG_BANNER_BALL
+        TST.B   VAR_ANIM_STEP
+        BNE.S   .sm_done                ; a frame is part way through
+        BTST    #6,(DMACONR).L          ; BBUSY: its last blit is still running
+        BNE.S   .sm_done
+    endc
+        MOVEQ   #0,D0
+        MOVE.B  VAR_PEND_KEY,D0
+        CLR.B   VAR_PEND_KEY
         CMPI.B  #KEY_RETURN,D0
         BEQ     do_boot
         CMPI.B  #KEY_RMB,D0
         BEQ     do_boot                 ; a right click boots the highlight
         CMPI.B  #KEY_UP,D0
-        BEQ.S   do_up
+        BEQ.S   .sm_up
         CMPI.B  #KEY_LMB,D0
-        BEQ.S   do_click
+        BEQ.S   .sm_click
         CMPI.B  #KEY_DOWN,D0
-        BEQ.S   do_down
+        BEQ.S   .sm_down
         CMPI.B  #'1',D0
-        BCS.S   key_loop
+        BCS.S   .sm_done
         CMPI.B  #'9'+1,D0
-        BCC.S   key_loop
+        BCC.S   .sm_done
         SUBI.B  #'1',D0                 ; the digit is the entry
         CMP.B   VAR_NUM_DISPLAY,D0
-        BCC.S   key_loop
-        BSR     menu_select
-        BRA.S   key_loop
-
-do_up:
+        BCC.S   .sm_done
+        BRA     menu_select
+.sm_up:
         TST.B   VAR_SELECTION
-        BEQ.S   key_loop
+        BEQ.S   .sm_done
         MOVEQ   #0,D0
         MOVE.B  VAR_SELECTION,D0
         SUBQ.B  #1,D0
-        BSR     menu_select
-        BRA.S   key_loop
-
-do_down:
+        BRA     menu_select
+.sm_down:
         MOVEQ   #0,D0
         MOVE.B  VAR_SELECTION,D0
         ADDQ.B  #1,D0
         CMP.B   VAR_NUM_DISPLAY,D0
-        BCC.S   key_loop
-        BSR     menu_select
-        BRA     key_loop
-
-do_click:
-        BSR     sel_cycle_down
-        BRA     key_loop
+        BCC.S   .sm_done
+        BRA     menu_select
+.sm_click:
+        BRA     sel_cycle_down
+.sm_done:
+        RTS
 
 ; sel_cycle_down — move the highlight down one, wrapping to the top, so
 ; mouse-only operation can reach every entry.
@@ -844,31 +980,6 @@ both_buttons_held:
         MOVEQ   #1,D0
 .bbh_done:
         MOVEM.L (SP)+,D1
-        RTS
-
-; wait_buttons_release — block until both mouse buttons are up, so the gesture
-; that opened the menu is not read as a click within it.  Debounced so a
-; button that bounces on release does not slip a fresh press through.
-wait_buttons_release:
-        MOVEM.L D0-D2,-(SP)
-        MOVE.L  #$00200000,D2           ; give up after a while, never hang
-.wbr_loop:
-        BTST    #CIAA_PRA_LMB,(CIAA_PRA).L
-        BNE.S   .wbr_up                 ; left is up
-        BRA.S   .wbr_next
-.wbr_up:
-        MOVE.W  (POTGOR).L,D1
-        BTST    #POTGOR_RMB,D1
-        BNE.S   .wbr_settle             ; both up
-.wbr_next:
-        SUBQ.L  #1,D2
-        BNE.S   .wbr_loop
-.wbr_settle:
-        MOVE.W  #$2000,D0               ; short settle
-.wbr_s:
-        SUBQ.W  #1,D0
-        BNE.S   .wbr_s
-        MOVEM.L (SP)+,D0-D2
         RTS
 
 ; ===========================================================================
@@ -1414,7 +1525,6 @@ banner_init:
         MOVEA.L #CHIP_CHIME,A1
         MOVE.W  #CHIME_LEN_WORDS-1,D0
         BSR     copy_words
-        CLR.W   (CHIP_CHIME_SILENCE).L  ; what the chime repeats on instead
     endc
         MOVEM.L (SP)+,D0-D2/A0-A1
         RTS
@@ -1584,9 +1694,11 @@ banner_start:
         CLR.B   VAR_SPIN_STEP
         MOVE.B  #BANNER_SPIN_FRAMES,VAR_SPIN_TICK
         CLR.B   VAR_FRAME_SEEN
+        MOVE.B  #AN_IDLE,VAR_ANIM_STEP
+        CLR.B   VAR_ANIM_PLANE
         BSR     ball_colours
         BSR     ball_draw
-        BSR     ball_cover
+        BSR     ball_cover_all
         MOVEM.L (SP)+,D0-D7/A0-A3
     endc
         RTS
@@ -1597,6 +1709,9 @@ banner_start:
 ; device is being talked to.
 ; ---------------------------------------------------------------------------
 banner_stop:
+    ifne CONFIG_BANNER_BALL
+        MOVE.B  #AN_IDLE,VAR_ANIM_STEP  ; no frame left half drawn
+    endc
     ifne CONFIG_BANNER_ART+CONFIG_BANNER_BALL
         BRA     blit_wait
     else
@@ -1614,21 +1729,39 @@ beam_line:
         ANDI.W  #$01FF,D0
         RTS
 
-; wait_lines — hold for two scan lines.  Short enough not to count as a wait,
-; long enough for Paula to have taken up a sample it has just been given.
-wait_lines:
-        MOVEM.L D0-D2,-(SP)
-        MOVEQ   #2,D2                   ; count line changes, not line numbers,
-        BSR.S   beam_line               ; so the end of a field cannot trap it
-        MOVE.W  D0,D1
-.wl_loop:
-        BSR.S   beam_line
-        CMP.W   D1,D0
-        BEQ.S   .wl_loop
-        MOVE.W  D0,D1
-        SUBQ.W  #1,D2
-        BNE.S   .wl_loop
-        MOVEM.L (SP)+,D0-D2
+; ---------------------------------------------------------------------------
+; tod_now — D0.L = the CIA-B time of day counter, 24 bits.
+;
+; Reading the high byte latches all three so the value cannot tear, and
+; reading the low byte lets it go again.
+; ---------------------------------------------------------------------------
+tod_now:
+        MOVEM.L D1,-(SP)
+        MOVEQ   #0,D0
+        MOVE.B  (CIAB_TODHI).L,D0
+        LSL.L   #8,D0
+        MOVE.B  (CIAB_TODMID).L,D0
+        LSL.L   #8,D0
+        MOVE.B  (CIAB_TODLO).L,D0
+        ANDI.L  #$00FFFFFF,D0
+        MOVEM.L (SP)+,D1
+        RTS
+
+; ---------------------------------------------------------------------------
+; tod_start — set the counter going from zero.
+;
+; Writing the low byte is what starts it, and the high byte must be written
+; first.  CRB bit 7 clear means the writes go to the counter and not the alarm.
+; ---------------------------------------------------------------------------
+tod_start:
+        MOVEM.L D0,-(SP)
+        MOVE.B  (CIAB_CRB).L,D0
+        ANDI.B  #$7F,D0
+        MOVE.B  D0,(CIAB_CRB).L
+        CLR.B   (CIAB_TODHI).L
+        CLR.B   (CIAB_TODMID).L
+        CLR.B   (CIAB_TODLO).L          ; this one starts it
+        MOVEM.L (SP)+,D0
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -1639,11 +1772,11 @@ wait_lines:
 wait_field:
         MOVEM.L D0,-(SP)
 .wf_below:
-        BSR.S   beam_line
+        BSR     beam_line
         CMP.W   VAR_TICK_LINE,D0
         BCC.S   .wf_below               ; still past it from last time
 .wf_reach:
-        BSR.S   beam_line
+        BSR     beam_line
         CMP.W   VAR_TICK_LINE,D0
         BCS.S   .wf_reach
         MOVEM.L (SP)+,D0
@@ -1652,47 +1785,94 @@ wait_field:
 
     ifne CONFIG_BANNER_BALL
 ; ---------------------------------------------------------------------------
-; banner_tick — called on every pass of the menu's polling loop.  It steps the
-; animation once a field and returns at once the rest of the time, so the loop
-; keeps reading the keyboard and the mouse at its own rate.  The beam is the
-; clock, and the step is taken while it is off the display — see
-; FIELD_TICK_NTSC.
+; banner_tick — one step of the animation, from tick_periodic.  It never
+; waits: a step that needs the blitter and finds it busy leaves the state
+; alone and returns, so the pass goes on to read the keyboard instead.
+;
+; A frame still starts when the beam leaves the display — see FIELD_TICK_NTSC
+; — and its blits still run back to back.  The difference is where the CPU
+; spends the gaps between them.
 ; ---------------------------------------------------------------------------
 banner_tick:
         MOVEM.L D0,-(SP)
-        BSR.S   beam_line
+        TST.B   VAR_ANIM_STEP
+        BNE.S   .bt_step
+        ; --- between frames: the beam is the clock ---
+        BSR     beam_line
         CMP.W   VAR_TICK_LINE,D0
         BCS.S   .bt_above
         TST.B   VAR_FRAME_SEEN
         BNE.S   .bt_done
         MOVE.B  #1,VAR_FRAME_SEEN
-        BSR     banner_frame
-        BRA.S   .bt_done
+        MOVE.B  #AN_RESTORE,VAR_ANIM_STEP
+        BRA.S   .bt_step
 .bt_above:
         CLR.B   VAR_FRAME_SEEN          ; a new field has started
+        BRA.S   .bt_done
+.bt_step:
+        BTST    #6,(DMACONR).L          ; BBUSY: the last blit is still running
+        BNE.S   .bt_done
+        BSR.S   banner_step
 .bt_done:
         MOVEM.L (SP)+,D0
         RTS
 
 ; ---------------------------------------------------------------------------
-; banner_frame — one field of the animation.
+; banner_step — the step the frame has reached, with the blitter known free.
+; Each one sets up a single blit and returns.
 ;
 ; The band's object goes back over where the ball was, which both takes the
 ; ball away and restores whatever it was covering.  Then the shadow, the ball,
 ; and the object again over the ball's new place — this time cut out by its
 ; mask, so the logo's outlines and the list's letters cover the ball and the
-; background between them does not.
+; background between them does not.  That last one takes a blit per plane,
+; because the mask has one plane where the object has four.
 ; ---------------------------------------------------------------------------
-banner_frame:
+banner_step:
         MOVEM.L D0-D7/A0-A3,-(SP)
+        MOVE.B  VAR_ANIM_STEP,D0
+        CMPI.B  #AN_RESTORE,D0
+        BEQ.S   .bs_restore
+        CMPI.B  #AN_DRAW,D0
+        BEQ.S   .bs_draw
+    ifne BANNER_SHADOW
+        CMPI.B  #AN_SHADOW,D0
+        BEQ.S   .bs_shadow
+    endc
+        BRA.S   .bs_cover
+
+.bs_restore:
         BSR     ball_restore
         BSR     ball_move
     ifne BANNER_SHADOW
-        BSR     ball_shadow_draw
+        MOVE.B  #AN_SHADOW,VAR_ANIM_STEP
+    else
+        MOVE.B  #AN_DRAW,VAR_ANIM_STEP
     endc
+        BRA.S   .bs_done
+
+    ifne BANNER_SHADOW
+.bs_shadow:
+        BSR     ball_shadow_draw
+        MOVE.B  #AN_DRAW,VAR_ANIM_STEP
+        BRA.S   .bs_done
+    endc
+
+.bs_draw:
         BSR     ball_draw
+        CLR.B   VAR_ANIM_PLANE
+        MOVE.B  #AN_COVER,VAR_ANIM_STEP
+        BRA.S   .bs_done
+
+.bs_cover:
+        MOVE.B  VAR_ANIM_PLANE,D0
         BSR     ball_cover
-        BSR     ball_spin
+        ADDQ.B  #1,VAR_ANIM_PLANE
+        CMPI.B  #SCREEN_PLANES,VAR_ANIM_PLANE
+        BCS.S   .bs_done
+        BSR     ball_spin               ; the frame is on screen
+        MOVE.B  #AN_IDLE,VAR_ANIM_STEP
+.bs_done:
         MOVEM.L (SP)+,D0-D7/A0-A3
         RTS
 
@@ -1715,14 +1895,30 @@ ball_restore:
         MOVEM.L (SP)+,D0-D1/D6-D7
         RTS
 
-; ball_cover — the band back over the ball, masked, so the ball is behind it.
+; ball_cover — D0.B = plane.  One plane of the band back over the ball,
+; masked, so the ball is behind it.
 ball_cover:
-        MOVEM.L D0-D1/D6-D7,-(SP)
+        MOVEM.L D0-D2/D6-D7,-(SP)
+        MOVEQ   #0,D2
+        MOVE.B  D0,D2
         MOVE.W  VAR_BALL_PX,D6
         MOVE.W  VAR_BALL_PY,D7
         BSR.S   ball_rect
         BSR     fg_blit_over
-        MOVEM.L (SP)+,D0-D1/D6-D7
+        MOVEM.L (SP)+,D0-D2/D6-D7
+        RTS
+
+; ball_cover_all — every plane of it, one blit after another.  For
+; banner_start, which is not on the main loop and has no frame to fit into.
+ball_cover_all:
+        MOVEM.L D0,-(SP)
+        MOVEQ   #0,D0
+.bca_plane:
+        BSR.S   ball_cover
+        ADDQ.B  #1,D0
+        CMPI.B  #SCREEN_PLANES,D0
+        BCS.S   .bca_plane
+        MOVEM.L (SP)+,D0
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -2044,17 +2240,22 @@ fg_blit_solid:
         RTS
 
 ; ---------------------------------------------------------------------------
-; fg_blit_over — the same rectangle, cut out by the band's mask, so what is
-; already on screen shows through where the band is transparent.
+; fg_blit_over — one plane of the same rectangle, cut out by the band's mask,
+; so what is already on screen shows through where the band is transparent.
 ;
-; Four blits, one to a plane.  The mask has a single plane where the object
-; has four, and a blit steps its sources at one rate, so the planes cannot be
-; done together the way a spread mask allows.
-; D6.W = first word, D7.W = line, D0.W = words, D1.W = pixel rows
+; The mask has a single plane where the object has four, and a blit steps its
+; sources at one rate, so the planes cannot be done together the way a spread
+; mask allows.  One call sets up one blit and the caller comes back for the
+; next, which is what lets the main loop keep running between them.
+; D6.W = first word, D7.W = line, D0.W = words, D1.W = pixel rows,
+; D2.W = plane
 ; ---------------------------------------------------------------------------
 fg_blit_over:
-        MOVEM.L D0-D7/A0-A2,-(SP)
+        MOVEM.L D0-D5/A0-A2,-(SP)
         BSR     fg_ptrs                 ; A0 = object, A1 = screen, A2 = mask
+        MULU    #SCREEN_BPL_W,D2        ; MULU reads the low word, so a plane
+        ADDA.L  D2,A0                   ; number in the low byte is enough
+        ADDA.L  D2,A1
         MOVE.W  #SCREEN_BPL_W,D5
         SUB.W   D0,D5
         SUB.W   D0,D5                   ; the mask skips a plane row
@@ -2063,17 +2264,8 @@ fg_blit_over:
         SUB.W   D0,D2                   ; object and bitmap skip a pixel row
         MOVE.W  D2,D4
         MOVEQ   #0,D3
-        MOVE.W  D1,D7                   ; rows, kept across the four blits
-        MOVEQ   #SCREEN_PLANES-1,D6
-.fbo_plane:
-        MOVE.W  D7,D1
-        MOVEM.L D6-D7/A0-A2,-(SP)
         BSR     blit_cookie
-        MOVEM.L (SP)+,D6-D7/A0-A2
-        ADDA.W  #SCREEN_BPL_W,A0        ; on to the next plane of both
-        ADDA.W  #SCREEN_BPL_W,A1
-        DBF     D6,.fbo_plane
-        MOVEM.L (SP)+,D0-D7/A0-A2
+        MOVEM.L (SP)+,D0-D5/A0-A2
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -2105,50 +2297,54 @@ fg_ptrs:
 
     ifne CONFIG_BOOT_CHIME
 ; ---------------------------------------------------------------------------
-; chime_start — set the chime going as the menu comes up.  An autoboot is
-; silent, so a machine nobody asked the menu for makes no sound.
+; chime_start — arm the chime as the menu comes up.  An autoboot is silent, so
+; a machine nobody asked the menu for makes no sound.
 ;
-; Paula repeats a sample for as long as the channel is on, reloading the
-; pointer and length from the registers when the sample runs out.  Pointing
-; them at a single zero word straight after the channel starts means the chime
-; plays through once and then loops on silence, so nothing has to time a stop.
+; It only arms it.  A sample started here is not heard in full — the beginning
+; is lost, and how much is lost depends on how long the machine has been on.
+; What swallows it has not been identified and is not in the Amiga's own audio
+; path, which settles in about a sixth of a second.  A second's wait is enough
+; on this bench, so that is what is waited.
 ;
-; The new pointer is written a couple of scan lines after the DMA goes on, by
-; which time Paula has taken the first one into its own counters.
+; The wait is measured on the CIA counter rather than on screen refreshes,
+; because that counter runs whether or not anything is watching it, and the
+; loop can be away for tens of milliseconds at a time.
 ; ---------------------------------------------------------------------------
 chime_start:
         MOVEM.L D0-D1,-(SP)
         MOVE.W  #DMAF_AUD0,DMACON       ; off, in case anything left it on
-        MOVE.W  #INTF_AUD0,INTREQ       ; clear: it marks the sample running out
-        MOVE.L  #CHIP_CHIME,AUD0LCH
-        MOVE.W  #CHIME_LEN_WORDS,AUD0LEN
-        MOVE.W  #CHIME_VOLUME,AUD0VOL
+        CLR.W   AUD0VOL
+        BSR     tod_now                 ; note the moment it is due to start
+        ADDI.L  #CHIME_WAIT_NTSC,D0
         TST.B   VAR_IS_PAL
-        BEQ.S   .chs_ntsc
-        MOVE.W  #CHIME_PERIOD,AUD0PER
-        BRA.S   .chs_go
-.chs_ntsc:
-        MOVE.W  #CHIME_PERIOD_NTSC,AUD0PER
-.chs_go:
-        MOVE.W  #$8000+DMAF_AUD0,DMACON
-        BSR     wait_lines              ; let Paula latch the sample
-        MOVE.L  #CHIP_CHIME_SILENCE,AUD0LCH     ; what it repeats instead
-        MOVE.W  #1,AUD0LEN
+        BEQ.S   .chs_due
+        SUBI.L  #CHIME_WAIT_NTSC-CHIME_WAIT_PAL,D0
+.chs_due:
+        ANDI.L  #$00FFFFFF,D0
+        MOVE.L  D0,VAR_CHIME_END
+        MOVE.B  #1,VAR_CHIME_ON
+.chs_out:
         MOVEM.L (SP)+,D0-D1
         RTS
 
 ; ---------------------------------------------------------------------------
 ; chime_stop — channel off and silent, before the machine is handed over.
-; Usually the sample has played out and the channel is running on its zero
-; word, so this only switches it off.  A boot that came round faster cuts a
-; bell off part way, which steps the output and clicks, so the volume is taken
-; down over a few fields first.
+; Usually chime_tick has already switched it off and this does nothing.  A
+; boot that came round while the chime was still sounding cuts a bell off part
+; way, which steps the output and clicks, so the volume is taken down over a
+; few fields first.
+; ---------------------------------------------------------------------------
+; ---------------------------------------------------------------------------
+; chime_stop — channel off and silent, before the machine is handed over.
+; Usually chime_tick has already switched it off and this does nothing.  A
+; boot that came round while the chime was still sounding cuts a bell off part
+; way, which steps the output and clicks, so the volume is taken down over a
+; few fields first.
 ; ---------------------------------------------------------------------------
 chime_stop:
         MOVEM.L D0-D2,-(SP)
-        MOVE.W  (INTREQR).L,D0
-        ANDI.W  #INTF_AUD0,D0
-        BNE.S   .chp_off                ; the sample has run out, so silent
+        TST.B   VAR_CHIME_ON
+        BEQ.S   .chp_off                ; never started, nothing to fade
         MOVE.W  #CHIME_VOLUME,D1
         MOVEQ   #CHIME_RAMP_FIELDS,D2
 .chp_fade:

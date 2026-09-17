@@ -66,6 +66,19 @@ INTF_AUD0           EQU $0080           ; the channel's bit in INTREQ, raised
 VPOSR_PAL           EQU $1000
 
 ; ---------------------------------------------------------------------------
+; CIA-B time of day counter.  A 24-bit counter clocked by horizontal sync,
+; 15625 Hz on a PAL machine and 15734 on an NTSC one, so a tick is 64 us and
+; it runs for eighteen minutes before it wraps.  It counts on its own whatever
+; the program is doing, which is what the beam position does not.
+;
+; Reading the high byte latches all three, reading the low byte lets it go, so
+; they are read high, middle, low.  Writing any of them stops the counter
+; until the low byte is written, which is how it is started from zero.
+CIAB_TODLO          EQU $00BFD800
+CIAB_TODMID         EQU $00BFD900
+CIAB_TODHI          EQU $00BFDA00
+CIAB_CRB            EQU $00BFDF00
+
 ; CIA-A registers
 ; Base $BFE001.  CIA registers use odd byte addresses with stride $100.
 ; ---------------------------------------------------------------------------
@@ -233,9 +246,6 @@ CHIP_LOGO           EQU $00013E00           ; 5888, the logo's bitmap
 CHIP_LOGO_MASK      EQU $00015500           ; 5888
 CHIP_TAGLINE        EQU $00016C00           ; 2128, the tagline's bitmap
 CHIP_CHIME          EQU $00017500           ; 7094, the chime Paula plays
-    ifne CONFIG_BOOT_CHIME
-CHIP_CHIME_SILENCE  EQU CHIP_CHIME+CHIME_LEN_BYTES  ; one zero word past it
-    endc
 CHIP_FG             EQU $0001A000           ; 40960, the foreground object
 CHIP_FG_MASK        EQU $00024000           ; 10240
 
@@ -267,6 +277,28 @@ VAR_COL_MAX         EQU VAR_BASE+22         ; column screen_print stops at
 VAR_MENU_COL        EQU VAR_BASE+23         ; column every menu entry starts at
 VAR_IS_PAL          EQU VAR_BASE+24         ; 1 = PAL Agnus, set by screen_init
 VAR_MENU_ROW0       EQU VAR_BASE+25         ; row the first image sits on
+VAR_STATE           EQU VAR_BASE+26         ; the state main_loop is in
+VAR_PEND_KEY        EQU VAR_BASE+27         ; key read but not yet acted on
+VAR_REL_CNT         EQU VAR_BASE+28         ; long, passes left in ST_RELEASE
+; VAR_BASE+32 is NAME_LEN_TAB.  Nothing more fits here.
+
+; ---------------------------------------------------------------------------
+; Main loop states.  One pass tests the state it is in once and returns, so
+; nothing main_loop calls can sit waiting for anything.
+; ---------------------------------------------------------------------------
+ST_RELEASE          EQU 0                   ; waiting for the mouse buttons the
+                                            ; menu was asked for with to come up
+ST_MENU             EQU 1                   ; idle in the menu, reading input
+
+; Passes of the main loop before ST_RELEASE gives up on a button that will not
+; read up, so a stuck one cannot lock the machine out of its own menu.  A loop
+; count, like the RBCP timeouts, not a unit.
+RELEASE_LIMIT       EQU $00200000
+
+; The short delay once both buttons have read up, so a contact bouncing on
+; release does not slip a fresh press into the menu.  It waits for nothing and
+; runs once.  A spin count, not a unit.
+RELEASE_SETTLE      EQU $2000
 
 ; Polls the left button must read up before another press is taken, so the
 ; bounce either side of a click reads as one press.  A loop count, like the
@@ -379,6 +411,15 @@ BANNER_SPIN_FRAMES  EQU 3
 ; Fields the volume is faded over when a boot cuts the chime off part way
 ; through — see chime_stop.
 CHIME_RAMP_FIELDS   EQU 4
+
+; The chime's length in TOD ticks, one per horizontal sync.  A little over the
+; sample, so the channel is switched off in its silent tail.
+CHIME_TICKS_PAL     EQU (CHIME_MS*15625+999)/1000
+CHIME_TICKS_NTSC    EQU (CHIME_MS*15734+999)/1000
+
+; How long after the menu is asked for before the chime starts.  One second.
+CHIME_WAIT_PAL      EQU 15625
+CHIME_WAIT_NTSC     EQU 15734
 CHIME_VOLUME        EQU 64
     endc
 
@@ -399,6 +440,21 @@ VAR_SPIN_TICK       EQU BANNER_VARS+17      ; frames until the next row
 VAR_FRAME_SEEN      EQU BANNER_VARS+18      ; 1 once this field has been stepped
 VAR_BALL_Y_MAX      EQU BANNER_VARS+20      ; 8.8 in a long, the Agnus decides
 VAR_TICK_LINE       EQU BANNER_VARS+24      ; word, first beam line off display
+VAR_CHIME_ON        EQU BANNER_VARS+26      ; 0 idle, 1 waiting to start, 2 playing
+VAR_CHIME_END       EQU BANNER_VARS+28      ; long, the TOD tick it is done at
+VAR_ANIM_STEP       EQU BANNER_VARS+27      ; the step of the frame being drawn
+VAR_ANIM_PLANE      EQU BANNER_VARS+28      ; plane the cover blit has reached
+; BANNER_VARS+32 is VAR_DRAW_BASE.  Nothing more fits here.
+
+; ---------------------------------------------------------------------------
+; Steps of one animation frame.  Each sets up a single blit and returns, and
+; the next pass of the main loop takes the next once the blitter is free.
+; ---------------------------------------------------------------------------
+AN_IDLE             EQU 0                   ; between frames, watching the beam
+AN_RESTORE          EQU 1                   ; the band back over the old place
+AN_SHADOW           EQU 2                   ; the shadow at the new place
+AN_DRAW             EQU 3                   ; the ball at the new place
+AN_COVER            EQU 4                   ; the band over it, a plane a step
 
 ; Error numbers, indices into the error message table.
 ERR_NO_CMD_RESP     EQU 0
