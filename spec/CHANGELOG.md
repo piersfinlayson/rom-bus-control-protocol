@@ -10,7 +10,7 @@ Substantive changes to the specification are documented in this file.
   the reset signal. 0xAB to 0xFE are available for special meanings. 0xFF is always
   invalid. Previously unspecified
 
-## v0.1.2 - unreleased
+## v0.1.2 - 2026-09-18
 
 - Say when the device sets the response header's reserved bytes: inside ENTER_CMD_RESP,
   after the response field and before complete, so a version giving them a meaning need

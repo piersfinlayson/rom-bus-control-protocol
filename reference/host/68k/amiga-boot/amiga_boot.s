@@ -51,6 +51,12 @@
         INCLUDE "amiga_config.s"
         INCLUDE "amiga_defs.s"
 
+; The version, shown on screen and in the log.  A macro rather than an EQU
+; because it expands to text.
+APP_VERSION MACRO
+        DC.B    "0.1.1"
+        ENDM
+
         ORG     CONFIG_ROM_BASE
 
 ; ============================================================
@@ -2872,10 +2878,14 @@ font_data_end:
 
         EVEN
 str_title:
-        DC.B    "AMIGA BOOTLOADER 0.1.0",0
+        DC.B    "AMIGA BOOTLOADER "
+        APP_VERSION
+        DC.B    0
         EVEN
 str_log_title:
-        DC.B    "Amiga RBCP Bootloader 0.1.0",0
+        DC.B    "Amiga RBCP Bootloader "
+        APP_VERSION
+        DC.B    0
         EVEN
 str_rocks:
         DC.B    "piers.rocks",0
