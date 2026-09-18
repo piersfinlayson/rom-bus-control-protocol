@@ -215,6 +215,16 @@ RBCP_FLASH_NAME            EQU 1
 RBCP_NV_CAP_SIZE_LO        EQU 0
 RBCP_NV_CAP_SIZE_HI        EQU 1
 RBCP_NV_CAP_WRITABLE       EQU 2
+RBCP_NV_CAP_NOSLOT         EQU 3        ; bits 0-3 are N, and 2^N bytes stay
+                                        ; unchanged by a write with no slot
+                                        ; provided.  N = 0 means no such write.
+                                        ; Bit 7 is which end of NV storage they
+                                        ; sit at, 0 start and 1 end.
+
+; The RAM slot argument that provides the device no slot at all.  A device that
+; offers it writes the last few bytes of NV storage without a staging slot,
+; and loses the rest of NV storage doing so.
+RBCP_NV_SLOT_NONE          EQU $FE
 ; GET_PIPE_CAPABILITY
 RBCP_PIPE_CAP_COUNT        EQU 0
 ; GET_LED_CAPABILITY

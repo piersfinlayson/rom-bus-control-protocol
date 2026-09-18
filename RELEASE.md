@@ -41,10 +41,14 @@ at an RBCP release.
    | `amiga-boot` | `APP_VERSION` in `reference/host/68k/amiga-boot/amiga_boot.s` |
    | `romsel` | `CFG_VERSION` in `reference/host/x86/romsel/config.h` |
 
-2. Build it. cc65 builds every 6502 image, and `vasmm68k_mot` the Amiga
-   ones — `make ROM_KB=512` and `make ROM_KB=256`, taking the swapped image
-   each time. ROMSEL needs Open Watcom, which has no macOS build, so that one
-   is a DOS or Linux machine, or the artefact from the `build.yml` run.
+2. Build it.
+
+   - The 6502 images: cc65.
+   - The Amiga ones: `vasmm68k_mot`. `make ROM_KB=512` and `make ROM_KB=256`,
+     taking the swapped image each time.
+   - ROMSEL: Open Watcom, which has no macOS build. Use a DOS or Linux
+     machine, or the artefact from the `build.yml` run.
+
 3. Publish the binary.
 
    ```
