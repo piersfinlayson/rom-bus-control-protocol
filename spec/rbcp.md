@@ -533,7 +533,7 @@ For the common case of updating a single byte, NV_POKE_COMMIT_BYTE performs the 
 
 The host specifies a RAM slot for the device to use as a staging area for the NV write.  This means that any RAM slot specified will be overwritten by the device and should not be used for any other purpose while a write transaction is in progress.
 
-A device may also support writes that specify no RAM slot. Such a write sets all of NV storage to 0xFF, apart from a fixed number of bytes at one end of it. GET_NV_CAPABILITY reports how many bytes, and which end.
+A device may also support writes that specify no RAM slot. Such a write leaves a fixed number of bytes at one end of NV storage unchanged. The rest of NV storage is unspecified. NV_PEEK can be used to read unspecified locations and returns unspecified values. GET_NV_CAPABILITY reports the number of bytes and the end they are at.
 
 A device that supports neither form of write reports NV storage as read-only.
 
