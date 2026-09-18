@@ -2,6 +2,14 @@
 
 Substantive changes to the specification are documented in this file.
 
+## v0.1.3 - unreleased
+
+- Allow NV storage to be written on a device with no spare RAM slot to provide, which
+  previously had to report it read-only. Additive
+- Define the range of slot numbers. 0x00 to 0xA9 are valid slots. 0xAA is reserved for 
+  the reset signal. 0xAB to 0xFE are available for special meanings. 0xFF is always
+  invalid. Previously unspecified
+
 ## v0.1.2 - unreleased
 
 - Say when the device sets the response header's reserved bytes: inside ENTER_CMD_RESP,

@@ -128,7 +128,8 @@ ram_section_rom_start:
 ;
 ; A device with a single RAM slot (a 27C400, or a 27C200 on some boards)
 ; cannot stage a load in a spare slot, so it boots with LOAD_AND_EXIT into the
-; active slot instead, and cannot remember a choice.
+; active slot instead.  It can still remember a choice, where it offers writes
+; that need no slot provided - see nv_locate.
 ; ---------------------------------------------------------------------------
 boot_ram_entry:
         MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
@@ -265,22 +266,14 @@ boot_ram_entry:
         CLR.B   VAR_NV_PRESENT
         CLR.B   VAR_NV_STORED
         MOVE.B  #1,VAR_BOOT_FLASH
-        TST.B   VAR_SINGLE_SLOT
-        BNE.S   .nv_done                ; no spare slot to stage a write in
-        BSR     rbcp_cmd_get_nv_cap
+        BSR     nv_locate
         TST.B   D0
-        BNE.S   .nv_done
-        MOVEQ   #4,D0
-        BSR     rbcp_read_data
-        MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_SIZE_LO).W,D0
-        OR.B    (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_SIZE_HI).W,D0
-        BEQ.S   .nv_done                ; no storage
-        TST.B   (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_WRITABLE).W
-        BEQ.S   .nv_done                ; read only
+        BEQ.S   .nv_done
         MOVE.B  #1,VAR_NV_PRESENT
         MOVE.B  #1,RBCP_ARG0            ; count = 1
-        CLR.B   RBCP_ARG1               ; location LSB
-        CLR.B   RBCP_ARG2               ; location MSB
+        MOVE.B  D1,RBCP_ARG1            ; location LSB
+        LSR.W   #8,D1
+        MOVE.B  D1,RBCP_ARG2            ; location MSB
         BSR     rbcp_cmd_nv_peek
         TST.B   D0
         BNE.S   .nv_done
@@ -557,10 +550,14 @@ do_boot:
         MOVE.B  VAR_BOOT_FLASH,D0
         CMP.B   VAR_NV_STORED,D0
         BEQ.S   boot_slot_entry
-        MOVE.B  D0,RBCP_ARG0            ; byte to store
-        CLR.B   RBCP_ARG1               ; location LSB
-        CLR.B   RBCP_ARG2               ; location MSB
-        MOVE.B  VAR_TARGET_RAM,RBCP_ARG3 ; staging slot
+        BSR     nv_locate               ; where it goes, and what to name
+        TST.B   D0
+        BEQ.S   boot_slot_entry
+        MOVE.B  VAR_BOOT_FLASH,RBCP_ARG0 ; byte to store
+        MOVE.B  D1,RBCP_ARG1            ; location LSB
+        LSR.W   #8,D1
+        MOVE.B  D1,RBCP_ARG2            ; location MSB
+        MOVE.B  D2,RBCP_ARG3            ; staging slot, or none
         BSR     rbcp_cmd_nv_poke_commit_byte
         BSR     log_stored_upd          ; says nothing on a write that failed
 boot_slot_entry:
@@ -639,6 +636,69 @@ boot_settle:
 ; ===========================================================================
 ; Menu drawing
 ; ===========================================================================
+
+; ---------------------------------------------------------------------------
+; nv_locate — where a remembered byte lives, and what to name as staging.
+;
+; Returns D0 = 0 when the device cannot hold one, 1 when it can.  On success
+; D1 is the location, a word, and D2 the RAM slot argument to pass.
+;
+; A device writes NV storage one of two ways.  Given a spare RAM slot it stages
+; the whole region there, so any location can be written and byte 0 is used.
+; With no spare slot to provide it stages within itself instead, and only a few
+; bytes of NV storage survive.  GET_NV_CAPABILITY says how many and which end
+; of NV storage they sit at, the byte goes at the start of them, and
+; RBCP_NV_SLOT_NONE is named in place of a slot.  A write of that kind loses
+; the rest of NV storage, which costs this bootloader nothing - one byte is all
+; it keeps.
+; ---------------------------------------------------------------------------
+nv_locate:
+        MOVEM.L D3-D4,-(SP)
+        BSR     rbcp_cmd_get_nv_cap
+        TST.B   D0
+        BNE.S   .nl_fail
+        MOVEQ   #4,D0
+        BSR     rbcp_read_data
+
+        MOVEQ   #0,D3
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_SIZE_HI).W,D3
+        LSL.W   #8,D3
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_SIZE_LO).W,D3
+        TST.W   D3
+        BEQ.S   .nl_fail                ; no storage
+        TST.B   (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_WRITABLE).W
+        BEQ.S   .nl_fail                ; read only
+
+        TST.B   VAR_SINGLE_SLOT
+        BNE.S   .nl_no_slot
+        MOVEQ   #0,D1                   ; a spare slot stages the whole region
+        MOVE.B  VAR_TARGET_RAM,D2
+        BRA.S   .nl_ok
+.nl_no_slot:
+        MOVEQ   #0,D0
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_NOSLOT).W,D0
+        MOVE.W  D0,D4
+        ANDI.W  #$000F,D4               ; N
+        BEQ.S   .nl_fail                ; needs a slot, and there is none
+        MOVEQ   #1,D1
+        LSL.W   D4,D1                   ; 2^N bytes stay unchanged
+        BTST    #7,D0                   ; which end of NV storage they sit at
+        BEQ.S   .nl_at_start
+        SUB.W   D1,D3
+        MOVE.W  D3,D1                   ; they end it
+        BRA.S   .nl_named
+.nl_at_start:
+        MOVEQ   #0,D1                   ; they start it
+.nl_named:
+        MOVE.B  #RBCP_NV_SLOT_NONE,D2
+.nl_ok:
+        MOVEQ   #1,D0
+        MOVEM.L (SP)+,D3-D4
+        RTS
+.nl_fail:
+        MOVEQ   #0,D0
+        MOVEM.L (SP)+,D3-D4
+        RTS
 
 ; ---------------------------------------------------------------------------
 ; draw_title — what this is, above the list and beside the top of the logo.

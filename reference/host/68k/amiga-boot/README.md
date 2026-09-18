@@ -42,9 +42,6 @@ the smaller ones with `size-handling=dup` when you program them.
 | `make` | 27C200, 256KB | a menu of 256KB images |
 | `make ROM_KB=512` | 27C400, 512KB | a menu of 512KB images |
 
-On One ROM Fire 40A and on later models using 27C400, the last booted image is
-not stored (as there is insufficient RAM on One ROM to modify NV storage).
-
 ## Dependencies
 
 [vasm and `onerom`](../README.md#requirements)

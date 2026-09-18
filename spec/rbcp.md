@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-Version: 0.1.2 IN DEVELOPMENT
+Version: 0.1.3 IN DEVELOPMENT
 
 This specification may be freely implemented without restriction.
 
@@ -52,6 +52,8 @@ RBCP is designed around the following principles:
 **Knock:** The sequence of ROM address reads that initiates a session. The device detects the knock by monitoring A0–A7 and uses it to establish framing.
 
 **Slot:** A fixed-size region of storage containing a ROM image. Two categories of slot are defined: flash slots, which are persistent storage locations on the device, and RAM slots, which are volatile working buffers from which the device actively serves ROM data to the host. A ROM image must be loaded from a flash slot into a RAM slot before it can be served, and one is typically loaded into RAM by the device at boot time.  Different devices may have different slot sizes, counts and supported ROM types. The host discovers the available slots and their properties by issuing commands in command-response mode.
+
+0x00 to 0xA9 are valid slots. 0xAA is reserved for the reset signal. 0xAB to 0xFE are available for special meanings. 0xFF is always invalid.
 
 **Active slot:** The RAM slot currently being served to the host as ROM data.
 
@@ -529,7 +531,11 @@ Write operations follow a transactional model. The host initiates a write transa
  
 For the common case of updating a single byte, NV_POKE_COMMIT_BYTE performs the full transaction — BEGIN, POKE, COMMIT — as a single command. It fails if a write transaction is already in progress.
 
-A RAM slot must be provided by the host for the device to use as a staging area of the NV writes.  This means that any RAM slot specified will be overwritten by the device and should not be used for any other purpose while a write transaction is in progress.  If the device only supports a single RAM slot, it cannot perform multiple write transactions and hence GET_NV_CAPABILITY reports any NV storage as read-only.
+The host specifies a RAM slot for the device to use as a staging area for the NV write.  This means that any RAM slot specified will be overwritten by the device and should not be used for any other purpose while a write transaction is in progress.
+
+A device may also support writes that specify no RAM slot. Such a write sets all of NV storage to 0xFF, apart from a fixed number of bytes at one end of it. GET_NV_CAPABILITY reports how many bytes, and which end.
+
+A device that supports neither form of write reports NV storage as read-only.
 
 NV_PEEK always reads directly from NV storage, regardless of whether a write transaction is in progress. This allows the host to inspect the actual state of NV storage after a failed commit — for example to verify what was written before deciding whether to retry NV_POKE_COMMIT or issue NV_POKE_DISCARD.
  
@@ -545,11 +551,11 @@ Care should be taken when running timers to police a response from the device fo
 |-----|------|-------|------|-------------|
 | 0x00 | GET_NV_CAPABILITY | 0.1.0 | 0 | Requests the device to report its NV storage capabilities. See [GET_NV_CAPABILITY Response Format](#get_nv_capability-response-format). |
 | 0x01 | NV_PEEK | 0.1.0 | 3: A0=count, A1=location_LSB, A2=location_MSB | Reads one or more bytes directly from NV storage at the specified location and writes them into the response data section. A count of zero indicates 256 bytes should be read. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Always reads from NV storage, regardless of whether a write transaction is in progress. Fails if there is insufficient space in the response data section to accommodate the requested bytes, or if the requested range exceeds the NV storage size. |
-| 0x02 | NV_POKE_BEGIN | 0.1.0 | 1: A0=RAM slot | Initiates a write transaction by loading the current NV storage contents into a RAM staging buffer, using the RAM slot specified. Fails if NV storage is not writable, if a write transaction is already in progress or if the RAM slot specified is invalid, active or too small. An A0 value of 0xAA is invalid and rejected. |
+| 0x02 | NV_POKE_BEGIN | 0.1.0 | 1: A0=RAM slot | Initiates a write transaction by loading the current NV storage contents into a RAM staging buffer, using the RAM slot specified. Fails if NV storage is not writable, if a write transaction is already in progress or if the RAM slot specified is invalid, active or too small. |
 | 0x03 | NV_POKE | 0.1.0 | 3: A0=byte, A1=location_LSB, A2=location_MSB | Writes a single byte into a staging buffer using the specified RAM slotat the specified location. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Fails if no write transaction is in progress, or if the location exceeds the NV storage size. |
 | 0x04 | NV_POKE_COMMIT | 0.1.0 | 0 | Commits the staging buffer to NV storage and frees the staging buffer. Fails if no write transaction is in progress, or if the write to NV storage fails. In the event of failure the staging buffer is retained, allowing the host to retry or discard. The protocol does not guarantee that a failed commit leaves NV storage in either its pre- or post-commit state — the degree of atomicity is implementation-defined. Device implementations should document their atomicity guarantees. |
 | 0x05 | NV_POKE_DISCARD | 0.1.0 | 0 | Discards the staging buffer without writing to NV storage and frees the staging buffer. Fails if no write transaction is in progress. |
-| 0x06 | NV_POKE_COMMIT_BYTE | 0.1.0 | 4: A0=byte, A1=location_LSB, A2=location_MSB, A3=RAM slot | Performs a complete single-byte write transaction: loads NV storage into a staging buffer using the specified RAM slot, writes the specified byte at the specified location, commits to NV storage, and frees the staging buffer. Fails if NV storage if not writable, if a write transaction is already in progress, or if the RAM slot specified is invalid, active or too small. The location MSB must not exceed 0x7F; if it does, the device rejects the command. Atomicity guarantees are the same as for NV_POKE_COMMIT. An A3 value of 0xAA is invalid and rejected. |
+| 0x06 | NV_POKE_COMMIT_BYTE | 0.1.0 | 4: A0=byte, A1=location_LSB, A2=location_MSB, A3=RAM slot | Performs a complete single-byte write transaction: loads NV storage into a staging buffer, writes the specified byte at the specified location, commits to NV storage, and frees the staging buffer. Fails if NV storage if not writable, if a write transaction is already in progress, or if the RAM slot specified is invalid, active or too small. The location MSB must not exceed 0x7F. If it does, the device rejects the command. Atomicity guarantees are the same as for NV_POKE_COMMIT. An A3 value of 0xFE requests a write that specifies no RAM slot. It fails if the device supports no such write, or if the location falls outside the bytes such a write leaves unchanged. |
  
 CMD 0xAA is reserved and must never be assigned.
  
@@ -873,7 +879,7 @@ The response data section begins immediately after the [response header](#respon
 |--------|------|-------|-------------|
 | 0 | 2 | size | Total NV storage size in bytes. A value of zero indicates NV storage is not present on this device. |
 | 2 | 1 | writable | 0x01 if the device supports NV storage write operations; 0x00 if read-only. Only meaningful if size is non-zero. |
-| 3 | 1 | Reserved | Must be zero. |
+| 3 | 1 | no-slot write | Bits 0-3 are N. A write that specifies no RAM slot leaves 2^N bytes of NV storage unchanged. An N of 0 means the device supports no such write. Bit 7 says which end of NV storage those bytes are at, 0 for the start and 1 for the end. Bits 4-6 are reserved, as is bit 7 where N is 0. Reserved bits must be set to zero by the device. They must not be assumed to have any particular value by the host. Only meaningful if writable is 0x01. |
  
 ## NV_PEEK Response Format
  
