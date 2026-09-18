@@ -31,8 +31,7 @@ The tag reaches the GitHub release. It does not reach images.onerom.org.
 An application is published when its own version changes, which need not be
 at an RBCP release.
 
-1. Raise the version in the application's source. Each shows it on screen,
-   except the 2KB Apple II F8 image, which has no room.
+1. Raise the version in the application's source:
 
    | Application | Constant |
    |---|---|
@@ -42,7 +41,7 @@ at an RBCP release.
    | `amiga-boot` | `APP_VERSION` in `reference/host/68k/amiga-boot/amiga_boot.s` |
    | `romsel` | `CFG_VERSION` in `reference/host/x86/romsel/config.h` |
 
-2. Build it. cc65 builds the three 6502 images, and `vasmm68k_mot` the Amiga
+2. Build it. cc65 builds every 6502 image, and `vasmm68k_mot` the Amiga
    ones — `make ROM_KB=512` and `make ROM_KB=256`, taking the swapped image
    each time. ROMSEL needs Open Watcom, which has no macOS build, so that one
    is a DOS or Linux machine, or the artefact from the `build.yml` run.
