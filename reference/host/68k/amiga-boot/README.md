@@ -68,3 +68,6 @@ onerom program --plugin usb --plugin host-control \
     --slot file=ks-1_3.bin,type=27c400,size-handling=dup,label="Kickstart 1.3" \
     --slot file=diagrom-16bit.bin,type=27c400,label="DiagROM V2"
 ```
+
+If `onerom` says a Kickstart dump is high byte first, add `transform=swap_bytes`
+to its slot.

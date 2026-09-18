@@ -78,6 +78,18 @@ APPS = {
             "apple2_boot_ef.bin": {"variant": "ef"},
         },
     },
+    "amiga-boot": {
+        "kind": "rom",
+        "name": "Amiga RBCP Reference Bootloader",
+        "description": "An Amiga Kickstart bootloader reference "
+                       "implementation. 256KB and 512KB images.",
+        "machine": "amiga",
+        "source": REPO + "reference/host/68k/amiga-boot",
+        "files": {
+            "amiga_boot_256k.bin": {"variant": "256k"},
+            "amiga_boot_512k.bin": {"variant": "512k"},
+        },
+    },
     "romsel": {
         "kind": "retro",
         "name": "ROMSEL",
