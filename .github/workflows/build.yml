@@ -82,22 +82,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cc65
-        run: sudo apt-get install -y cc65
+      - name: Install cc65 and VICE
+        run: sudo apt-get install -y cc65 vice
 
-      # The .prg target only.  Packaging it into a .d64 needs c1541 from VICE,
-      # which is not worth installing to prove it assembles.
+      # The default target builds the .prg and the .d64 that carries it, so
+      # c1541 from VICE has to be here.
       #
       # Every demo board too, because each one assembles different code and
       # only a build catches a board whose tables no longer match the program.
+      # Each demo board starts by clearing the build directory, so they go
+      # first and the real build last.
       - name: Build c64-led-test
         working-directory: reference/host/6502/c64-led-test
         run: |
-          make build/rbcp_led_test.prg
           for board in 0 1 2 3; do
             make clean
             make BOARD=$board build/rbcp_led_demo.prg
           done
+          make clean
+          make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: c64-led-test
+          path: |
+            reference/host/6502/c64-led-test/build/rbcp_led_test.prg
+            reference/host/6502/c64-led-test/build/rbcp-led-test.d64
 
   build-pipe-test:
     runs-on: ubuntu-latest

@@ -90,6 +90,160 @@ APPS = {
             "amiga_boot_512k.bin": {"variant": "512k"},
         },
     },
+    "c64-rbcp-term": {
+        "kind": "rom",
+        "name": "C64 RBCP Terminal",
+        "description": "Talks to a device over an RBCP pipe (USB) from a Commodore "
+                       "64. Kernal, BASIC and combined 16KB images.",
+        "machine": "c64",
+        "source": REPO + "reference/host/6502/c64-rbcp-term",
+        "files": {
+            "c64_term_kernal.bin": {"variant": "kernal"},
+            "c64_term_basic.bin": {"variant": "basic"},
+            "c64_term_combined.bin": {"variant": "combined"},
+        },
+    },
+    "vic20-rbcp-term": {
+        "kind": "rom",
+        "name": "VIC-20 RBCP Terminal",
+        "description": "Talks to a device over an RBCP pipe (USB) from a Commodore "
+                       "VIC-20. PAL and NTSC images.",
+        "machine": "vic20",
+        "source": REPO + "reference/host/6502/vic20-rbcp-term",
+        "files": {
+            "vic20_term_pal.bin": {"variant": "pal"},
+            "vic20_term_ntsc.bin": {"variant": "ntsc"},
+        },
+    },
+    "apple2-rbcp-term": {
+        "kind": "rom",
+        "name": "Apple II RBCP Terminal",
+        "description": "Talks to a device over an RBCP pipe (USB) from an Apple "
+                       "IIe.",
+        "machine": "apple2",
+        "source": REPO + "reference/host/6502/apple2-rbcp-term",
+        "files": {"apple2_term.bin": {}},
+    },
+    "c64-aux-io": {
+        "kind": "rom",
+        "name": "C64 RBCP Aux I/O",
+        "description": "Drives and reads a device's auxiliary (GPIO) pins from a "
+                       "Commodore 64. Kernal, BASIC and combined 16KB images.",
+        "machine": "c64",
+        "source": REPO + "reference/host/6502/c64-aux-io",
+        "files": {
+            "c64_auxio_kernal.bin": {"variant": "kernal"},
+            "c64_auxio_basic.bin": {"variant": "basic"},
+            "c64_auxio_combined.bin": {"variant": "combined"},
+        },
+    },
+    "vic20-aux-io": {
+        "kind": "rom",
+        "name": "VIC-20 RBCP Aux I/O",
+        "description": "Drives and reads a device's auxiliary (GPIO) pins from a "
+                       "Commodore VIC-20. PAL and NTSC images.",
+        "machine": "vic20",
+        "source": REPO + "reference/host/6502/vic20-aux-io",
+        "files": {
+            "vic20_auxio_pal.bin": {"variant": "pal"},
+            "vic20_auxio_ntsc.bin": {"variant": "ntsc"},
+        },
+    },
+    "apple2-aux-io": {
+        "kind": "rom",
+        "name": "Apple II RBCP Aux I/O",
+        "description": "Drives and reads a device's auxiliary (GPIO) pins from an "
+                       "Apple IIe.",
+        "machine": "apple2",
+        "source": REPO + "reference/host/6502/apple2-aux-io",
+        "files": {"apple2_auxio.bin": {}},
+    },
+    "c64-rbcp-stress": {
+        "kind": "rom",
+        "name": "C64 RBCP Reliability Meter",
+        "description": "Measures how reliably a Commodore 64 and a device "
+                       "communicate over RBCP. Kernal, BASIC and combined "
+                       "16KB images.",
+        "machine": "c64",
+        "source": REPO + "reference/host/6502/c64-rbcp-stress",
+        "files": {
+            "c64_meter_kernal.bin": {"variant": "kernal"},
+            "c64_meter_basic.bin": {"variant": "basic"},
+            "c64_meter_combined.bin": {"variant": "combined"},
+        },
+    },
+    "vic20-rbcp-stress": {
+        "kind": "rom",
+        "name": "VIC-20 RBCP Reliability Meter",
+        "description": "Measures how reliably a Commodore VIC-20 and a device "
+                       "communicate over RBCP. PAL and NTSC images.",
+        "machine": "vic20",
+        "source": REPO + "reference/host/6502/vic20-rbcp-stress",
+        "files": {
+            "vic20_meter_pal.bin": {"variant": "pal"},
+            "vic20_meter_ntsc.bin": {"variant": "ntsc"},
+        },
+    },
+    "apple2-rbcp-stress": {
+        "kind": "rom",
+        "name": "Apple II RBCP Reliability Meter",
+        "description": "Measures how reliably an Apple IIe and a device communicate "
+                       "over RBCP.",
+        "machine": "apple2",
+        "source": REPO + "reference/host/6502/apple2-rbcp-stress",
+        "files": {"apple2_meter.bin": {}},
+    },
+    "c64-pipe-test": {
+        "kind": "rom",
+        "name": "C64 RBCP Pipe Throughput Test",
+        "description": "Measures how many bytes a Commodore 64 can push "
+                       "through an RBCP pipe (USB). Kernal, BASIC and combined "
+                       "16KB images.",
+        "machine": "c64",
+        "source": REPO + "reference/host/6502/c64-pipe-test",
+        "files": {
+            "c64_pipe_kernal.bin": {"variant": "kernal"},
+            "c64_pipe_basic.bin": {"variant": "basic"},
+            "c64_pipe_combined.bin": {"variant": "combined"},
+        },
+    },
+    "vic20-pipe-test": {
+        "kind": "rom",
+        "name": "VIC-20 RBCP Pipe Throughput Test",
+        "description": "Measures how many bytes a Commodore VIC-20 can push "
+                       "through an RBCP pipe (USB). Needs the 3KB RAM expansion. "
+                       "PAL and NTSC images.",
+        "machine": "vic20",
+        "source": REPO + "reference/host/6502/vic20-pipe-test",
+        "files": {
+            "vic20_pipe_pal.bin": {"variant": "pal"},
+            "vic20_pipe_ntsc.bin": {"variant": "ntsc"},
+        },
+    },
+    "apple2-pipe-test": {
+        "kind": "rom",
+        "name": "Apple II RBCP Pipe Throughput Test",
+        "description": "Measures how many bytes an Apple IIe can push through "
+                       "an RBCP pipe (USB). 50Hz and 60Hz images.",
+        "machine": "apple2",
+        "source": REPO + "reference/host/6502/apple2-pipe-test",
+        "files": {
+            "apple2_pipe_pal.bin": {"variant": "pal"},
+            "apple2_pipe_ntsc.bin": {"variant": "ntsc"},
+        },
+    },
+    "c64-led-test": {
+        "kind": "retro",
+        "name": "RBCP LED Tester",
+        "description": "Drives a device's LEDs from a Commodore 64. Loads "
+                       "from disk.",
+        "machine": "c64",
+        "source": REPO + "reference/host/6502/c64-led-test",
+        "files": {
+            "rbcp_led_test.prg": {},
+            "rbcp-led-test.d64": {"variant": "d64"},
+        },
+    },
     "romsel": {
         "kind": "retro",
         "name": "ROMSEL",
