@@ -2,6 +2,10 @@
 
 Substantive changes to the specification are documented in this file.
 
+## v0.1.4 - UNRELEASED
+
+- Clarify group of 0xAA on SET_AUX is not allowed.
+
 ## v0.1.3 - 2026-09-18
 
 - Allow NV storage to be written on a device with no spare RAM slot to provide, which
