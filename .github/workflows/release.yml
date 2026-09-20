@@ -14,7 +14,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install cc65 and VICE
-        run: sudo apt-get install -y cc65 vice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cc65 vice
 
       # Open Watcom is not packaged, and its installer needs a terminal.  The
       # snapshot tarball is the same tree it would lay down.
