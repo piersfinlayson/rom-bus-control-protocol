@@ -192,6 +192,19 @@ plat_key:
     rts
 
 ; ===========================================================================
+; MACHID — the Apple IIe machine identification bytes
+;
+; $FBB3 and $FBC0 are where an Apple II program looks to find out which
+; machine it is running on, and a IIe answers $06 and $EA.  The twelve bytes
+; between them are padding.
+; ===========================================================================
+
+.segment "MACHID"
+    .byte $06                   ; $FBB3
+    .res  12, $00               ; $FBB4-$FBBF
+    .byte $EA                   ; $FBC0
+
+; ===========================================================================
 ; BCH — the back-channel region, which the device writes and the image does not
 ; ===========================================================================
 
