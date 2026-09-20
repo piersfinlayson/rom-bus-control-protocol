@@ -444,6 +444,143 @@ jobs:
           grep -q "dirtied with" "$RUNNER_TEMP/key.log"
           grep -q "paths LIB1" "$RUNNER_TEMP/key.log"
 
+  # Every Apple II harness runs the same way, so they run as a matrix over the
+  # applications rather than a job each.  The bootloader is two legs, because
+  # its two builds go in different sockets of different machines.  A leg's
+  # markers are the lines that say the run did what it was meant to, and its
+  # frame count and keys are what that application's test needs.
+  apple2-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every leg names its frame count, its keys and what the far end of the
+        # pipe says, even where that is the value the fake device would have
+        # chosen, because an unset matrix key reaches the step as an empty
+        # string and the device reads an empty string as a number.  RBCP_TARGET
+        # picks the bootloader's socket and no other harness reads it.
+        include:
+          - app: apple2-boot
+            target: f8
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            markers: |
+              ENTER_CMD_RESP page=$06 bch=$07B0 size=64
+              SWITCH_AND_EXIT ram slot 1
+              APPLE ][                 |
+          - app: apple2-boot
+            target: ef
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            markers: |
+              ENTER_CMD_RESP page=$1E bch=$1FB0 size=64
+              SWITCH_AND_EXIT ram slot 1
+              Apple ][                 |
+          - app: apple2-aux-io
+            target: ''
+            make_target: all
+            frames: 600
+            keys: H
+            send: ''
+            markers: |
+              ENTER_CMD_RESP page=$1E bch=$1C00 size=512
+              SET_AUX 0/2 high hold 0
+              #######  +-----+  +-----+  +-----+
+          - app: apple2-pipe-test
+            target: ''
+            make_target: all
+            frames: 900
+            keys: T
+            send: ''
+            markers: |
+              | STOPPED
+              SECONDS                    10
+              REFUSALS                    0
+              ERRORS                      0
+          - app: apple2-rbcp-stress
+            target: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            markers: |
+              1 IN -----
+              ERR          0
+              LOST          0
+          - app: apple2-rbcp-term
+            target: ''
+            make_target: selftest
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            markers: |
+              [pipe] LINE
+              |<YOU SAID HELLO
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65 and MAME
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cc65 mame
+
+      # Both archives unpack into one directory because no name is in both.
+      # apple2e.zip is not byte stable, so what is checked is the files it
+      # holds rather than the archive.
+      - name: Fetch the machine ROMs
+        run: |
+          roms="$RUNNER_TEMP/apple2-roms"
+          base=https://raw.githubusercontent.com/Abdess/retrobios/13c561888d4d0cc2f8e00e53fe91405cc09ab7f1/bios/Apple/Apple%20II
+          mkdir -p "$roms"
+          for z in apple2p apple2e; do
+              curl -sSLo "$RUNNER_TEMP/$z.zip" "$base/$z.zip"
+              unzip -qoj "$RUNNER_TEMP/$z.zip" -d "$roms"
+          done
+          cd "$roms"
+          sha1sum -c - <<'EOF'
+          0287ebcef2c1ce11dc71be15a99d2d7e0e128b1e  341-0011.d0
+          a75ce5aab6401355bf1ab01b04e4946a424879b5  341-0012.d8
+          8d82a1da63224859bd619005fab62c4714b25dd7  341-0013.e0
+          37501be96d36d041667c15d63e0c1eff2f7dd4e9  341-0014.e8
+          e6bf91ed28464f42b807f798fc6422e5948bf581  341-0015.f0
+          a28852ff997b4790e53d8d0352112c4b1a395098  341-0020-00.f8
+          f9d312f128c9557d9d6ac03bfad6c3ddf83e5659  341-0036.chr
+          12a2e718f5f4acd69b6c33a45a4a940b1440a481  342-0132-c.e12
+          7060de104046736529c1e8a687a0dd7b84f8c51b  342-0133-a.chr
+          8895a4b703f2184b673078f411f4089889b61c54  342-0134-a.64
+          523838c19c79f481fa02df56856da1ec3816d16e  342-0135-b.64
+          EOF
+
+      - name: Build ${{ matrix.app }}
+        working-directory: reference/host/6502/${{ matrix.app }}
+        run: make ${{ matrix.make_target }}
+
+      # MAME exits 0 whether the application ran or stopped on an error screen,
+      # so the log is the only thing that says which happened.  The fake device
+      # prints the text screen when its frame count runs out, and a leg's
+      # markers are lines of that screen or of the device's own log.
+      - name: Run ${{ matrix.app }} under MAME
+        working-directory: reference/host/6502/${{ matrix.app }}
+        env:
+          RBCP_TARGET: ${{ matrix.target }}
+          RBCP_FRAMES: ${{ matrix.frames }}
+          RBCP_KEYS: ${{ matrix.keys }}
+          RBCP_SEND: ${{ matrix.send }}
+          MARKERS: ${{ matrix.markers }}
+        run: |
+          set -o pipefail
+          test/run.sh "$RUNNER_TEMP/apple2-roms" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          printf '%s\n' "$MARKERS" > "$RUNNER_TEMP/markers"
+          while IFS= read -r marker; do
+              [ -n "$marker" ] || continue
+              grep -qF -- "$marker" "$RUNNER_TEMP/run.log" \
+                  || { echo "not in the log: $marker" >&2; exit 1; }
+          done < "$RUNNER_TEMP/markers"
+
   build-romsel:
     runs-on: ubuntu-latest
     steps:

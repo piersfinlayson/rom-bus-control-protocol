@@ -76,9 +76,14 @@ rm -f "$roms/$machine.zip"
 # MAME hashes every ROM file it is given and says so when one differs from the
 # dump it expects.  The tester is one of those files, and never matches.
 #
+# On macOS -video none does not stop SDL bringing the real video subsystem up,
+# which pulls the desktop across to a new Space.  SDL_VIDEODRIVER=dummy stops
+# that, and a snapshot still comes out under it.
+#
 # Slots 4 and 6 hold a Mockingboard and a Disk II controller by default, and
 # both have ROMs of their own.  Neither is anything this test uses, so they are
 # left empty and the only files needed are the machine's own.
+SDL_VIDEODRIVER=dummy \
 mame "$machine" -rompath "$roms" -sl4 "" -sl6 "" \
      -video none -sound none -skip_gameinfo \
      -nothrottle -cfg_directory "$build/mame-cfg" -nvram_directory "$build/mame-nvram" \

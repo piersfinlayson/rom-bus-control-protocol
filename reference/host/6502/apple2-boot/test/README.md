@@ -1,86 +1,102 @@
 # Testing the Apple II bootloader without hardware
 
-A fake RBCP device written in [MAME](https://mamedev.org)'s Lua, so the real binary can be run against an emulated Apple II and driven through the menu.
+A fake RBCP device in [MAME](https://mamedev.org)'s Lua. The real binary runs
+on an emulated Apple II and is driven through the menu.
 
-`rbcp_dev.lua` watches every read in the ROM's address range, decodes the RBCP command stream out of the addresses, and answers by substituting bytes on reads of the back-channel region — which is what a device does. It implements the commands the Apple II programs in this repository call, plus the auxiliary I/O group, and no others. Pipe writes are printed, so the log lines can be read.
+`rbcp_dev.lua` watches every read in the ROM's address range, decodes the
+command stream out of the addresses, and answers by substituting bytes on reads
+of the back channel. It implements the commands the Apple II programs here
+call, plus the auxiliary I/O group. Pipe writes are printed.
 
-The device it pretends to be has five flash slots, two RAM slots, one pipe, a byte of writable non-volatile storage, and two LEDs of which the second is the RGB one — so the search for the lowest-numbered RGB LED is exercised rather than assumed to land on zero. One slot name is mixed case, since a name is drawn as the device gives it and inverse video treats the two cases differently.
+The device has five flash slots, two RAM slots, one pipe, one byte of
+non-volatile storage and two LEDs. The RGB one is the second, so a host has to
+find the lowest-numbered RGB LED rather than land on zero. One slot name is
+mixed case, because inverse video treats the two cases differently.
 
-It also has three groups of auxiliary pins, shaped to catch a host that assumed an easy board: ten GPIO of which only the even ones from 2 upwards can be driven, four image-select pins with nothing drivable among them, and two pads. The pads are wired together, so driving pad 0 moves pad 1 and a host can be shown reading a pin it did not drive. A pin's state survives `RBCP_RESET`, as the protocol says it must, and a `SET_AUX` asking for a hold is not answered until the hold has elapsed and the device has applied the state that follows it.
+Three groups of auxiliary pins, shaped to catch a host that assumed an easy
+board:
+
+- ten GPIO, only the even ones from 2 upwards drivable
+- four image-select pins, none drivable
+- two pads, wired together, so driving pad 0 moves pad 1
+
+A pin's state survives `RBCP_RESET`. A `SET_AUX` carrying a hold is answered
+once the hold has elapsed.
 
 ## Running
 
 ```bash
-make test    ROMS=/path/to/apple2/roms    # the 2KB build, on an Apple II+
-make test-ef ROMS=/path/to/apple2/roms    # the 8KB build, on an unenhanced IIe
+make test    ROMS=/path/to/apple2/roms    # 2KB build, Apple II+
+make test-ef ROMS=/path/to/apple2/roms    # 8KB build, unenhanced IIe
 ```
 
-or, from this directory, `./run.sh <rom-dir>` and `RBCP_TARGET=ef ./run.sh <rom-dir>`. A leading `~` in a make variable is not expanded by every shell, so give `ROMS` a full path or one starting `$HOME`.
+Or `./run.sh <rom-dir>` and `RBCP_TARGET=ef ./run.sh <rom-dir>` from this
+directory. Give `ROMS` a full path or one starting `$HOME`, because not every
+shell expands a leading `~` in a make variable.
 
-`<rom-dir>` holds the machine's ROM files, named as MAME names them — see the tables below for which files and where to get them. There is no default and nothing is read from the environment. Without them there is no character generator, so nothing on screen can be read as pixels, and no stock image for the fake device to serve after the slot switch, so the hand-over cannot be followed. Rather than fill the gaps with something made up and report a pass, `run.sh` names what is missing and stops.
+`<rom-dir>` holds the machine's ROM files under MAME's names. There is no
+default. The character generator is what makes the screen readable, and the
+stock image is what the device serves after the slot switch, so `run.sh` names
+a missing file and stops.
 
-Every run prints a checksum complaint from MAME about the ROM in the bootloader's socket. That file is the bootloader, so of course it does not match the dump MAME expects there.
+MAME complains about the checksum of the ROM in the bootloader's socket on
+every run. That file is the bootloader.
 
-## Where the ROM files come from
+## ROM files
 
-The [Apple II Documentation Project](https://mirrors.apple2.org.za/Apple%20II%20Documentation%20Project/Computers/Apple%20II/) mirror carries them, under `Computers/Apple II/`. Both MAME and this test want them named as MAME names them, and the mirror names them by what they are, so the mapping is below. Every SHA1 is the one MAME expects, so a downloaded file can be checked with `shasum` before it is used. `run.sh` does no hashing of its own — MAME hashes everything it is handed and says what it found.
+[`Abdess/retrobios`](https://github.com/Abdess/retrobios), under
+`bios/Apple/Apple II/`. `apple2p.zip` and `apple2e.zip` unpack into one
+directory. CI takes them from commit `13c5618`.
 
-Apple ][+, from [`Apple II plus/ROM Images/`](https://mirrors.apple2.org.za/Apple%20II%20Documentation%20Project/Computers/Apple%20II/Apple%20II%20plus/ROM%20Images/):
+Apple ][+, from `apple2p.zip`:
 
-| Save as | File on the mirror | SHA1 |
-|---------|--------------------|------|
-| `341-0011.d0` | Apple II plus ROM Pages D0-D7 - 341-0011 - Applesoft BASIC.bin | `0287ebcef2c1ce11dc71be15a99d2d7e0e128b1e` |
-| `341-0012.d8` | Apple II plus ROM Pages D8-DF - 341-0012 - Applesoft BASIC.bin | `a75ce5aab6401355bf1ab01b04e4946a424879b5` |
-| `341-0013.e0` | Apple II plus ROM Pages E0-E7 - 341-0013 - Applesoft BASIC.bin | `8d82a1da63224859bd619005fab62c4714b25dd7` |
-| `341-0014.e8` | Apple II plus ROM Pages E8-EF - 341-0014 - Applesoft BASIC.bin | `37501be96d36d041667c15d63e0c1eff2f7dd4e9` |
-| `341-0015.f0` | Apple II plus ROM Pages F0-F7 - 341-0015 - Applesoft BASIC.bin | `e6bf91ed28464f42b807f798fc6422e5948bf581` |
-| `341-0020-00.f8` | Apple II plus ROM Pages F8-FF - 341-0020 - Autostart Monitor.bin | `a28852ff997b4790e53d8d0352112c4b1a395098` |
-| `341-0036.chr` | Apple II plus Video ROM - 341-0036 - Rev. 7.bin | `f9d312f128c9557d9d6ac03bfad6c3ddf83e5659` |
+| Save as | SHA1 |
+|---------|------|
+| `341-0011.d0` | `0287ebcef2c1ce11dc71be15a99d2d7e0e128b1e` |
+| `341-0012.d8` | `a75ce5aab6401355bf1ab01b04e4946a424879b5` |
+| `341-0013.e0` | `8d82a1da63224859bd619005fab62c4714b25dd7` |
+| `341-0014.e8` | `37501be96d36d041667c15d63e0c1eff2f7dd4e9` |
+| `341-0015.f0` | `e6bf91ed28464f42b807f798fc6422e5948bf581` |
+| `341-0020-00.f8` | `a28852ff997b4790e53d8d0352112c4b1a395098` |
+| `341-0036.chr` | `f9d312f128c9557d9d6ac03bfad6c3ddf83e5659` |
 
-Enhanced IIe, from [`Apple IIe/ROM Images/`](https://mirrors.apple2.org.za/Apple%20II%20Documentation%20Project/Computers/Apple%20II/Apple%20IIe/ROM%20Images/). MAME calls this machine `apple2ee`, and `342-0303-a.e8` is the EF ROM an Apple IIe One ROM would replace:
+Unenhanced IIe, MAME's `apple2e`, which `RBCP_TARGET=ef` runs on, from
+`apple2e.zip`:
 
-| Save as | File on the mirror | SHA1 |
-|---------|--------------------|------|
-| `342-0303-a.e8` | Apple IIe Enhanced ROM Pages E0-FF - 342-0303-A - 1984.bin | `afb09bb96038232dc757d40c0605623cae38088e` |
-| `342-0304-a.e10` | Apple IIe Enhanced ROM Pages C0-DF - 342-0304-A - 1984.bin | `3aecc56a26134df51e65e17f33ae80c1f1ac93e6` |
-| `342-0265-a.chr` | Apple IIe Enhanced Video ROM - 342-0265-A - US 1983.bin | `b2b5d87f52693817fc747df087a4aa1ddcdb1f10` |
-| `341-0132-d.e12` | Apple IIe Enhanced Keyboard ROM - 341-0132-D - US-Dvorak 1984.bin | `8e14e85c645187504ec9d162b3ea614a0c421d32` |
+| Save as | SHA1 |
+|---------|------|
+| `342-0134-a.64` | `8895a4b703f2184b673078f411f4089889b61c54` |
+| `342-0135-b.64` | `523838c19c79f481fa02df56856da1ec3816d16e` |
+| `342-0132-c.e12` | `12a2e718f5f4acd69b6c33a45a4a940b1440a481` |
+| `342-0133-a.chr` | `7060de104046736529c1e8a687a0dd7b84f8c51b` |
 
-Unenhanced IIe, MAME's `apple2e`, which is what `RBCP_TARGET=ef` runs on:
-
-| Save as | File on the mirror | SHA1 |
-|---------|--------------------|------|
-| `342-0134-a.64` | Apple IIe ROM Pages E0-FF - 342-0134-A - 1982.bin | `8895a4b703f2184b673078f411f4089889b61c54` |
-| `342-0135-b.64` | Apple IIe ROM Pages C0-DF - 342-0135-A - 1982.bin | `523838c19c79f481fa02df56856da1ec3816d16e` |
-| `342-0132-c.e12` | Apple IIe Keyboard ROM - 342-0132-C - US-Dvorak 1983.bin | `12a2e718f5f4acd69b6c33a45a4a940b1440a481` |
-| `342-0133-a.chr` | Apple IIe Video ROM - 342-0133-A - US 1982.bin | does not match |
-
-The mirror labels the CD ROM revision A, but its contents are what MAME expects for revision B, so save it under the name in the table. The video ROM is a different dump to MAME's and its SHA1 will not match — it renders correctly all the same, so it is worth having rather than a stand-in.
-
-Nothing else is needed. MAME fits a Mockingboard in slot 4 and a Disk II controller in slot 6 by default, and both have ROMs of their own that the mirror does not carry. `run.sh` leaves those two slots empty, since this test uses neither. The cost is that there is no disk to boot after the hand-over, so the monitor falls through to BASIC.
+MAME fits a Mockingboard in slot 4 and a Disk II controller in slot 6, and
+neither source carries their ROMs. `run.sh` leaves both slots empty. With no
+disk to boot after the hand-over, the monitor falls through to BASIC.
 
 ## Settings
 
-Everything is an environment variable:
+Environment variables.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `RBCP_TARGET` | f8 | `f8` runs the 2KB build on an `apple2p`, `ef` the 8KB build on an `apple2e`. |
 | `RBCP_NV` | 255 | The slot the device has stored. 255 stands for never written. |
-| `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than eleven exercises the entries a digit cannot pick. |
+| `RBCP_SLOTS` | 5 | Flash slots the device has, the ones past the fifth being filler. More than eleven exercises the entries a digit cannot pick. |
 | `RBCP_KEYS` | none | Keys to press, in order, one every 20 frames. A key in braces is an input port field held for three frames, such as `{Cursor Right}`. |
 | `RBCP_KEY_AT` | 150 | Frame the first key is pressed on. |
 | `RBCP_FRAMES` | 600 | Frame to print the text screen on and stop. |
-| `RBCP_NV_FAIL` | unset | Fail every NV write, which the bootloader carries on through. |
-| `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
+| `RBCP_NV_FAIL` | unset | Fail every NV write. The bootloader carries on through it. |
+| `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores, so the token never moves. |
 | `RBCP_REFUSE` | unset | `GG:CC` — the command the device answers with failed. |
-| `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said the command is complete, which is a device publishing the two out of order. |
-| `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails, which is what a host's no-pins path meets. |
-| `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, so the machine boots something other than the bootloader again. |
-| `RBCP_SNAP` | unset | Save a screenshot at the end of the run, to `build/<machine>/0000.png` at MAME's native 560x192. MAME runs in a window when this is set. |
+| `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said it is complete. A device publishing the two out of order. |
+| `RBCP_NO_AUX` | unset | Give the device no auxiliary pins. `GET_AUX_CAPABILITY` reports zero groups and every other command in the group fails. |
+| `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, so the machine boots something other than the bootloader. |
+| `RBCP_SNAP` | unset | Save a screenshot to `build/<machine>/0000.png` at MAME's native 560x192. MAME runs in a window. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
 
-The screen is printed as 24 rows of 40 columns. Lower case marks inverse video, which is how the highlighted line and the title show up.
+The screen prints as 24 rows of 40 columns. Lower case marks inverse video,
+which is how the highlighted line and the title show up.
 
 ## Examples
 
