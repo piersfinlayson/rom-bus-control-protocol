@@ -7,8 +7,17 @@ This allows a host system to query and modify the state of the emulated ROM inst
 - Remote debugging of code running on real retro systems
 - ROM based bootloaders (think `grub` for the C64)
 - Dynamic ROM patching for games, demos and other applications
+- Controlling digital lines and LEDs attached to the ROM emulator
+- Streaming logs out of the ROM emulator's USB port
 
 RBCP is supported by [One ROM](https://onerom.org), the most flexible replacement ROM for your retro systems.
+
+As well as the core [specification](spec/rbcp.md), this repo also contains many reference applications, for systems including:
+
+- Apple II
+- VIC-20
+- Commmodore 64
+- Amiga A500
 
 ## Contents
 

@@ -282,8 +282,28 @@ jobs:
             reference/host/6502/vic20-rbcp-term/build/vic20_term_ntsc.bin
             reference/host/6502/apple2-rbcp-term/build/apple2_term.bin
 
-  build-amiga-boot:
+  # Every Amiga application builds the same way and is tested the same way, so
+  # both are a matrix over the applications rather than a job each.  A leg's
+  # markers are the lines that say the run did what it was meant to, and its
+  # frame count and fault rate are what that application's test needs.
+  amiga-build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: amiga-boot
+            image: amiga_boot
+          - app: amiga-rbcp-stress
+            image: amiga_meter
+          - app: amiga-pipe-test
+            image: amiga_pipe
+          - app: amiga-rbcp-term
+            image: amiga_term
+          - app: amiga-aux-io
+            image: amiga_auxio
+          - app: amiga-led-test
+            image: amiga_led_test
     steps:
       - uses: actions/checkout@v4
 
@@ -295,20 +315,63 @@ jobs:
           make -C vasm CPU=m68k SYNTAX=mot
           echo "$PWD/vasm" >> "$GITHUB_PATH"
 
-      - name: Build amiga-boot
-        working-directory: reference/host/68k/amiga-boot
+      - name: Build ${{ matrix.app }}
+        working-directory: reference/host/68k/${{ matrix.app }}
         run: make images
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: amiga-boot
+          name: ${{ matrix.app }}
           path: |
-            reference/host/68k/amiga-boot/build/amiga_boot_256k.bin
-            reference/host/68k/amiga-boot/build/amiga_boot_512k.bin
+            reference/host/68k/${{ matrix.app }}/build/${{ matrix.image }}_256k.bin
+            reference/host/68k/${{ matrix.app }}/build/${{ matrix.image }}_512k.bin
 
-  test-amiga-boot:
+  amiga-test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rom_kb: [256, 512]
+        app:
+          - amiga-boot
+          - amiga-rbcp-stress
+          - amiga-pipe-test
+          - amiga-rbcp-term
+          - amiga-aux-io
+          - amiga-led-test
+        # Every leg names its frame count and fault rate even where that is the
+        # figure the test script would have chosen, because an unset matrix key
+        # reaches the step as an empty string and the scripts read an empty
+        # string as a number.
+        include:
+          - app: amiga-boot
+            frames: 600
+            fail_every: 0
+            markers: SWITCH_AND_EXIT
+          - app: amiga-rbcp-stress
+            frames: 400
+            fail_every: 1000
+            markers: PH 0000 DISPLAY ON
+          - app: amiga-pipe-test
+            frames: 400
+            fail_every: 0
+            markers: |
+              bits per second over
+              gaps 0 missing 0 repeats 0 stripe 0 malformed 0
+          - app: amiga-rbcp-term
+            frames: 500
+            fail_every: 0
+            markers: '|<you said hello'
+          - app: amiga-aux-io
+            frames: 300
+            fail_every: 0
+            keys: "200:H"
+            markers: SET 0/2 HIGH TAKEN
+          - app: amiga-led-test
+            frames: 900
+            fail_every: 0
+            markers: GOT 0 MODE 01 COL 56AC4D BRI 25 PER 0 AGREES
     steps:
       - uses: actions/checkout@v4
 
@@ -332,477 +395,54 @@ jobs:
           echo "83b21d0c8b93fc9b9b3b287fde4ec8f3badac5a2  $RUNNER_TEMP/amiga-roms/6570-036" \
             | sha1sum -c -
 
-      - name: Build amiga-boot 256KB
-        working-directory: reference/host/68k/amiga-boot
-        run: make
+      - name: Build ${{ matrix.app }} ${{ matrix.rom_kb }}KB
+        working-directory: reference/host/68k/${{ matrix.app }}
+        run: make ROM_KB=${{ matrix.rom_kb }}
 
-      # MAME exits 0 whether the bootloader booted or stopped on its error
-      # screen, so the log is the only thing that says which happened.  A pass
-      # reaches the switch.
+      # MAME exits 0 whether the application ran or stopped on its error
+      # screen, so the log is the only thing that says which happened.
       #
       # Every Amiga harness fills chip RAM with junk before the application's
       # variables are set up, so a variable read before it is written reads
       # junk here as it does on the machine.  Each run is checked for the line
       # that says the fill happened, because a fill that stopped happening
-      # would put every job back on the zeroed RAM MAME hands over.
-      - name: Run amiga-boot 256KB under MAME
-        working-directory: reference/host/68k/amiga-boot
+      # would put every leg back on the zeroed RAM MAME hands over.
+      - name: Run ${{ matrix.app }} ${{ matrix.rom_kb }}KB under MAME
+        working-directory: reference/host/68k/${{ matrix.app }}
+        env:
+          RBCP_TARGET: ${{ matrix.rom_kb }}
+          RBCP_FRAMES: ${{ matrix.frames }}
+          RBCP_FAIL_EVERY: ${{ matrix.fail_every }}
+          RBCP_KEYS: ${{ matrix.keys }}
+          MARKERS: ${{ matrix.markers }}
         run: |
           set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/run-256.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/run-256.log"
-          grep -q SWITCH_AND_EXIT "$RUNNER_TEMP/run-256.log"
+          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          grep -q "dirtied with" "$RUNNER_TEMP/run.log"
+          printf '%s\n' "$MARKERS" > "$RUNNER_TEMP/markers"
+          while IFS= read -r marker; do
+              [ -n "$marker" ] || continue
+              grep -qF -- "$marker" "$RUNNER_TEMP/run.log" \
+                  || { echo "not in the log: $marker" >&2; exit 1; }
+          done < "$RUNNER_TEMP/markers"
 
-      # The 512KB build runs whether or not the 256KB one passed, so one
-      # failing size never hides the other.
-      - name: Build amiga-boot 512KB
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-boot
-        run: make ROM_KB=512
-
-      - name: Run amiga-boot 512KB under MAME
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-boot
+      # A run starts and a rate comes out whether or not the path keys work, so
+      # this presses 2 and requires the run the tester started to be the one
+      # that key asks for.  Before the keyboard handled punctuation, a shift
+      # flag left set in dirty chip RAM turned the digit into a character the
+      # menu had nothing for.
+      - name: Run ${{ matrix.app }} ${{ matrix.rom_kb }}KB on the path key 2
+        if: matrix.app == 'amiga-pipe-test' && matrix.rom_kb == 256
+        working-directory: reference/host/68k/${{ matrix.app }}
         env:
-          RBCP_TARGET: 512
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/run-512.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/run-512.log"
-          grep -q SWITCH_AND_EXIT "$RUNNER_TEMP/run-512.log"
-
-  build-amiga-stress:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Build amiga-rbcp-stress
-        working-directory: reference/host/68k/amiga-rbcp-stress
-        run: make images
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiga-rbcp-stress
-          path: |
-            reference/host/68k/amiga-rbcp-stress/build/amiga_meter_256k.bin
-            reference/host/68k/amiga-rbcp-stress/build/amiga_meter_512k.bin
-
-  test-amiga-stress:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Install MAME
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mame
-
-      - name: Fetch the keyboard ROM
-        run: |
-          mkdir -p "$RUNNER_TEMP/amiga-roms"
-          curl -sSLo "$RUNNER_TEMP/amiga-roms/6570-036" \
-            https://raw.githubusercontent.com/Abdess/retrobios/main/bios/Commodore/Amiga/6570-036.rom
-          echo "83b21d0c8b93fc9b9b3b287fde4ec8f3badac5a2  $RUNNER_TEMP/amiga-roms/6570-036" \
-            | sha1sum -c -
-
-      - name: Build amiga-rbcp-stress 256KB
-        working-directory: reference/host/68k/amiga-rbcp-stress
-        run: make
-
-      # A pass reaches a phase line, which takes 8192 commands.  The device is
-      # told to get one command in a thousand wrong, so the ratio is measured
-      # too.
-      - name: Run amiga-rbcp-stress 256KB under MAME
-        working-directory: reference/host/68k/amiga-rbcp-stress
-        env:
+          RBCP_TARGET: ${{ matrix.rom_kb }}
           RBCP_FRAMES: 400
-          RBCP_FAIL_EVERY: 1000
+          RBCP_KEYS: "200:2;260:Enter"
         run: |
           set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/meter-256.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/meter-256.log"
-          grep -q "PH 0000 DISPLAY ON" "$RUNNER_TEMP/meter-256.log"
-
-      - name: Build amiga-rbcp-stress 512KB
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-rbcp-stress
-        run: make ROM_KB=512
-
-      - name: Run amiga-rbcp-stress 512KB under MAME
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-rbcp-stress
-        env:
-          RBCP_TARGET: 512
-          RBCP_FRAMES: 400
-          RBCP_FAIL_EVERY: 1000
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/meter-512.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/meter-512.log"
-          grep -q "PH 0000 DISPLAY ON" "$RUNNER_TEMP/meter-512.log"
-
-  build-amiga-pipe-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Build amiga-pipe-test
-        working-directory: reference/host/68k/amiga-pipe-test
-        run: make images
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiga-pipe-test
-          path: |
-            reference/host/68k/amiga-pipe-test/build/amiga_pipe_256k.bin
-            reference/host/68k/amiga-pipe-test/build/amiga_pipe_512k.bin
-
-  test-amiga-pipe-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Install MAME
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mame
-
-      - name: Fetch the keyboard ROM
-        run: |
-          mkdir -p "$RUNNER_TEMP/amiga-roms"
-          curl -sSLo "$RUNNER_TEMP/amiga-roms/6570-036" \
-            https://raw.githubusercontent.com/Abdess/retrobios/main/bios/Commodore/Amiga/6570-036.rom
-          echo "83b21d0c8b93fc9b9b3b287fde4ec8f3badac5a2  $RUNNER_TEMP/amiga-roms/6570-036" \
-            | sha1sum -c -
-
-      - name: Build amiga-pipe-test 256KB
-        working-directory: reference/host/68k/amiga-pipe-test
-        run: make
-
-      # The device's tally reads all zeroes when nothing reached the pipe, so a
-      # run is checked against the rate line and the fault line instead.
-      - name: Run amiga-pipe-test 256KB under MAME
-        working-directory: reference/host/68k/amiga-pipe-test
-        env:
-          RBCP_FRAMES: 400
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/pipe-256.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/pipe-256.log"
-          grep -q "bits per second over" "$RUNNER_TEMP/pipe-256.log"
-          grep -q "gaps 0 missing 0 repeats 0 stripe 0 malformed 0" "$RUNNER_TEMP/pipe-256.log"
-
-      # A run starts and a rate comes out whether or not the path keys work,
-      # so this presses 2 and requires the run the tester started to be the
-      # one that key asks for.  Before the keyboard handled punctuation, a
-      # shift flag left set in dirty chip RAM turned the digit into a character
-      # the menu had nothing for.
-      - name: Run amiga-pipe-test 256KB on the path key 2
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-pipe-test
-        env:
-          RBCP_FRAMES: 400
-          RBCP_KEYS: 200:2;260:Enter
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/pipe-key.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/pipe-key.log"
-          grep -q "paths LIB1" "$RUNNER_TEMP/pipe-key.log"
-
-      - name: Build amiga-pipe-test 512KB
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-pipe-test
-        run: make ROM_KB=512
-
-      - name: Run amiga-pipe-test 512KB under MAME
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-pipe-test
-        env:
-          RBCP_TARGET: 512
-          RBCP_FRAMES: 400
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/pipe-512.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/pipe-512.log"
-          grep -q "bits per second over" "$RUNNER_TEMP/pipe-512.log"
-          grep -q "gaps 0 missing 0 repeats 0 stripe 0 malformed 0" "$RUNNER_TEMP/pipe-512.log"
-
-  build-amiga-term:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Build amiga-rbcp-term
-        working-directory: reference/host/68k/amiga-rbcp-term
-        run: make images
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiga-rbcp-term
-          path: |
-            reference/host/68k/amiga-rbcp-term/build/amiga_term_256k.bin
-            reference/host/68k/amiga-rbcp-term/build/amiga_term_512k.bin
-
-  test-amiga-term:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Install MAME
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mame
-
-      - name: Fetch the keyboard ROM
-        run: |
-          mkdir -p "$RUNNER_TEMP/amiga-roms"
-          curl -sSLo "$RUNNER_TEMP/amiga-roms/6570-036" \
-            https://raw.githubusercontent.com/Abdess/retrobios/main/bios/Commodore/Amiga/6570-036.rom
-          echo "83b21d0c8b93fc9b9b3b287fde4ec8f3badac5a2  $RUNNER_TEMP/amiga-roms/6570-036" \
-            | sha1sum -c -
-
-      - name: Build amiga-rbcp-term 256KB
-        working-directory: reference/host/68k/amiga-rbcp-term
-        run: make
-
-      # The run types a line and the far end sends it back with "you said" in
-      # front.  The marker is that line on the screen, so it stands for the
-      # keyboard, both pipes and the display together.
-      - name: Run amiga-rbcp-term 256KB under MAME
-        working-directory: reference/host/68k/amiga-rbcp-term
-        env:
-          RBCP_FRAMES: 500
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/term-256.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/term-256.log"
-          grep -q "|<you said hello" "$RUNNER_TEMP/term-256.log"
-
-      - name: Build amiga-rbcp-term 512KB
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-rbcp-term
-        run: make ROM_KB=512
-
-      - name: Run amiga-rbcp-term 512KB under MAME
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-rbcp-term
-        env:
-          RBCP_TARGET: 512
-          RBCP_FRAMES: 500
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/term-512.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/term-512.log"
-          grep -q "|<you said hello" "$RUNNER_TEMP/term-512.log"
-
-  build-amiga-aux-io:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Build amiga-aux-io
-        working-directory: reference/host/68k/amiga-aux-io
-        run: make images
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiga-aux-io
-          path: |
-            reference/host/68k/amiga-aux-io/build/amiga_auxio_256k.bin
-            reference/host/68k/amiga-aux-io/build/amiga_auxio_512k.bin
-
-  test-amiga-aux-io:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Install MAME
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mame
-
-      - name: Fetch the keyboard ROM
-        run: |
-          mkdir -p "$RUNNER_TEMP/amiga-roms"
-          curl -sSLo "$RUNNER_TEMP/amiga-roms/6570-036" \
-            https://raw.githubusercontent.com/Abdess/retrobios/main/bios/Commodore/Amiga/6570-036.rom
-          echo "83b21d0c8b93fc9b9b3b287fde4ec8f3badac5a2  $RUNNER_TEMP/amiga-roms/6570-036" \
-            | sha1sum -c -
-
-      - name: Build amiga-aux-io 256KB
-        working-directory: reference/host/68k/amiga-aux-io
-        run: make
-
-      # The tester waits for keys, so the run presses H to drive GPIO 2 high.
-      # A device that refuses the SET_AUX puts REFUSED where the marker is.
-      - name: Run amiga-aux-io 256KB under MAME
-        working-directory: reference/host/68k/amiga-aux-io
-        env:
-          RBCP_FRAMES: 300
-          RBCP_KEYS: "200:H"
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/auxio-256.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/auxio-256.log"
-          grep -q "SET 0/2 HIGH TAKEN" "$RUNNER_TEMP/auxio-256.log"
-
-      - name: Build amiga-aux-io 512KB
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-aux-io
-        run: make ROM_KB=512
-
-      - name: Run amiga-aux-io 512KB under MAME
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-aux-io
-        env:
-          RBCP_TARGET: 512
-          RBCP_FRAMES: 300
-          RBCP_KEYS: "200:H"
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/auxio-512.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/auxio-512.log"
-          grep -q "SET 0/2 HIGH TAKEN" "$RUNNER_TEMP/auxio-512.log"
-
-  build-amiga-led-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Build amiga-led-test
-        working-directory: reference/host/68k/amiga-led-test
-        run: make images
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: amiga-led-test
-          path: |
-            reference/host/68k/amiga-led-test/build/amiga_led_test_256k.bin
-            reference/host/68k/amiga-led-test/build/amiga_led_test_512k.bin
-
-  test-amiga-led-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build vasm
-        run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
-          tar xzf vasm.tar.gz
-          make -C vasm CPU=m68k SYNTAX=mot
-          echo "$PWD/vasm" >> "$GITHUB_PATH"
-
-      - name: Install MAME
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mame
-
-      - name: Fetch the keyboard ROM
-        run: |
-          mkdir -p "$RUNNER_TEMP/amiga-roms"
-          curl -sSLo "$RUNNER_TEMP/amiga-roms/6570-036" \
-            https://raw.githubusercontent.com/Abdess/retrobios/main/bios/Commodore/Amiga/6570-036.rom
-          echo "83b21d0c8b93fc9b9b3b287fde4ec8f3badac5a2  $RUNNER_TEMP/amiga-roms/6570-036" \
-            | sha1sum -c -
-
-      - name: Build amiga-led-test 256KB
-        working-directory: reference/host/68k/amiga-led-test
-        run: make
-
-      # The marker is the read back check on a brightness of 25.  B is the third
-      # key the run presses.  A device reporting anything else prints DIFFERS in
-      # place of AGREES.
-      - name: Run amiga-led-test 256KB under MAME
-        working-directory: reference/host/68k/amiga-led-test
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/led-256.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/led-256.log"
-          grep -q "GOT 0 MODE 01 COL 56AC4D BRI 25 PER 0 AGREES" "$RUNNER_TEMP/led-256.log"
-
-      - name: Build amiga-led-test 512KB
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-led-test
-        run: make ROM_KB=512
-
-      - name: Run amiga-led-test 512KB under MAME
-        if: ${{ !cancelled() }}
-        working-directory: reference/host/68k/amiga-led-test
-        env:
-          RBCP_TARGET: 512
-        run: |
-          set -o pipefail
-          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/led-512.log"
-          grep -q "dirtied with" "$RUNNER_TEMP/led-512.log"
-          grep -q "GOT 0 MODE 01 COL 56AC4D BRI 25 PER 0 AGREES" "$RUNNER_TEMP/led-512.log"
+          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/key.log"
+          grep -q "dirtied with" "$RUNNER_TEMP/key.log"
+          grep -q "paths LIB1" "$RUNNER_TEMP/key.log"
 
   build-romsel:
     runs-on: ubuntu-latest
