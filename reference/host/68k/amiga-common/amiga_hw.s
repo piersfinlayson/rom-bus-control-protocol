@@ -12,7 +12,7 @@
 ; ---------------------------------------------------------------------------
 a500_hw_init:
         ORI.W   #$2700,SR
-        MOVE.W  #COL_WHITE,COLOR00  ; WHITE — the CPU is alive
+        MOVE.W  #COL_WHITE,COLOR00  ; the CPU is alive
 
         ; A cold start can find the blitter already busy, and every later
         ; blit waits on it.  Giving it a blit of its own — one word, into
@@ -27,7 +27,7 @@ a500_hw_init:
         CLR.W   BLTBMOD
         CLR.W   BLTCMOD
         CLR.W   BLTDMOD
-        MOVE.L  #$00007000,BLTDPTH  ; scratch, nothing of ours is here yet
+        MOVE.L  #$00007000,BLTDPTH  ; scratch
         MOVE.W  #$0041,BLTSIZE      ; one row of one word
         MOVE.L  #$00040000,D0
 .ahi_blt:
@@ -51,7 +51,7 @@ a500_hw_init:
         MOVE.B  #$03,CIAA_DDRA
         MOVE.B  #$02,CIAA_PRA
 
-        MOVE.W  #COL_GREEN,COLOR00  ; GREEN
+        MOVE.W  #COL_GREEN,COLOR00  ; the chipset is quiet
 
         ; exc_halt into every exception vector, $8-$3FF
         LEA.L   exc_halt,A0
@@ -63,11 +63,11 @@ a500_hw_init:
 
         BSR     tod_start           ; the one clock that runs on its own
 
-        MOVE.W  #COL_BLUE,COLOR00   ; BLUE — a500_hw_init done
+        MOVE.W  #COL_BLUE,COLOR00   ; a500_hw_init done
         RTS
 
 ; ---------------------------------------------------------------------------
-; exc_halt — every exception lands here.  Purple screen, and stop.
+; exc_halt — every exception lands here.  Purple screen and stop.
 ; ---------------------------------------------------------------------------
 exc_halt:
         MOVE.W  #COL_PURPLE,COLOR00
@@ -76,7 +76,8 @@ exc_halt:
         BRA.S   .eh_spin
 
 ; ---------------------------------------------------------------------------
-; kbd_init — configure CIA-A SP for keyboard input
+; kbd_init — configure CIA-A SP for keyboard input and clear the state
+; amiga_getkey carries between polls.
 ; Clobbers (saved/restored): D0
 ; ---------------------------------------------------------------------------
 kbd_init:
@@ -85,6 +86,11 @@ kbd_init:
         ANDI.B  #$BF,D0             ; SPMODE = 0 = SP input
         MOVE.B  D0,CIAA_CRA
         MOVE.B  CIAA_ICR,D0         ; read-to-clear pending ICR events
+        ; Chip RAM comes up with anything in it and amiga_getkey reads both of
+        ; these before it writes either.  A shift flag left set sends every key
+        ; through the shifted table, where the digits are punctuation.
+        CLR.B   VAR_KEY_RESEND
+        CLR.B   VAR_SHIFT_HELD
         MOVEM.L (SP)+,D0
         RTS
 
@@ -93,8 +99,8 @@ kbd_init:
 ; pointers into the interleaved bitmap, set the display height from the Agnus
 ; fitted, and enable DMA.
 ;
-; copper_template, font_data and screen_clear are forward references, all
-; within BSR.W range for our image size.
+; copper_template and screen_clear are both forward references.  screen_clear
+; is reached by BSR and is within range in both the 256 KB and 512 KB builds.
 ; Clobbers (saved/restored): D0-D2/A0-A2
 ; ---------------------------------------------------------------------------
 screen_init:
@@ -122,8 +128,8 @@ screen_init:
         DBF     D0,.si_ptr
 
         ; The template holds the NTSC stop, so only a PAL Agnus needs writing.
-        ; Which one is fitted is kept, because the chime's sample period and
-        ; the ball's bottom limit both follow from it.
+        ; VAR_IS_PAL keeps which one is fitted because the field tick line and
+        ; the chime's timings both follow from it.
         MOVE.W  (VPOSR).L,D0
         ANDI.W  #VPOSR_PAL,D0
         BEQ.S   .si_ntsc
@@ -137,6 +143,9 @@ screen_init:
         MOVE.L  #COPPER_BASE,COP1LCH
         TST.W   COPJMP1
 
+        ; screen_clear zeroes the bitmap VAR_DRAW_BASE names, and this runs
+        ; before the application has set it.
+        MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
         BSR     screen_clear
 
         ; MASTER + COPEN + BPLEN + BLTEN.  Audio DMA goes on only while the

@@ -4,7 +4,7 @@
 ; Include the platform rbcp_config.s before this file.
 ;
 ; This file is generic across 68K platforms.  Everything platform-specific
-; is supplied by rbcp_config.s; everything derived from it lives here.
+; is supplied by rbcp_config.s.  Everything derived from it lives here.
 
 ; ---------------------------------------------------------------------------
 ; Protocol version supported by this library
@@ -61,8 +61,7 @@ RBCP_SUPPORTED_PATCH        EQU 1
 ;                               lo word   2   1   1    2     1
 ; Four 8-bit devices, 32-bit bus, lane L  2   0   0    L     0
 ;
-; Only the first row is exercised today.  The others are recorded because
-; they are the shape the mapping must keep, not because they are tested.
+; Only the first row is exercised.
 ;
 ; NOTE for multi-device configurations: address lines are shared, so every
 ; device on the bus decodes every knock and every command.  Each maintains
@@ -96,7 +95,7 @@ CONFIG_ROM_SIZE     EQU (CONFIG_ROM_KB*1024)
 ;
 ; RBCP_BCH_START — the back-channel start address as a *device byte* offset
 ;   within the slot, which is what ENTER_CMD_RESP takes.  Must be 4-byte
-;   aligned; the assertion below enforces that at build time.
+;   aligned.  The assertion below enforces that at build time.
 ; ---------------------------------------------------------------------------
 RBCP_CMD_PAGE_REL   EQU (((CONFIG_RBCP_CMD_PAGE_ABS-CONFIG_ROM_BASE)>>CONFIG_RBCP_BUS_SHIFT)>>8)
 RBCP_BCH_START      EQU (((CONFIG_RBCP_BCH_ABS-CONFIG_ROM_BASE)>>CONFIG_RBCP_BUS_SHIFT)<<CONFIG_RBCP_DEV_SHIFT)
@@ -183,7 +182,23 @@ RBCP_GRP_PIPES              EQU $04
 RBCP_CMD_GET_PIPE_CAP       EQU $00
 RBCP_CMD_GET_PIPE_INFO      EQU $01
 RBCP_CMD_PIPE_WRITE         EQU $02
+RBCP_CMD_PIPE_READ          EQU $03
 RBCP_PIPE_WRITE_MAX         EQU 4
+
+; ---------------------------------------------------------------------------
+; Group 0x05 — Auxiliary I/O
+;
+; Device pins the host can drive and read.  A pin is addressed by its group
+; and its number within that group.  The comments above the auxiliary helpers
+; in rbcp.s explain the model.
+; ---------------------------------------------------------------------------
+RBCP_GRP_AUX                EQU $05
+RBCP_CMD_GET_AUX_CAP        EQU $00
+RBCP_CMD_GET_AUX_GROUP_INFO EQU $01
+RBCP_CMD_GET_AUX_PIN_INFO   EQU $02
+RBCP_CMD_SET_AUX            EQU $03
+RBCP_CMD_SET_AUX_AND_EXIT   EQU $04
+RBCP_CMD_SET_AUX_SWITCH_EXIT EQU $05
 
 ; ---------------------------------------------------------------------------
 ; Group 0x06 — LEDs
@@ -201,16 +216,22 @@ RBCP_CMD_RESET              EQU $AA
 
 ; ---------------------------------------------------------------------------
 ; Response data-section field offsets, relative to the start of the data
-; section (region byte 8).  Read a linear buffer that rbcp_read_data has
-; un-swapped, so these are the same numbers the specification gives.
+; section (region byte 8).  They index a linear buffer rbcp_read_data has
+; un-swapped, so they are the same numbers the specification gives.
 ; ---------------------------------------------------------------------------
 ; GET_RAM_SLOT_INFO_ALL
-RBCP_RAM_TOTAL              EQU 0
+RBCP_RAM_TOTAL             EQU 0
 RBCP_RAM_ACTIVE            EQU 1
 RBCP_RAM_ROM_TYPE          EQU 2
 ; GET_FLASH_SLOT_INFO record
 RBCP_FLASH_ROM_TYPE        EQU 0
 RBCP_FLASH_NAME            EQU 1
+; GET_FLASH_SLOT_INFO_ALL preamble, then records in slot order
+RBCP_FLASH_ALL_TOTAL       EQU 0        ; slots the device has
+RBCP_FLASH_ALL_WHOLE       EQU 1        ; complete records that follow
+RBCP_FLASH_ALL_PARTIAL     EQU 2        ; 1 where a truncated record follows
+RBCP_FLASH_ALL_RECORDS     EQU 4        ; first record
+RBCP_FLASH_RECORD_SIZE     EQU 32       ; a GET_FLASH_INFO record
 ; GET_NV_CAPABILITY
 RBCP_NV_CAP_SIZE_LO        EQU 0
 RBCP_NV_CAP_SIZE_HI        EQU 1
@@ -227,11 +248,67 @@ RBCP_NV_CAP_NOSLOT         EQU 3        ; bits 0-3 are N, and 2^N bytes stay
 RBCP_NV_SLOT_NONE          EQU $FE
 ; GET_PIPE_CAPABILITY
 RBCP_PIPE_CAP_COUNT        EQU 0
+; GET_PIPE_INFO
+RBCP_PIPE_INFO_TYPE        EQU 0
+RBCP_PIPE_INFO_FLAGS       EQU 1
+RBCP_PIPE_INFO_FREE        EQU 2        ; OUT space, saturating at $FF
+RBCP_PIPE_INFO_WAITING     EQU 3        ; IN bytes readable, saturating at $FF
+RBCP_PIPE_INFO_FAR_END     EQU 4
+; GET_PIPE_INFO flag bits.  At least one direction bit is always set.
+RBCP_PIPE_FLAG_OUT          EQU $01     ; carries OUT, host to device
+RBCP_PIPE_FLAG_IN           EQU $02     ; carries IN, device to host
+RBCP_PIPE_FLAG_ATTACH_KNOWN EQU $04     ; device answers whether the far end is
+                                        ; attached
+RBCP_PIPE_FLAG_ATTACHED     EQU $08     ; far end attached.  Read it only
+                                        ; with ATTACH_KNOWN set
+; PIPE_READ
+RBCP_PIPE_READ_COUNT       EQU 0        ; bytes returned, where FULL is clear
+RBCP_PIPE_READ_FLAGS       EQU 1
+RBCP_PIPE_READ_WAITING     EQU 2        ; IN bytes left, saturating at $FF
+RBCP_PIPE_READ_DATA        EQU 8        ; the bytes themselves
+; PIPE_READ flag bits
+RBCP_PIPE_READ_FLAG_OVERRUN EQU $01     ; bytes were thrown away unread
+RBCP_PIPE_READ_FLAG_FULL    EQU $02     ; the whole count asked for came back
+; Pipe types
+RBCP_PIPE_TYPE_RAW         EQU $00
+; Far end types
+RBCP_FAR_END_UNSPEC        EQU $00
+RBCP_FAR_END_USB_CDC       EQU $01
+RBCP_FAR_END_NETWORK       EQU $02
+RBCP_FAR_END_SERIAL        EQU $03      ; physical serial port
+; GET_AUX_CAPABILITY
+RBCP_AUX_CAP_GROUPS        EQU 0
+RBCP_AUX_CAP_MAX_HOLD      EQU 1        ; 10ms units, 0 for no timed holds
+; GET_AUX_GROUP_INFO
+RBCP_AUX_GROUP_TYPE        EQU 0
+RBCP_AUX_GROUP_PINS        EQU 1        ; zero means 256
+; GET_AUX_PIN_INFO
+RBCP_AUX_PIN_FLAGS         EQU 0
+RBCP_AUX_PIN_LEVEL         EQU 1
+RBCP_AUX_PIN_DRIVEN        EQU 2
+; GET_AUX_PIN_INFO flag bits
+RBCP_AUX_FLAG_DRIVABLE     EQU $01      ; SET_AUX may drive this pin
+RBCP_AUX_FLAG_READABLE     EQU $02      ; level and driven carry a real answer
+; Auxiliary pin states, for the state and after arguments of SET_AUX
+RBCP_AUX_LOW               EQU $00
+RBCP_AUX_HIGH              EQU $01
+RBCP_AUX_RELEASE           EQU $02
+; Auxiliary pin group types
+RBCP_AUX_TYPE_NONE         EQU $00
+RBCP_AUX_TYPE_GPIO         EQU $01
+; SET_AUX_SWITCH_EXIT flags — bit 0 picks the order, the rest must be zero
+RBCP_AUX_PIN_FIRST         EQU $00
+RBCP_AUX_SLOT_FIRST        EQU $01
 ; GET_LED_CAPABILITY
 RBCP_LED_CAP_COUNT         EQU 0
 ; GET_LED_INFO
 RBCP_LED_INFO_TYPE         EQU 0
 RBCP_LED_INFO_MODE         EQU 1
+; GET_LED_MODE_INFO
+RBCP_LED_MODE_FLAGS        EQU 0
+RBCP_LED_MODE_MIN_PERIOD   EQU 1        ; 100ms units
+; GET_LED_MODE_INFO flag bits
+RBCP_LED_MODE_TAKES_PERIOD EQU $01
 ; LED types and modes
 RBCP_LED_TYPE_MONO         EQU $00
 RBCP_LED_TYPE_RGB          EQU $01
@@ -270,8 +347,8 @@ RBCP_RESPONSE_ADDR    EQU CONFIG_RBCP_BCH_ABS+(((5>>CONFIG_RBCP_DEV_SHIFT)<<CONF
 
 ; Response data begins at region offset 8.  A CPU address for a *fixed* data
 ; offset can be formed with the same expression, but a linear index into the
-; data section is NOT a linear CPU offset — a runtime mapper is required for
-; variable-length reads.  That arrives with the commands that need it.
+; data section is NOT a linear CPU offset.  rbcp_read_data in rbcp.s walks it
+; a byte at a time.
 RBCP_DATA0_ADDR       EQU CONFIG_RBCP_BCH_ABS+(((8>>CONFIG_RBCP_DEV_SHIFT)<<CONFIG_RBCP_BUS_SHIFT)+CONFIG_RBCP_LANE_OFF+RBCP_INTRA_EVEN)
 
 ; ---------------------------------------------------------------------------
@@ -297,7 +374,7 @@ RBCP_DATA0_ADDR       EQU CONFIG_RBCP_BCH_ABS+(((8>>CONFIG_RBCP_DEV_SHIFT)<<CONF
 RBCP_GROUP      EQU CONFIG_RBCP_SCRATCH_BASE+0   ; command group byte
 RBCP_CMD        EQU CONFIG_RBCP_SCRATCH_BASE+1   ; command byte
 RBCP_SAVED_TOK  EQU CONFIG_RBCP_SCRATCH_BASE+2   ; saved token LSB
-RBCP_LONG_POLL  EQU CONFIG_RBCP_SCRATCH_BASE+3   ; 0=normal poll, 1=long poll
+RBCP_POLL_KIND  EQU CONFIG_RBCP_SCRATCH_BASE+3   ; which progress timeout
 RBCP_ARG_COUNT  EQU CONFIG_RBCP_SCRATCH_BASE+4   ; argument count for send
 RBCP_ERROR_CODE EQU CONFIG_RBCP_SCRATCH_BASE+5   ; failure stage (1/2/3)
 RBCP_RETRY_CNT  EQU CONFIG_RBCP_SCRATCH_BASE+6   ; retry counter
@@ -311,6 +388,11 @@ RBCP_ARG5       EQU CONFIG_RBCP_SCRATCH_BASE+13
 RBCP_ARG6       EQU CONFIG_RBCP_SCRATCH_BASE+14
 RBCP_ARG7       EQU CONFIG_RBCP_SCRATCH_BASE+15
 RBCP_ARG8       EQU CONFIG_RBCP_SCRATCH_BASE+16
+
+; Values written to RBCP_POLL_KIND, picking the progress timeout
+RBCP_POLL_NORMAL    EQU 0
+RBCP_POLL_NV        EQU 1
+RBCP_POLL_AUX       EQU 2
 
 ; Error codes written to RBCP_ERROR_CODE
 RBCP_ERR_NONE       EQU 0

@@ -31,8 +31,7 @@ import struct
 import sys
 import wave
 
-# Paula's sample clock.  rate = clock / period, and the period register is
-# 9 bits, so 124 is the lowest period that is safe to use on all machines.
+# Paula's sample clock.  rate = clock / period.
 PAL_CLOCK = 3546895
 NTSC_CLOCK = 3579545
 
@@ -148,8 +147,8 @@ def check(data, rate):
     if len(data) % 2:
         sys.exit("mkchime: odd byte count, Paula needs whole words")
     # quantise() clamps, so a sample sitting on the rail is one that was
-    # clipped on the way in.  Correctly scaled, nothing reaches PEAK, let
-    # alone 127.
+    # clipped on the way in.  Correctly scaled the largest sample is PEAK,
+    # well short of 127.
     if peak >= 127:
         sys.exit("mkchime: clipped, %d samples on the rail — lower PEAK"
                  % sum(1 for v in values if abs(v) >= 127))

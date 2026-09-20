@@ -1217,9 +1217,9 @@ fail_tab:
 .if SCREEN_COLS >= 32
 str_f_nodev:    .byte "NO DEVICE ANSWERED THE KNOCK", 0
 str_f_enter:    .byte "THE DEVICE REFUSED THE SESSION", 0
-str_f_version:  .byte "THE DEVICE SPEAKS A VERSION WE DO NOT", 0
+str_f_version:  .byte "DEVICE REPORTS INCOMPATIBLE VERSION", 0
 .else
 str_f_nodev:    .byte "NO DEVICE", 0
 str_f_enter:    .byte "SESSION REFUSED", 0
-str_f_version:  .byte "WRONG VERSION", 0
+str_f_version:  .byte "INCOMPATIBLE VERSION", 0
 .endif

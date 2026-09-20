@@ -24,10 +24,10 @@ The screen has 16 pens, shared out so the objects can sit on one another:
 
 | Pens | Used by |
 | --- | --- |
-| 0 | background, and transparent in every object |
-| 1 | text |
+| 0 | background, transparent in every object |
+| 1 | spare |
 | 2 | One ROM gold, the ring and the tagline |
-| 3, 4, 5 | the logo's outlines, chip body and pins |
+| 3, 4, 5 | the logo's outlines, chip body and pins, and the text |
 | 6-13 | the ball's surface, cycled to spin it |
 | 14 | the ball's drop shadow |
 | 15 | spare |
@@ -41,17 +41,14 @@ Converts a PNG, or a line of TrueType text, into a blitter object for the
 single-plane mask, and a vasm source file that declares the sizes and pulls the
 binaries in with `INCBIN`.
 
-Interleaving is what makes the object cheap to draw. Plane 0's words for a row
-are followed by plane 1's, 2's and 3's, then the next row, so one blit of
+Interleaving makes the object cheap to draw. Plane 0's words for a row are
+followed by plane 1's, 2's and 3's, then the next row, so one blit of
 `<NAME>_BLIT_ROWS` rows copies all four planes in a single pass. Every row
-carries one extra blank word on the right, which gives the barrel shifter
-somewhere to push the last pixels into and lets the object land on any
-horizontal pixel, not just a word boundary. Words are big-endian.
+carries one extra blank word on the right, which lets the object land on any
+horizontal pixel rather than only a word boundary. Words are big-endian.
 
 The mask is 1 where the object is opaque and 0 where the background shows
-through. It comes from the source alpha, so a black outline inside the artwork
-stays opaque and covers whatever is behind it rather than letting it leak
-through.
+through. It comes from the source alpha.
 
 ### Needs
 
@@ -102,18 +99,14 @@ is added on top of it. Height keeps the aspect ratio unless `--height` overrides
 it. `--trim` crops to the opaque bounding box first.
 
 The image is area-averaged down and each output pixel then snapped to the
-nearest allowed pen. Averaging matters at large reductions: point sampling drops
-thin features such as pin legs in and out from row to row and the result breaks
-up into speckle.
+nearest allowed pen. Point sampling would drop thin features such as pin legs
+in and out from row to row.
 
 ### Thin light features, and --pen-coverage
 
-Averaging has one failure of its own. A feature only a source pixel or two
-wide, on a ground much darker than itself, is averaged with that ground before
-any pen is chosen, so it arrives at the snap already dragged most of the way to
-the background and is snapped to a dark pen. The logo's pin legs are exactly
-this: at 112 pixels the chip's far row of legs is under one source pixel wide,
-and plain averaging filled them with chip-body grey instead of pin white.
+A feature only a source pixel or two wide, on a ground much darker than
+itself, is averaged with that ground before any pen is chosen and arrives at
+the snap already dragged most of the way to the background.
 
 `--pen-coverage N=FRACTION` measures the feature rather than the average.
 Every source pixel close enough to pen `N`'s own colour counts 1 and everything
@@ -123,26 +116,16 @@ on the widest channel, so a source pixel counts towards the pen it would have
 been snapped to anyway and towards no other.
 
 Pen `N` then holds a pixel when two things are true: its coverage reaches
-`FRACTION`, **and** no other pen covers more of that pixel. The second test is
-the one that matters. Without it a sliver of a light feature captures a pixel
-that is almost entirely the black outline beside it, and the outline vanishes —
-a drawn pin becomes a bare stroke. With it, a pen can only take a pixel it
-genuinely dominates, so an outline thick enough to own a pixel keeps it. The
-fraction is then a floor for the case where nothing much covers the pixel at
-all.
-
-Coverage is measured for every pen once any rule is given, because the second
-test needs something to compare against. A pixel the rule claims is opaque in
-the mask, because the feature is really there.
+`FRACTION`, **and** no other pen covers more of that pixel. Coverage is
+measured for every pen once any rule is given, because the second test needs
+something to compare against. A pixel the rule claims is marked opaque in the
+mask, because the feature is really there.
 
 Repeat the option per pen. The rule only ever hands pixels to the pens named,
 so it cannot thicken an outline or fill a gap in some other colour — check the
 pen tally the tool prints, and look at the preview.
 
-`5=0.15` is what the logo uses. Against the same conversion with no rule at
-all it moves 43 pixels of the 10,304, every one of them from chip-body grey to
-pin white. No pen 0 or pen 3 pixel changes, so no outline can have been lost,
-and the mask comes out byte for byte the same.
+`5=0.15` is what the logo uses.
 
 ### Setting text
 
@@ -196,20 +179,13 @@ Index 5 is the `O` of `ROM`. Index 0 is the `O` of `One`, which stays with the
 default pen. The tool prints which characters each pen took, so a miscounted
 index shows up before the preview does.
 
-The text is on pen 5 rather than pen 1 because pen 1 is `$0FFF` and so are the
-ball's light checks, which would swallow the text whenever the ball passed
-behind it. Pen 5 is `$0DDD`, which still reads as white and stays separate from
-the ball.
-
 A span may not name pen 0, and may not cover a line break. An index outside the
 text is refused rather than clamped.
 
 Colouring a character moves nothing. Each line is drawn as one whole string,
 exactly as it would be if every character shared a pen, and the finished bitmap
-is then shared out by column: the pixels between where the string layout left
-the pen before a character and where it left it after belong to that character.
-The spacing, kerning and baseline are therefore the single-colour ones by
-construction, not by approximation.
+is then shared out by column. The spacing, kerning and baseline are therefore
+exactly the single-colour ones.
 
 ### Checking the result
 
@@ -260,13 +236,6 @@ so `FFB700` and `FB0` are the same colour on screen and the tool prints what it
 used. The bitmaps hold pen numbers rather than colours, so a recolour rewrites
 only `BallCycle` and leaves `ball.bin` and `ball_mask.bin` byte for byte as
 they were.
-
-Gold against white carries less than half the luminance difference red against
-white did, so the checks are softer, most so on a composite or RF display where
-the colour smears sideways and the luma barely steps. They still read, because
-a check is about 16 pixels across with a hard edge. A darker gold such as
-`--colours E90 FFF` puts the bite back at the cost of no longer matching the
-ring.
 
 `--preview <file.png>` writes a strip of all eight steps.
 

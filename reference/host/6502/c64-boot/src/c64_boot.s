@@ -1123,7 +1123,7 @@ str_prompt:         .byte "SELECT KERNAL:", 0
 str_footer:         .byte "   UP/DOWN TO MOVE, RETURN TO BOOT", 0
 
 msg_err_no_cmd_resp:    .byte "RBCP ERROR: FAILED TO ENTER CMD RESP", 0
-msg_err_protocol_version: .byte "RBCP ERROR: DEVICE PROTOCOL VERSION", 0
+msg_err_protocol_version: .byte "RBCP ERROR: INCOMPATIBLE VERSION", 0
 msg_err_ram_info:       .byte "RBCP ERROR: RAM SLOT INFO FAILED", 0
 msg_err_insuff_ram:     .byte "RBCP ERROR: INSUFFICIENT RAM SLOTS", 0
 msg_err_flash_info:     .byte "RBCP ERROR: FLASH SLOT INFO FAILED", 0

@@ -5,19 +5,20 @@
 ; RBCP device serving its ROM socket.  It enters command-response mode, reads
 ; what the device holds, and boots the remembered or default image at once.
 ; Holding both mouse buttons at boot brings up a menu instead.  See README.md
-; for the controls, the display and what has been tested on hardware.
+; for the controls and the display.
 ;
 ; ROM image layout, top-aligned — 256 KB from $FC0000 or 512 KB from $F80000:
 ;
 ;   ROM SECTION  — executed directly from ROM
 ;     ROM header, boot_cold_start, JMP boot_rom_entry
-;     amiga_hw.s: a500_hw_init, exc_halt, screen_init
-;     boot_rom_entry: HW init, screen up, copy RAM section, JMP $8000
+;     amiga_hw.s: a500_hw_init, exc_halt, kbd_init, screen_init
+;     boot_rom_entry: HW init, screen up, copy RAM section, JMP $28000
 ;
-;   RAM SECTION  — stored in ROM, copied to RAM_CODE_BASE ($20000) at boot
+;   RAM SECTION  — stored in ROM, copied to RAM_CODE_BASE ($28000) at boot
 ;     boot_ram_entry: the RBCP session
+;     main_loop, do_boot and banner_*: the menu, the banner and booting
 ;     rbcp.s: RBCP protocol library
-;     Screen rendering and hex output
+;     amiga-common: shared Amiga routines
 ;
 ;   ROM DATA SECTION — referenced via absolute long addresses from RAM code
 ;     copper_template, font_data, strings
@@ -40,7 +41,7 @@
 ; Addressing note:
 ;   RAM-section code reaches ROM data through explicit absolute long
 ;   addressing — LEA (label).L,A0 — never PC-relative, because the code is
-;   assembled at its ROM address but executes from $8000.  The .L suffix also
+;   assembled at its ROM address but executes from $28000.  The .L suffix also
 ;   stops the assembler shortening high addresses to sign-extended absolute
 ;   short, which works on a 68000's 24-bit bus but not on a 32-bit one.
 
@@ -49,12 +50,13 @@
         INCLUDE "rbcp_config.s"
         INCLUDE "../rbcp/rbcp_defs.s"
         INCLUDE "amiga_config.s"
+        INCLUDE "../amiga-common/amiga_defs.s"
         INCLUDE "amiga_defs.s"
 
 ; The version, shown on screen and in the log.  A macro rather than an EQU
 ; because it expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.1"
+        DC.B    "0.1.2"
         ENDM
 
         ORG     CONFIG_ROM_BASE
@@ -80,11 +82,11 @@ boot_cold_start:                        ; +$D2: CPU jumps here on power-on
         JMP     boot_rom_entry
 
 ; ---------------------------------------------------------------------------
-; ROM-section hardware routines: a500_hw_init, exc_halt, screen_init
+; ROM-section hardware routines: a500_hw_init, exc_halt, kbd_init, screen_init
 ; screen_init contains a forward BSR to screen_clear in the RAM section.  Both
 ; are in ROM at assembly time, so the PC-relative branch is correct there.
 ; ---------------------------------------------------------------------------
-        INCLUDE "amiga_hw.s"
+        INCLUDE "../amiga-common/amiga_hw.s"
 
 ; ---------------------------------------------------------------------------
 ; boot_rom_entry — runs from ROM.  Clears OVL, sets the stack, brings the
@@ -135,7 +137,7 @@ ram_section_rom_start:
 ; A device with a single RAM slot (a 27C400, or a 27C200 on some boards)
 ; cannot stage a load in a spare slot, so it boots with LOAD_AND_EXIT into the
 ; active slot instead.  It can still remember a choice, where it offers writes
-; that need no slot provided - see nv_locate.
+; that need no slot provided — see nv_locate.
 ; ---------------------------------------------------------------------------
 boot_ram_entry:
         MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
@@ -143,8 +145,8 @@ boot_ram_entry:
         MOVE.B  #PEN_BG,VAR_PEN_BG
         MOVE.B  #SCREEN_COLS,VAR_COL_MAX
         MOVE.B  #MENU_COL,VAR_MENU_COL
-        ; The beam line an animation step and the chime's wait both work from,
-        ; which is the first line off the bottom of the display.
+        ; The first line off the bottom of the display.  An animation step and
+        ; the chime's fade both wait on the beam reaching it.
         MOVE.W  #FIELD_TICK_NTSC,VAR_TICK_LINE
         TST.B   VAR_IS_PAL
         BEQ.S   .bre_ntsc
@@ -174,6 +176,7 @@ boot_ram_entry:
         BRA     err_halt
 .ok_ram:
         MOVEQ   #4,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_RAM_TOTAL).W,VAR_TOTAL_RAM
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_RAM_ACTIVE).W,VAR_ACTIVE_RAM
@@ -196,10 +199,12 @@ boot_ram_entry:
         TST.B   D0
         BNE.S   .pipe_done
         MOVEQ   #1,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         TST.B   (CONFIG_RBCP_DATA_BUF+RBCP_PIPE_CAP_COUNT).W
         BEQ.S   .pipe_done
-        MOVE.B  #1,VAR_PIPE_PRESENT
+        MOVEQ   #0,D0                   ; the bootloader logs through pipe 0
+        BSR     log_open
         LEA     (msg_rule).L,A0
         BSR     log_line
         LEA     (str_log_title).L,A0
@@ -212,6 +217,7 @@ boot_ram_entry:
         TST.B   D0
         BNE.S   .led_done
         MOVEQ   #1,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         MOVEQ   #0,D3
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_LED_CAP_COUNT).W,D3
@@ -223,6 +229,7 @@ boot_ram_entry:
         TST.B   D0
         BNE.S   .led_next
         MOVEQ   #1,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_LED_INFO_TYPE).W,D0
         CMPI.B  #RBCP_LED_TYPE_RGB,D0
@@ -243,6 +250,7 @@ boot_ram_entry:
         BRA     err_halt
 .ok_flash:
         MOVEQ   #1,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         MOVE.B  (CONFIG_RBCP_DATA_BUF).W,VAR_TOTAL_FLASH
         CMPI.B  #2,VAR_TOTAL_FLASH      ; slot 0 is this bootloader
@@ -284,6 +292,7 @@ boot_ram_entry:
         TST.B   D0
         BNE.S   .nv_done
         MOVEQ   #1,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         MOVE.B  (CONFIG_RBCP_DATA_BUF).W,D0
         MOVE.B  D0,VAR_NV_STORED
@@ -294,7 +303,8 @@ boot_ram_entry:
 .nv_done:
         BSR     log_stored
 
-        ; selection follows the stored slot, clamped to what is shown
+        ; selection follows the stored slot, or the first entry when that is
+        ; not shown
         MOVE.B  VAR_BOOT_FLASH,D0
         SUBQ.B  #1,D0
         CMP.B   VAR_NUM_DISPLAY,D0
@@ -342,7 +352,7 @@ boot_ram_entry:
 ; main_loop — the one loop the menu runs in, and the only place anything
 ; periodic happens.
 ;
-; Nothing it calls waits.  A routine that cannot finish this pass records
+; Nothing it calls blocks on a condition.  A routine that cannot finish this
 ; where it got to and returns, so every pass is short and every pass reaches
 ; tick_periodic.  Adding a state below cannot stop the ball, because keeping
 ; the ball moving is not that state's business.
@@ -361,10 +371,11 @@ main_loop:
 ; tick_periodic — everything that has to keep happening, whatever state the
 ; loop is in.  Called once a pass from main_loop and from nowhere else.
 ;
-; The hook itself is outside the art switches.  A build without a ball drops
+; This routine is outside the art switches.  A build without a ball drops
 ; what is inside it, not the hook, so periodic work always has somewhere to go.
 ; ---------------------------------------------------------------------------
 tick_periodic:
+        BSR     key_poll                ; so a key appears as it is struck
     ifne CONFIG_BOOT_CHIME
         BSR     chime_tick              ; silence it once it has played out
     endc
@@ -373,15 +384,46 @@ tick_periodic:
     endc
         RTS
 
+; ---------------------------------------------------------------------------
+; key_poll — one read of the keyboard, held until the menu can act on it.
+;
+; The keyboard holds a press until the host handshakes it, so one left unread
+; arrives late.
+; This runs every pass in either state, so a key struck while the mouse
+; buttons are still coming up appears as the menu opens.
+;
+; In ST_RELEASE the buttons that asked for the menu are the ones still down,
+; and letting go of them is not a click, so the mouse tokens are dropped.
+; ---------------------------------------------------------------------------
+key_poll:
+        TST.B   VAR_PEND_KEY
+        BNE.S   .kp_done                ; one still waiting to be acted on
+        MOVEM.L D0,-(SP)
+        BSR     amiga_getkey
+        TST.B   D0
+        BEQ.S   .kp_out
+        CMPI.B  #ST_MENU,VAR_STATE
+        BEQ.S   .kp_keep
+        CMPI.B  #KEY_LMB,D0
+        BEQ.S   .kp_out
+        CMPI.B  #KEY_RMB,D0
+        BEQ.S   .kp_out
+.kp_keep:
+        MOVE.B  D0,VAR_PEND_KEY
+.kp_out:
+        MOVEM.L (SP)+,D0
+.kp_done:
+        RTS
+
     ifne CONFIG_BOOT_CHIME
 ; ---------------------------------------------------------------------------
 ; chime_tick — start the chime when its wait is up, and switch the channel off
-; one pass later.
+; once the sample has played through.
 ;
 ; Paula has no way to play a sample once.  It repeats for as long as the
 ; channel is on, so a single chime means switching the channel off after one
-; pass, and the length of a pass is known exactly from the sample and the
-; period.  The counter is free running, so both moments are right however long
+; play-through, and how long that takes is known exactly from the sample and
+; the period.  The counter is free running, so both moments are right however long
 ; the loop spent elsewhere.
 ; ---------------------------------------------------------------------------
 chime_tick:
@@ -407,7 +449,7 @@ chime_tick:
         MOVE.W  #CHIME_PERIOD,AUD0PER
 .cht_on:
         MOVE.W  #$8000+DMAF_AUD0,DMACON
-        BSR     tod_now                 ; and off again one pass later
+        BSR     tod_now                 ; and off again when the sample has played
         ADDI.L  #CHIME_TICKS_NTSC,D0
         TST.B   VAR_IS_PAL
         BEQ     .cht_end
@@ -418,7 +460,7 @@ chime_tick:
         MOVE.B  #2,VAR_CHIME_ON
         BRA     .cht_done
 
-        ; --- one pass done, switch it off ---
+        ; --- the sample has played through, switch it off ---
 .cht_off:
         CLR.W   AUD0VOL
         MOVE.W  #DMAF_AUD0,DMACON
@@ -454,7 +496,7 @@ release_step:
         RTS
 
 ; release_settle — the settle after the buttons read up.  It waits for
-; nothing, it is the same length every time and it runs once.
+; nothing.  It is the same length every time and it runs once.
 release_settle:
         MOVEM.L D0,-(SP)
         MOVE.W  #RELEASE_SETTLE,D0
@@ -465,23 +507,18 @@ release_settle:
         RTS
 
 ; ---------------------------------------------------------------------------
-; state_menu — one poll of the keyboard and the mouse, and what it asks for.
-; A left click or the arrows change the choice, a right click or RETURN boots
-; it, and a digit picks one of the first nine.
+; state_menu — acts on the key key_poll is holding.  A left click or the
+; arrows change the choice, a right click or RETURN boots it, and a digit
+; picks one of the first nine.
 ;
 ; Acting on a key redraws, which needs the blitter, so a key that arrives
 ; mid-frame is held until the frame is on screen rather than waited out on
-; BBUSY.  That is at most one frame's blits, and no key is lost: the keyboard
-; is left un-acknowledged until the held one has been dealt with.
+; BBUSY.  That is at most one frame's blits, and no key is lost: key_poll
+; reads no further while one is still waiting here.
 ; ---------------------------------------------------------------------------
 state_menu:
         TST.B   VAR_PEND_KEY
-        BNE.S   .sm_ready
-        BSR     amiga_getkey
-        TST.B   D0
         BEQ.S   .sm_done
-        MOVE.B  D0,VAR_PEND_KEY
-.sm_ready:
     ifne CONFIG_BANNER_BALL
         TST.B   VAR_ANIM_STEP
         BNE.S   .sm_done                ; a frame is part way through
@@ -544,7 +581,6 @@ sel_cycle_down:
         RTS
 
 do_boot:
-        BSR     banner_stop             ; nothing moving while RBCP is talking
         MOVEQ   #0,D0
         MOVE.B  VAR_SELECTION,D0
         ADDQ.B  #1,D0                   ; 1-based flash slot
@@ -577,7 +613,7 @@ boot_slot:
         MOVE.B  D0,VAR_BOOT_FLASH
         MOVE.B  D0,D3                   ; flash slot, kept across the calls
         MOVE.B  D3,D0
-        BSR     led_set_colour          ; the image's own colour, which outlives us
+        BSR     led_set_colour          ; the image's own colour, left set after the handover
         MOVE.B  D3,D0
         BSR     log_switch
         LEA     (msg_resetting).L,A0
@@ -620,6 +656,9 @@ boot_into_rom:
     ifne CONFIG_BOOT_CHIME
         BSR     chime_stop
     endc
+    ifne CONFIG_BANNER_ART+CONFIG_BANNER_BALL
+        BSR     blit_wait               ; let the last blit finish before DMA goes
+    endc
         ORI.W   #$0700,SR               ; interrupts off
         MOVE.W  #$7FFF,INTENA
         MOVE.W  #$7FFF,INTREQ
@@ -629,7 +668,7 @@ boot_into_rom:
         JMP     (A0)
 
 ; boot_settle — a delay long enough for the device to finish a LOAD_AND_EXIT
-; copy before the machine reads the new ROM.  Roughly 170ms at 7MHz.
+; copy before the machine reads the new ROM.  Roughly 650ms at 7MHz.
 boot_settle:
         MOVEM.L D0-D1,-(SP)
         MOVEQ   #6,D0
@@ -655,7 +694,7 @@ boot_settle:
 ; bytes of NV storage survive.  GET_NV_CAPABILITY says how many and which end
 ; of NV storage they sit at, the byte goes at the start of them, and
 ; RBCP_NV_SLOT_NONE is named in place of a slot.  A write of that kind loses
-; the rest of NV storage, which costs this bootloader nothing - one byte is all
+; the rest of NV storage, which costs this bootloader nothing — one byte is all
 ; it keeps.
 ; ---------------------------------------------------------------------------
 nv_locate:
@@ -664,6 +703,7 @@ nv_locate:
         TST.B   D0
         BNE.S   .nl_fail
         MOVEQ   #4,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
 
         MOVEQ   #0,D3
@@ -732,55 +772,7 @@ draw_title_at:
         BSR     screen_print_centred
         RTS
 
-; ---------------------------------------------------------------------------
-; draw_device — the device's own name and version along the bottom, with the
-; author beside them.  A device that will not name itself gets the author line
-; alone.
-;
-; Forty columns leave no room for a long device name beside "piers.rocks", so
-; the print limit is pulled in and a name that would reach it is cut short.
-; ---------------------------------------------------------------------------
-draw_device:
-        MOVE.B  #PEN_LIGHT,VAR_PEN
-        MOVE.B  #ROCKS_COL-1,VAR_COL_MAX
-        BSR     rbcp_cmd_get_device_type
-        TST.B   D0
-        BNE.S   .rocks
-        MOVEQ   #24,D0
-        BSR     rbcp_read_data
-        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
-        MOVE.B  #DEVICE_COL,D1
-        MOVE.B  #DEVICE_ROW,D2
-        BSR     screen_print
-        ; measure the type to place the version after it
-        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
-        MOVEQ   #DEVICE_COL,D3
-.dd_len:
-        TST.B   (A0)+
-        BEQ.S   .dd_gotlen
-        ADDQ.B  #1,D3
-        BRA.S   .dd_len
-.dd_gotlen:
-        ADDQ.B  #1,D3                   ; a space between
-        MOVE.B  D3,VAR_SAVED_KEY        ; the column, which the query clobbers
-        BSR     rbcp_cmd_get_device_version
-        TST.B   D0
-        BNE.S   .rocks
-        MOVEQ   #24,D0
-        BSR     rbcp_read_data
-        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
-        MOVE.B  VAR_SAVED_KEY,D1
-        MOVE.B  #DEVICE_ROW,D2
-        BSR     screen_print
-.rocks:
-        MOVE.B  #SCREEN_COLS,VAR_COL_MAX
-        MOVE.B  #PEN_GOLD,VAR_PEN
-        LEA     (str_rocks).L,A0
-        MOVE.B  #ROCKS_COL,D1
-        MOVE.B  #DEVICE_ROW,D2
-        BSR     screen_print
-        MOVE.B  #PEN_TEXT,VAR_PEN
-        RTS
+        INCLUDE "../amiga-common/amiga_device.s"
 
 ; ---------------------------------------------------------------------------
 ; draw_list — the images down the right of the band, beside the logo.  Every
@@ -808,6 +800,7 @@ draw_list:
         TST.B   D0
         BNE.S   .dl_fnext               ; a slot that will not describe: skip
         MOVEQ   #32,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
 
         LEA     (CONFIG_RBCP_DATA_BUF+RBCP_FLASH_NAME).W,A0
@@ -870,9 +863,9 @@ draw_entry:
         MOVEQ   #')',D0
         ADDQ.B  #1,D1
         BSR     screen_putchar
-        MOVEQ   #' ',D0                 ; the gap the name is set back from,
-        ADDQ.B  #1,D1                   ; drawn so the entry paints its whole
-        BSR     screen_putchar          ; span whatever was under it
+        MOVEQ   #' ',D0                 ; the gap before the name, drawn so the
+        ADDQ.B  #1,D1                   ; entry paints its whole span over
+        BSR     screen_putchar          ; whatever was under it
 
         BSR     name_slot_addr
         MOVEA.L A1,A0
@@ -930,8 +923,8 @@ sel_row:
         ADD.B   VAR_MENU_ROW0,D0
         RTS
 
-; draw_sel_entry — draw the selected entry.  draw_entry takes its index in D7,
-; which the menu loops are using for their own count.
+; draw_sel_entry — draw the selected entry.  draw_entry takes its index in D7
+; and the menu loops are using D7 for their own count.
 draw_sel_entry:
         MOVEM.L D7,-(SP)
         MOVEQ   #0,D7
@@ -949,104 +942,7 @@ draw_footer:
         MOVE.B  #PEN_TEXT,VAR_PEN
         RTS
 
-; ---------------------------------------------------------------------------
-; amiga_getkey — one poll of the keyboard and the mouse buttons.
-; Returns D0.B: 0 none, KEY_UP/DOWN/RETURN, KEY_LMB, or '1'..'9' for a digit.
-;
-; The keyboard arrives over the CIA-A serial port.  A received byte is the
-; keycode rotated and inverted, and bit 7 after decoding is the key-up flag.
-; The host must acknowledge each byte by driving the serial line as an output
-; for a short pulse, or the keyboard stops sending.
-; ---------------------------------------------------------------------------
-amiga_getkey:
-        MOVEM.L D1-D2/A0,-(SP)
-        MOVE.B  (CIAA_ICR).L,D1         ; read and clear the CIA-A status
-        BTST    #CIAA_ICR_SP,D1
-        BEQ.S   .gk_lmb
-        MOVE.B  (CIAA_SDR).L,D0         ; raw keycode
-        BSET    #CIAA_CRA_SPMODE,(CIAA_CRA).L   ; drive the handshake
-        MOVE.W  #250,D2
-.gk_hs:
-        DBF     D2,.gk_hs               ; ~85us and more
-        BCLR    #CIAA_CRA_SPMODE,(CIAA_CRA).L   ; back to input
-        NOT.B   D0
-        ROR.B   #1,D0                   ; keycode = ror(~raw)
-        BTST    #7,D0
-        BNE     .gk_none                ; a key release, ignore
-        ANDI.B  #$7F,D0
-        CMPI.B  #KBD_UP,D0
-        BEQ.S   .gk_up
-        CMPI.B  #KBD_DOWN,D0
-        BEQ.S   .gk_down
-        CMPI.B  #KBD_RETURN,D0
-        BEQ.S   .gk_ret
-        TST.B   D0                      ; digit scancodes are $01..$09
-        BEQ     .gk_none
-        CMPI.B  #$0A,D0
-        BCC     .gk_none
-        ADDI.B  #'0',D0                 ; scancode n -> '1'..'9'
-        BRA.S   .gk_out
-.gk_up:
-        MOVEQ   #KEY_UP,D0
-        BRA.S   .gk_out
-.gk_down:
-        MOVEQ   #KEY_DOWN,D0
-        BRA.S   .gk_out
-.gk_ret:
-        MOVEQ   #KEY_RETURN,D0
-.gk_out:
-        MOVEM.L (SP)+,D1-D2/A0
-        RTS
-.gk_lmb:
-        BTST    #CIAA_PRA_LMB,(CIAA_PRA).L
-        BNE.S   .gk_lmbup               ; bit set = not pressed
-        CLR.W   VAR_LMB_UP_CNT          ; down again: the settle count restarts
-        TST.B   VAR_LMB_HELD
-        BNE.S   .gk_rmb                 ; already reported this press
-        MOVE.B  #1,VAR_LMB_HELD
-        MOVEQ   #KEY_LMB,D0
-        BRA.S   .gk_out
-.gk_lmbup:
-        ; Arm the next press once the button has read up long enough for the
-        ; contact to have settled.  Bounce on either edge restarts the count.
-        TST.B   VAR_LMB_HELD
-        BEQ.S   .gk_rmb                 ; already armed
-        ADDQ.W  #1,VAR_LMB_UP_CNT
-        CMPI.W  #LMB_DEBOUNCE,VAR_LMB_UP_CNT
-        BCS.S   .gk_rmb                 ; still settling
-        CLR.B   VAR_LMB_HELD
-.gk_rmb:
-        MOVE.W  (POTGOR).L,D1
-        BTST    #POTGOR_RMB,D1
-        BNE.S   .gk_rmbup               ; bit set = not pressed
-        TST.B   VAR_RMB_HELD
-        BNE.S   .gk_none
-        MOVE.B  #1,VAR_RMB_HELD
-        MOVEQ   #KEY_RMB,D0
-        BRA.S   .gk_out
-.gk_rmbup:
-        CLR.B   VAR_RMB_HELD
-.gk_none:
-        MOVEQ   #0,D0
-        MOVEM.L (SP)+,D1-D2/A0
-        RTS
-
-; ---------------------------------------------------------------------------
-; both_buttons_held — D0.B = 1 where the left and right mouse buttons are both
-; down, else 0.  For the boot-time request for the menu.
-; ---------------------------------------------------------------------------
-both_buttons_held:
-        MOVEM.L D1,-(SP)
-        MOVEQ   #0,D0
-        BTST    #CIAA_PRA_LMB,(CIAA_PRA).L
-        BNE.S   .bbh_done               ; left not pressed
-        MOVE.W  (POTGOR).L,D1
-        BTST    #POTGOR_RMB,D1
-        BNE.S   .bbh_done               ; right not pressed
-        MOVEQ   #1,D0
-.bbh_done:
-        MOVEM.L (SP)+,D1
-        RTS
+        INCLUDE "../amiga-common/amiga_input.s"
 
 ; ===========================================================================
 ; RGB LED
@@ -1098,128 +994,7 @@ led_set_colour:
 ; Logging, through pipe 0 where the device has one
 ; ===========================================================================
 
-; pipe_puts — A0 = null-terminated string, sent to pipe 0 in four-byte chunks.
-; A chunk the device will not take ends the whole thing: waiting for room
-; would hang the machine on a far end that is not reading.
-pipe_puts:
-        MOVEM.L D0-D2/A0-A1,-(SP)
-.pp_chunk:
-        MOVEQ   #0,D2                   ; bytes gathered
-        LEA     (RBCP_ARG0).W,A1
-.pp_gather:
-        MOVE.B  (A0),D0
-        BEQ.S   .pp_flush
-        MOVE.B  D0,(A1)+
-        ADDQ.L  #1,A0
-        ADDQ.B  #1,D2
-        CMPI.B  #RBCP_PIPE_WRITE_MAX,D2
-        BNE.S   .pp_gather
-.pp_flush:
-        TST.B   D2
-        BEQ.S   .pp_done
-        MOVE.B  D2,D0                   ; count
-        MOVEQ   #0,D1                   ; pipe 0
-        BSR     rbcp_cmd_pipe_write
-        TST.B   D0
-        BNE.S   .pp_done                ; refused, or the far end is gone
-        CMPI.B  #RBCP_PIPE_WRITE_MAX,D2
-        BEQ.S   .pp_chunk               ; a full chunk, so there may be more
-.pp_done:
-        MOVEM.L (SP)+,D0-D2/A0-A1
-        RTS
-
-; log_line — A0 = string, sent with a trailing CRLF where a pipe is present.
-log_line:
-        TST.B   VAR_PIPE_PRESENT
-        BEQ.S   .ll_done
-        BSR     pipe_puts
-        BRA.S   log_crlf
-.ll_done:
-        RTS
-
-log_crlf:
-        MOVE.B  #13,RBCP_ARG0
-        MOVE.B  #10,RBCP_ARG1
-        MOVEQ   #2,D0
-        MOVEQ   #0,D1                   ; pipe 0
-        BRA     rbcp_cmd_pipe_write
-
-; log_dec — D0.B = value, sent as one or two decimal digits with no leading
-; zero.  Slot and RAM counts are all that go this way and none reaches a hundred.
-log_dec:
-        MOVEM.L D2-D3,-(SP)
-        MOVEQ   #0,D3                   ; tens
-.ld_tens:
-        CMPI.B  #10,D0
-        BCS.S   .ld_units
-        SUBI.B  #10,D0
-        ADDQ.B  #1,D3
-        BRA.S   .ld_tens
-.ld_units:
-        ADDI.B  #'0',D0
-        TST.B   D3
-        BEQ.S   .ld_one
-        MOVE.B  D0,RBCP_ARG1            ; units
-        ADDI.B  #'0',D3
-        MOVE.B  D3,RBCP_ARG0            ; tens
-        MOVEQ   #2,D0
-        BRA.S   .ld_send
-.ld_one:
-        MOVE.B  D0,RBCP_ARG0
-        MOVEQ   #1,D0
-.ld_send:
-        MOVEQ   #0,D1                   ; pipe 0
-        BSR     rbcp_cmd_pipe_write
-        MOVEM.L (SP)+,D2-D3
-        RTS
-
-; log_name_end — A0 = name, sent with a closing quote and a CRLF.  The opening
-; quote belongs to whatever prefix the caller sent.
-log_name_end:
-        BSR     pipe_puts
-        MOVE.B  #'"',RBCP_ARG0
-        MOVE.B  #13,RBCP_ARG1
-        MOVE.B  #10,RBCP_ARG2
-        MOVEQ   #3,D0
-        MOVEQ   #0,D1
-        BRA     rbcp_cmd_pipe_write
-
-; log_device — one line naming the device and what it holds.
-log_device:
-        TST.B   VAR_PIPE_PRESENT
-        BEQ     .lgd_done
-        BSR     rbcp_cmd_get_device_type
-        TST.B   D0
-        BNE.S   .lgd_counts
-        MOVEQ   #24,D0
-        BSR     rbcp_read_data
-        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
-        BSR     pipe_puts
-        BSR     rbcp_cmd_get_device_version
-        TST.B   D0
-        BNE.S   .lgd_sep
-        MOVEQ   #24,D0
-        BSR     rbcp_read_data
-        LEA     (msg_sp).L,A0
-        BSR     pipe_puts
-        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
-        BSR     pipe_puts
-.lgd_sep:
-        LEA     (msg_comma).L,A0
-        BSR     pipe_puts
-.lgd_counts:
-        MOVEQ   #0,D0
-        MOVE.B  VAR_TOTAL_FLASH,D0
-        BSR     log_dec
-        LEA     (msg_flash_slots).L,A0
-        BSR     pipe_puts
-        MOVEQ   #0,D0
-        MOVE.B  VAR_TOTAL_RAM,D0
-        BSR     log_dec
-        LEA     (msg_ram_slots).L,A0
-        BRA     log_line
-.lgd_done:
-        RTS
+        INCLUDE "../amiga-common/amiga_log.s"
 
 ; log_stored — what the device had remembered, before the menu is drawn.
 log_stored:
@@ -1281,6 +1056,7 @@ log_switch:
         TST.B   D0
         BNE.S   .lsw_done
         MOVEQ   #32,D0
+        MOVEQ   #0,D1
         BSR     rbcp_read_data
         LEA     (msg_name_open).L,A0
         BSR     pipe_puts
@@ -1307,227 +1083,23 @@ log_entry:
 .le_done:
         RTS
 
-; ===========================================================================
-; Error handler — D0 = error number.  Says what went wrong and stops.  There
-; is no way back: the session is in an unknown state and no image has loaded.
-; ===========================================================================
-err_halt:
-        MOVE.B  D0,VAR_ERR_NUM
-        BSR     log_error               ; to the pipe, where there is one
-    ifne CONFIG_BOOT_CHIME
-        BSR     chime_stop              ; nothing left running behind the error
-    endc
-        MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE    ; on screen, wherever we came
-        MOVE.B  #SCREEN_COLS,VAR_COL_MAX        ; from
-        BSR     screen_clear
-        ; The copper writes COLOR00 every frame, so the background changes by
-        ; writing the copper list, not the register.
-        MOVE.W  #COL_RED,(COPPER_BASE+COP_OFF_COLOR00).W
-        MOVE.B  #ERR_TITLE_ROW,D2
-        BSR     draw_title_at
-        LEA     (str_err).L,A0
-        MOVE.B  #ERROR_COL,D1
-        MOVE.B  #ERROR_ROW,D2
-        BSR     screen_print
-        MOVEQ   #0,D1
-        MOVE.B  VAR_ERR_NUM,D1
-        LSL.W   #2,D1                   ; a long per table entry
-        LEA     (err_msgs).L,A0
-        MOVEA.L (A0,D1.W),A0
-        MOVE.B  #ERROR_COL,D1
-        MOVE.B  #ERROR_ROW+2,D2
-        BSR     screen_print
-        BSR     draw_err_diag
-.eh_halt:
-        BRA.S   .eh_halt
-
-; ---------------------------------------------------------------------------
-; draw_err_diag — the raw state when the library gave up, for reporting.
-;
-; STAGE is how far the command got: 1 the device never acknowledged it, 2 it
-; did but never completed, 3 it completed and reported failure.  SGRP/SCMD are
-; what the bootloader was sending.  DGRP/DCMD are the last command the device
-; says it processed, so a shifted frame shows as the device answering
-; something other than what was asked.  TOK/PRG/RSP are the response header.
-; ---------------------------------------------------------------------------
-draw_err_diag:
-        MOVEM.L D0-D2/A0,-(SP)
-
-        MOVE.B  #ERROR_ROW+4,D2
-        MOVE.B  #ERROR_COL,D1
-        LEA     (str_d_stage).L,A0
-        MOVE.B  RBCP_ERROR_CODE,D0
-        BSR     diag_field
-        ADDQ.B  #2,D1
-        LEA     (str_d_sgrp).L,A0
-        MOVE.B  RBCP_GROUP,D0
-        BSR     diag_field
-        ADDQ.B  #1,D1
-        LEA     (str_d_cmd).L,A0
-        MOVE.B  RBCP_CMD,D0
-        BSR     diag_field
-
-        MOVE.B  #ERROR_ROW+5,D2
-        MOVE.B  #ERROR_COL,D1
-        LEA     (str_d_dgrp).L,A0
-        MOVE.B  (RBCP_LASTCMD_GRP_ADDR).L,D0
-        BSR     diag_field
-        ADDQ.B  #1,D1
-        LEA     (str_d_cmd).L,A0
-        MOVE.B  (RBCP_LASTCMD_CMD_ADDR).L,D0
-        BSR     diag_field
-        ADDQ.B  #1,D1
-        LEA     (str_d_tok).L,A0
-        MOVE.B  (RBCP_TOKEN_LSB_ADDR).L,D0
-        BSR     diag_field
-        ADDQ.B  #1,D1
-        LEA     (str_d_prg).L,A0
-        MOVE.B  (RBCP_PROGRESS_ADDR).L,D0
-        BSR     diag_field
-        ADDQ.B  #1,D1
-        LEA     (str_d_rsp).L,A0
-        MOVE.B  (RBCP_RESPONSE_ADDR).L,D0
-        BSR     diag_field
-
-        MOVEM.L (SP)+,D0-D2/A0
-        RTS
-
-; diag_field — A0 = label, D0.B = value, D1.B = column, D2.B = row.  Prints
-; the label then the value as two hex digits, and leaves D1 past both so the
-; next field chains on.  Clobbers D1 deliberately, and saves the rest.
-diag_field:
-        MOVEM.L D0/D3-D4/A0,-(SP)
-        MOVE.B  D0,D4                   ; value
-        BSR     screen_print            ; prints at D1, does not move it
-.dgf_len:
-        TST.B   (A0)+
-        BEQ.S   .dgf_gotlen
-        ADDQ.B  #1,D1
-        BRA.S   .dgf_len
-.dgf_gotlen:
-        MOVE.B  D4,D0
-        BSR     print_hex_byte          ; advances D1 by two
-        MOVEM.L (SP)+,D0/D3-D4/A0
-        RTS
-
-; print_hex_byte — D0.B as two hex digits at (D1=col, D2=row), D1 advanced by
-; two.  Saves everything but D1.
-print_hex_byte:
-        MOVEM.L D0/D3,-(SP)
-        MOVE.B  D0,D3
-        LSR.B   #4,D0
-        BSR.S   .phb_conv
-        BSR     screen_putchar
-        ADDQ.B  #1,D1
-        MOVE.B  D3,D0
-        ANDI.B  #$0F,D0
-        BSR.S   .phb_conv
-        BSR     screen_putchar
-        ADDQ.B  #1,D1
-        MOVEM.L (SP)+,D0/D3
-        RTS
-.phb_conv:
-        CMPI.B  #10,D0
-        BCS.S   .phb_dig
-        ADDI.B  #'A'-10,D0
-        RTS
-.phb_dig:
-        ADDI.B  #'0',D0
-        RTS
-
-; ---------------------------------------------------------------------------
-; log_error — the same diagnostics down the pipe, where there is one.  Nothing
-; is sent where command-response mode was never entered, since there is no
-; pipe then and the header would be meaningless.
-; ---------------------------------------------------------------------------
-log_error:
-        TST.B   VAR_PIPE_PRESENT
-        BEQ     .lge_done
-        LEA     (msg_rule).L,A0
-        BSR     log_line
-        LEA     (msg_err_pre).L,A0
-        BSR     pipe_puts
-        MOVEQ   #0,D1
-        MOVE.B  VAR_ERR_NUM,D1
-        LSL.W   #2,D1
-        LEA     (err_msgs).L,A0
-        MOVEA.L (A0,D1.W),A0
-        BSR     pipe_puts
-        BSR     log_crlf
-        LEA     (msg_err_st).L,A0       ; "  stage "
-        BSR     pipe_puts
-        MOVE.B  RBCP_ERROR_CODE,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_sent).L,A0     ; " sent "
-        BSR     pipe_puts
-        MOVE.B  RBCP_GROUP,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_slash).L,A0
-        BSR     pipe_puts
-        MOVE.B  RBCP_CMD,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_dev).L,A0      ; " dev "
-        BSR     pipe_puts
-        MOVE.B  (RBCP_LASTCMD_GRP_ADDR).L,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_slash).L,A0
-        BSR     pipe_puts
-        MOVE.B  (RBCP_LASTCMD_CMD_ADDR).L,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_tok).L,A0      ; " tok "
-        BSR     pipe_puts
-        MOVE.B  (RBCP_TOKEN_LSB_ADDR).L,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_prg).L,A0      ; " prg "
-        BSR     pipe_puts
-        MOVE.B  (RBCP_PROGRESS_ADDR).L,D0
-        BSR     log_hex_byte
-        LEA     (msg_err_rsp).L,A0      ; " rsp "
-        BSR     pipe_puts
-        MOVE.B  (RBCP_RESPONSE_ADDR).L,D0
-        BSR     log_hex_byte
-        BSR     log_crlf
-.lge_done:
-        RTS
-
-; log_hex_byte — D0.B as two hex digits down pipe 0.
-log_hex_byte:
-        MOVEM.L D0/D2-D3,-(SP)
-        MOVE.B  D0,D3
-        LSR.B   #4,D0
-        BSR.S   .lhb_conv
-        MOVE.B  D0,RBCP_ARG0
-        MOVE.B  D3,D0
-        ANDI.B  #$0F,D0
-        BSR.S   .lhb_conv
-        MOVE.B  D0,RBCP_ARG1
-        MOVEQ   #2,D0
-        MOVEQ   #0,D1
-        BSR     rbcp_cmd_pipe_write
-        MOVEM.L (SP)+,D0/D2-D3
-        RTS
-.lhb_conv:
-        CMPI.B  #10,D0
-        BCS.S   .lhb_dig
-        ADDI.B  #'A'-10,D0
-        RTS
-.lhb_dig:
-        ADDI.B  #'0',D0
-        RTS
-
+        INCLUDE "../amiga-common/amiga_error.s"
 
 ; ===========================================================================
 ; Banner — the tagline heading, the band, and the ball that bounces in it
 ;
 ; Everything here runs from the RAM section and touches only chip RAM and the
-; custom chips, so it cannot put a byte on the ROM bus.  That matters: while
-; an RBCP command is in flight a ROM read is taken by the device as the next
-; byte of the command, and the session comes apart with neither end able to
-; tell.  The animation is driven from the menu's own polling loop rather than
-; from a vertical blank interrupt, so it only ever runs at a moment when the
-; bootloader has nothing outstanding — the session's questions are all
-; answered before the menu goes up, and banner_stop runs before the commands
-; that boot a slot.
+; custom chips, so it cannot put a byte on the ROM bus.  Two moments need
+; that.  Between the knock and the response to ENTER_CMD_RESP, and after a
+; command the device never answered until rbcp_reset has re-opened the
+; session, a ROM read is taken as the next byte of a command.  Everywhere else
+; the device filters on the command page and a ROM read elsewhere is harmless,
+; so nothing here has to be stopped around a command.
+;
+; The animation is driven from the menu's polling loop rather than from a
+; vertical blank interrupt.  The loop never waits, so a step takes the blitter
+; at the first pass that finds it free.  Choosing a slot leaves that loop for
+; good, so the ball stands still from there to the handover.
 ;
 ; Copper, blitter and audio DMA read chip RAM and never the ROM, so they are
 ; left running throughout.
@@ -1769,85 +1341,7 @@ banner_start:
     endc
         RTS
 
-; ---------------------------------------------------------------------------
-; banner_stop — everything the banner set running, stopped.  Called before the
-; commands that boot a slot, so nothing is stealing bus cycles while the
-; device is being talked to.
-; ---------------------------------------------------------------------------
-banner_stop:
-    ifne CONFIG_BANNER_BALL
-        MOVE.B  #AN_IDLE,VAR_ANIM_STEP  ; no frame left half drawn
-    endc
-    ifne CONFIG_BANNER_ART+CONFIG_BANNER_BALL
-        BRA     blit_wait
-    else
-        RTS
-    endc
-
-    ifne CONFIG_BANNER_BALL+CONFIG_BOOT_CHIME
-; ---------------------------------------------------------------------------
-; beam_line — D0.W = the beam's line, all nine bits of it.  VPOSR carries the
-; top bit and VHPOSR the rest, and a long read takes both at once.
-; ---------------------------------------------------------------------------
-beam_line:
-        MOVE.L  (VPOSR).L,D0
-        LSR.L   #8,D0
-        ANDI.W  #$01FF,D0
-        RTS
-
-; ---------------------------------------------------------------------------
-; tod_now — D0.L = the CIA-B time of day counter, 24 bits.
-;
-; Reading the high byte latches all three so the value cannot tear, and
-; reading the low byte lets it go again.
-; ---------------------------------------------------------------------------
-tod_now:
-        MOVEM.L D1,-(SP)
-        MOVEQ   #0,D0
-        MOVE.B  (CIAB_TODHI).L,D0
-        LSL.L   #8,D0
-        MOVE.B  (CIAB_TODMID).L,D0
-        LSL.L   #8,D0
-        MOVE.B  (CIAB_TODLO).L,D0
-        ANDI.L  #$00FFFFFF,D0
-        MOVEM.L (SP)+,D1
-        RTS
-
-; ---------------------------------------------------------------------------
-; tod_start — set the counter going from zero.
-;
-; Writing the low byte is what starts it, and the high byte must be written
-; first.  CRB bit 7 clear means the writes go to the counter and not the alarm.
-; ---------------------------------------------------------------------------
-tod_start:
-        MOVEM.L D0,-(SP)
-        MOVE.B  (CIAB_CRB).L,D0
-        ANDI.B  #$7F,D0
-        MOVE.B  D0,(CIAB_CRB).L
-        CLR.B   (CIAB_TODHI).L
-        CLR.B   (CIAB_TODMID).L
-        CLR.B   (CIAB_TODLO).L          ; this one starts it
-        MOVEM.L (SP)+,D0
-        RTS
-
-; ---------------------------------------------------------------------------
-; wait_field — hold until the beam next leaves the display.  Chip registers
-; only, so no ROM is read while it waits.
-; Clobbers (saved/restored): D0
-; ---------------------------------------------------------------------------
-wait_field:
-        MOVEM.L D0,-(SP)
-.wf_below:
-        BSR     beam_line
-        CMP.W   VAR_TICK_LINE,D0
-        BCC.S   .wf_below               ; still past it from last time
-.wf_reach:
-        BSR     beam_line
-        CMP.W   VAR_TICK_LINE,D0
-        BCS.S   .wf_reach
-        MOVEM.L (SP)+,D0
-        RTS
-    endc
+        INCLUDE "../amiga-common/amiga_time.s"
 
     ifne CONFIG_BANNER_BALL
 ; ---------------------------------------------------------------------------
@@ -1855,9 +1349,9 @@ wait_field:
 ; waits: a step that needs the blitter and finds it busy leaves the state
 ; alone and returns, so the pass goes on to read the keyboard instead.
 ;
-; A frame still starts when the beam leaves the display — see FIELD_TICK_NTSC
-; — and its blits still run back to back.  The difference is where the CPU
-; spends the gaps between them.
+; A frame starts when the beam leaves the display — see FIELD_TICK_NTSC — and
+; its blits run back to back, with the CPU reading the keyboard in the gaps
+; between them.
 ; ---------------------------------------------------------------------------
 banner_tick:
         MOVEM.L D0,-(SP)
@@ -1974,8 +1468,8 @@ ball_cover:
         MOVEM.L (SP)+,D0-D2/D6-D7
         RTS
 
-; ball_cover_all — every plane of it, one blit after another.  For
-; banner_start, which is not on the main loop and has no frame to fit into.
+; ball_cover_all — every plane of it, one blit after another.  banner_start is
+; off the main loop and has no frame to fit into, so it takes them all at once.
 ball_cover_all:
         MOVEM.L D0,-(SP)
         MOVEQ   #0,D0
@@ -2400,13 +1894,6 @@ chime_start:
 ; way, which steps the output and clicks, so the volume is taken down over a
 ; few fields first.
 ; ---------------------------------------------------------------------------
-; ---------------------------------------------------------------------------
-; chime_stop — channel off and silent, before the machine is handed over.
-; Usually chime_tick has already switched it off and this does nothing.  A
-; boot that came round while the chime was still sounding cuts a bell off part
-; way, which steps the output and clicks, so the volume is taken down over a
-; few fields first.
-; ---------------------------------------------------------------------------
 chime_stop:
         MOVEM.L D0-D2,-(SP)
         TST.B   VAR_CHIME_ON
@@ -2431,186 +1918,7 @@ chime_stop:
     endc
 
     ifne CONFIG_BANNER_ART+CONFIG_BANNER_BALL
-; ===========================================================================
-; Blitter
-;
-; Every object is interleaved as the bitmap is, so the whole of it goes down
-; in one blit of HEIGHT*PLANES rows.  Each row carries one blank word on the
-; right, where the barrel shifter pushes the last pixels, which is what lets
-; an object land on any pixel column rather than only a word boundary.
-;
-; The asset masks were spread to four planes at startup, so they step at the
-; same rate as the object beside them and their modulo is zero too.
-; ===========================================================================
-
-; blit_wait — hold until the blitter has finished.
-blit_wait:
-        BTST    #6,(DMACONR).L          ; BBUSY, bit 14 of the word
-        BNE.S   blit_wait
-        RTS
-
-; ---------------------------------------------------------------------------
-; obj_dest — D6.W = x, D7.W = y.  Returns A1 = the word the object's top left
-; corner lands in, and D3.W = how far into that word.  It follows
-; VAR_DRAW_BASE, as the text routines do, so an object goes into the
-; foreground object or straight on screen by the same means.
-; ---------------------------------------------------------------------------
-obj_dest:
-        MOVEM.L D0-D1,-(SP)
-        MOVE.W  D6,D3
-        ANDI.W  #15,D3
-        MOVEQ   #0,D0
-        MOVE.W  D6,D0
-        LSR.W   #4,D0
-        ADD.W   D0,D0                   ; two bytes to the word
-        MOVEQ   #0,D1
-        MOVE.W  D7,D1
-        MULU    #SCREEN_ROW_BYTES,D1
-        ADD.L   D0,D1
-        MOVEA.L VAR_DRAW_BASE,A1
-        ADDA.L  D1,A1
-        MOVEM.L (SP)+,D0-D1
-        RTS
-
-; ---------------------------------------------------------------------------
-; draw_object — an object on the screen, cut out by its mask so what is behind
-; shows through where the object is transparent.
-; A0 = object, A2 = its spread mask, D0.W = words across, D1.W = pixel rows,
-; D6.W = x, D7.W = y.
-; ---------------------------------------------------------------------------
-draw_object:
-        MOVEM.L D1-D5/A1,-(SP)
-        BSR     obj_dest
-        MOVE.W  #SCREEN_BPL_W,D2
-        SUB.W   D0,D2
-        SUB.W   D0,D2                   ; the rest of the plane's row
-        LSL.W   #2,D1                   ; four planes to every pixel row
-        MOVEQ   #0,D4                   ; the object's rows are contiguous
-        MOVEQ   #0,D5                   ; and so are the spread mask's
-        BSR     blit_cookie
-        MOVEM.L (SP)+,D1-D5/A1
-        RTS
-
-; ---------------------------------------------------------------------------
-; draw_object_solid — the same, unmasked.  The object's own transparent pixels
-; are written as background, so this is only for an object landing on ground
-; that is already clear.
-; A0 = object, D0.W = words across, D1.W = pixel rows, D6.W = x, D7.W = y.
-; ---------------------------------------------------------------------------
-draw_object_solid:
-        MOVEM.L D1-D4/A1,-(SP)
-        BSR     obj_dest
-        MOVE.W  #SCREEN_BPL_W,D2
-        SUB.W   D0,D2
-        SUB.W   D0,D2
-        LSL.W   #2,D1
-        MOVEQ   #0,D4
-        BSR     blit_copy
-        MOVEM.L (SP)+,D1-D4/A1
-        RTS
-
-; ---------------------------------------------------------------------------
-; blit_clear — zero a rectangle.  D alone, with a minterm of zero.
-; A1 = first word, D0.W = words across, D1.W = blitter rows, D2.W = modulo.
-; ---------------------------------------------------------------------------
-blit_clear:
-        MOVEM.L D0-D2,-(SP)
-        BSR     blit_wait
-        MOVE.W  #$0100,BLTCON0          ; D enabled, every minterm clear
-        CLR.W   BLTCON1
-        MOVE.W  D2,BLTDMOD
-        MOVE.L  A1,BLTDPTH
-        LSL.W   #6,D1
-        OR.W    D0,D1
-        MOVE.W  D1,BLTSIZE
-        MOVEM.L (SP)+,D0-D2
-        RTS
-
-; ---------------------------------------------------------------------------
-; blit_copy — A straight into D, shifted.
-; A0 = source, A1 = destination, D0.W = words across, D1.W = blitter rows,
-; D2.W = destination modulo, D3.W = shift 0 to 15, D4.W = source modulo.
-; ---------------------------------------------------------------------------
-blit_copy:
-        MOVEM.L D0-D5,-(SP)
-        BSR     blit_wait
-        MOVE.W  D3,D5
-        ROR.W   #4,D5                   ; the shift lives in bits 15 to 12
-        ORI.W   #$09F0,D5               ; A and D enabled, D = A
-        MOVE.W  D5,BLTCON0
-        CLR.W   BLTCON1
-        MOVE.W  #$FFFF,BLTAFWM
-        MOVE.W  #$FFFF,BLTALWM
-        MOVE.W  D4,BLTAMOD
-        MOVE.W  D2,BLTDMOD
-        MOVE.L  A0,BLTAPTH
-        MOVE.L  A1,BLTDPTH
-        LSL.W   #6,D1
-        OR.W    D0,D1
-        MOVE.W  D1,BLTSIZE
-        MOVEM.L (SP)+,D0-D5
-        RTS
-
-; ---------------------------------------------------------------------------
-; blit_or — A into D over what C already holds, shifted.  Used to fold one
-; mask into another.
-; A0 = source, A1 = destination, D0.W = words across, D1.W = blitter rows,
-; D2.W = destination modulo, D3.W = shift, D4.W = source modulo.
-; ---------------------------------------------------------------------------
-blit_or:
-        MOVEM.L D0-D5,-(SP)
-        BSR     blit_wait
-        MOVE.W  D3,D5
-        ROR.W   #4,D5
-        ORI.W   #$0BFA,D5               ; A, C and D enabled, D = A OR C
-        MOVE.W  D5,BLTCON0
-        CLR.W   BLTCON1
-        MOVE.W  #$FFFF,BLTAFWM
-        MOVE.W  #$FFFF,BLTALWM
-        MOVE.W  D4,BLTAMOD
-        MOVE.W  D2,BLTCMOD
-        MOVE.W  D2,BLTDMOD
-        MOVE.L  A0,BLTAPTH
-        MOVE.L  A1,BLTCPTH
-        MOVE.L  A1,BLTDPTH
-        LSL.W   #6,D1
-        OR.W    D0,D1
-        MOVE.W  D1,BLTSIZE
-        MOVEM.L (SP)+,D0-D5
-        RTS
-
-; ---------------------------------------------------------------------------
-; blit_cookie — the mask decides, pixel by pixel, whether the object or what
-; is already on screen comes out: D = A AND B, OR NOT A AND C, which is
-; minterm $CA with A the mask, B the object and C the screen.  A and B shift
-; together, A's amount from BLTCON0 and B's from BLTCON1.
-; A0 = object, A2 = mask, A1 = destination, D0.W = words across,
-; D1.W = blitter rows, D2.W = destination modulo, D3.W = shift,
-; D4.W = object modulo, D5.W = mask modulo.
-; ---------------------------------------------------------------------------
-blit_cookie:
-        MOVEM.L D0-D6,-(SP)
-        BSR     blit_wait
-        MOVE.W  D3,D6
-        ROR.W   #4,D6
-        MOVE.W  D6,BLTCON1              ; the mask shifts with the object
-        ORI.W   #$0FCA,D6               ; A, B, C and D enabled
-        MOVE.W  D6,BLTCON0
-        MOVE.W  #$FFFF,BLTAFWM
-        MOVE.W  #$FFFF,BLTALWM
-        MOVE.W  D5,BLTAMOD
-        MOVE.W  D4,BLTBMOD
-        MOVE.W  D2,BLTCMOD
-        MOVE.W  D2,BLTDMOD
-        MOVE.L  A2,BLTAPTH
-        MOVE.L  A0,BLTBPTH
-        MOVE.L  A1,BLTCPTH
-        MOVE.L  A1,BLTDPTH
-        LSL.W   #6,D1
-        OR.W    D0,D1
-        MOVE.W  D1,BLTSIZE
-        MOVEM.L (SP)+,D0-D6
-        RTS
+        INCLUDE "../amiga-common/amiga_blit.s"
     endc
 
 ; ============================================================
@@ -2618,194 +1926,7 @@ blit_cookie:
 ; ============================================================
         INCLUDE "../rbcp/rbcp.s"
 
-; ============================================================
-; Screen rendering and hex output (RAM section)
-; font_data lives in the ROM data section and is reached by absolute long
-; address, correct from any execution address.
-; ============================================================
-
-; ---------------------------------------------------------------------------
-; The bitmap is interleaved, so one character row is 1280 contiguous bytes —
-; eight pixel rows of plane 0, 1, 2, 3 in turn, 40 bytes each.  A character
-; cell is a column within it, and stepping down one pixel row is +160.
-;
-; A character cell takes two pens: VAR_PEN for the glyph and VAR_PEN_BG for
-; the rest of the cell.  Both are written, so a character covers whatever was
-; there, and text on the highlight bar is black on gold rather than black on
-; a hole punched through it.
-;
-; They are variables rather than arguments because screen_print, draw_entry,
-; diag_field and print_hex_byte all sit between a caller and screen_putchar.
-; ---------------------------------------------------------------------------
-
-; ---------------------------------------------------------------------------
-; screen_clear — zero every plane of the whole bitmap
-; Also called from screen_init in the ROM section, via the ROM copy here.
-; Clobbers (saved/restored): D0/A0
-; ---------------------------------------------------------------------------
-screen_clear:
-        MOVEM.L D0/A0,-(SP)
-        LEA     (BITPLANE_BASE).L,A0
-        MOVE.W  #SCREEN_BPL_SZ/4-1,D0
-.sc_loop:
-        CLR.L   (A0)+
-        DBF     D0,.sc_loop
-        MOVEM.L (SP)+,D0/A0
-        RTS
-
-; ---------------------------------------------------------------------------
-; screen_fill_row — fill one character row with VAR_PEN, from VAR_MENU_COL to
-; the right edge.  That is the list's span, which is what the highlight bar
-; covers, and it stops the bar reaching the logo beside the list.
-; Input : D0.B = row
-; Clobbers (saved/restored): D0-D6/A0
-; ---------------------------------------------------------------------------
-screen_fill_row:
-        MOVEM.L D0-D6/A0,-(SP)
-        MOVEQ   #0,D1
-        MOVE.B  D0,D1
-        MULU    #ROW_STRIDE,D1
-        MOVEA.L VAR_DRAW_BASE,A0
-        ADDA.L  D1,A0
-        MOVEQ   #0,D3
-        MOVE.B  VAR_MENU_COL,D3
-        ADDA.W  D3,A0                   ; the bar's first column
-        NEG.W   D3
-        ADDI.W  #SCREEN_COLS-1,D3       ; columns it covers, less one
-        MOVEQ   #0,D1
-        MOVE.B  VAR_PEN,D1
-        MOVEQ   #7,D5                   ; eight pixel rows
-.fr_line:
-        MOVEQ   #0,D4                   ; plane number
-.fr_plane:
-        MOVEQ   #0,D2
-        BTST    D4,D1
-        BEQ.S   .fr_mask
-        MOVEQ   #-1,D2                  ; this plane is set right across
-.fr_mask:
-        MOVE.W  D3,D6
-.fr_byte:
-        MOVE.B  D2,(A0)+
-        DBF     D6,.fr_byte
-        ADDA.W  #SCREEN_BPL_W-1,A0      ; the same column, one plane on
-        SUBA.W  D3,A0
-        ADDQ.B  #1,D4
-        CMPI.B  #SCREEN_PLANES,D4
-        BCS.S   .fr_plane
-        DBF     D5,.fr_line
-        MOVEM.L (SP)+,D0-D6/A0
-        RTS
-
-; ---------------------------------------------------------------------------
-; screen_putchar — render one ASCII character into the bitmap
-; Input : D0.B = character code, D1.B = column (0-39), D2.B = row (0-31)
-;         VAR_PEN = glyph pen, VAR_PEN_BG = pen for the rest of the cell
-;
-; Within a plane the byte is the background mask with the glyph's bits
-; switched to the foreground mask, which is what base EOR (sel AND glyph)
-; comes to.
-; Clobbers (saved/restored): D0-D7/A0-A2
-; ---------------------------------------------------------------------------
-screen_putchar:
-        MOVEM.L D0-D7/A0-A2,-(SP)
-
-        ; Cell address in plane 0 = VAR_DRAW_BASE + row*1280 + col.  The offset
-        ; runs past $7FFF at the bottom of the screen, so it is kept long.
-        MOVEQ   #0,D3
-        MOVE.B  D2,D3
-        MULU    #ROW_STRIDE,D3
-        MOVEQ   #0,D7
-        MOVE.B  D1,D7
-        ADD.L   D7,D3
-        MOVEA.L VAR_DRAW_BASE,A1
-        ADDA.L  D3,A1
-
-        ; Glyph address = font_data + char_code * 8
-        MOVEQ   #0,D3
-        MOVE.B  D0,D3
-        ASL.W   #3,D3
-        LEA     (font_data).L,A0
-        ADDA.W  D3,A0
-
-        MOVEQ   #0,D4
-        MOVE.B  VAR_PEN,D4
-        MOVEQ   #0,D5
-        MOVE.B  VAR_PEN_BG,D5
-
-        MOVEQ   #0,D6                   ; plane number
-.pc_plane:
-        MOVEQ   #0,D2                   ; D2 = this plane's background bits
-        BTST    D6,D5
-        BEQ.S   .pc_fg
-        MOVEQ   #-1,D2
-.pc_fg:
-        MOVEQ   #0,D3                   ; D3 = this plane's foreground bits
-        BTST    D6,D4
-        BEQ.S   .pc_sel
-        MOVEQ   #-1,D3
-.pc_sel:
-        EOR.B   D2,D3                   ; the bits the glyph switches
-        MOVEA.L A0,A2                   ; the glyph, from its first line
-        MOVEQ   #7,D7                   ; eight scan lines
-.pc_line:
-        MOVE.B  (A2)+,D0
-        AND.B   D3,D0
-        EOR.B   D2,D0
-        MOVE.B  D0,(A1)
-        ADDA.W  #SCREEN_ROW_BYTES,A1
-        DBF     D7,.pc_line
-        ; back up to line 0, one plane further in
-        SUBA.W  #SCREEN_ROW_BYTES*8-SCREEN_BPL_W,A1
-        ADDQ.B  #1,D6
-        CMPI.B  #SCREEN_PLANES,D6
-        BCS.S   .pc_plane
-
-        MOVEM.L (SP)+,D0-D7/A0-A2
-        RTS
-
-; ---------------------------------------------------------------------------
-; screen_print — print a null-terminated ASCII string in VAR_PEN
-; Input : A0 = string pointer, D1.B = column, D2.B = row
-; Characters at or beyond VAR_COL_MAX are dropped, so a name too wide for the
-; space it has is cut short rather than running into what is beside it.
-; Clobbers (saved/restored): D0-D2/A0
-; ---------------------------------------------------------------------------
-screen_print:
-        MOVEM.L D0-D2/A0,-(SP)
-.sp_loop:
-        MOVE.B  (A0)+,D0
-        BEQ.S   .sp_done
-        CMP.B   VAR_COL_MAX,D1
-        BCC.S   .sp_done
-        BSR     screen_putchar
-        ADDQ.B  #1,D1
-        BRA.S   .sp_loop
-.sp_done:
-        MOVEM.L (SP)+,D0-D2/A0
-        RTS
-
-; screen_print_centred — A0 = string, D2.B = row.  Centres the string across
-; the screen.  A string wider than the screen starts at column 0.
-screen_print_centred:
-        MOVEM.L D0-D1/A0-A1,-(SP)
-        MOVEA.L A0,A1                   ; keep the start
-        MOVEQ   #0,D0
-.spc_len:
-        TST.B   (A0)+
-        BEQ.S   .spc_got
-        ADDQ.W  #1,D0
-        BRA.S   .spc_len
-.spc_got:
-        MOVEQ   #SCREEN_COLS,D1
-        SUB.W   D0,D1
-        BPL.S   .spc_col
-        MOVEQ   #0,D1
-.spc_col:
-        LSR.W   #1,D1
-        MOVEA.L A1,A0
-        BSR     screen_print
-        MOVEM.L (SP)+,D0-D1/A0-A1
-        RTS
+        INCLUDE "../amiga-common/amiga_screen.s"
 
         EVEN
 ram_section_rom_end:
@@ -2816,65 +1937,7 @@ ram_section_rom_end:
 ; address, so correct from any PC.
 ; ============================================================
 
-; ---------------------------------------------------------------------------
-; Copper list template
-;
-; screen_init copies this to chip RAM and patches the four bitplane pointers,
-; and DIWSTOP where the Agnus is PAL.  The offsets below are what it patches
-; through, so the order here and those three equates go together.
-; ---------------------------------------------------------------------------
-        EVEN
-copper_template:
-cop_bplpt:
-        DC.W    COP_BPL1PTH,$0000       ; the four pointers, patched by
-        DC.W    COP_BPL1PTL,$0000       ; screen_init to plane 0..3 within
-        DC.W    COP_BPL1PTH+4,$0000     ; the bitmap's first pixel row
-        DC.W    COP_BPL1PTL+4,$0000
-        DC.W    COP_BPL1PTH+8,$0000
-        DC.W    COP_BPL1PTL+8,$0000
-        DC.W    COP_BPL1PTH+12,$0000
-        DC.W    COP_BPL1PTL+12,$0000
-        DC.W    COP_BPLCON0,BPLCON0_4PL
-        DC.W    COP_BPLCON1,$0000
-        DC.W    COP_BPLCON2,$0024
-        DC.W    COP_BPL1MOD,SCREEN_BPL_MOD
-        DC.W    COP_BPL2MOD,SCREEN_BPL_MOD
-        DC.W    COP_DDFSTRT,DDF_START
-        DC.W    COP_DDFSTOP,DDF_STOP
-        DC.W    COP_DIWSTRT,DIW_START
-cop_diwstop:
-        DC.W    COP_DIWSTOP,DIW_STOP_NTSC   ; PAL height patched in
-cop_colours:
-        DC.W    COP_COLOR00+0,PEN00_RGB
-        DC.W    COP_COLOR00+2,PEN01_RGB
-        DC.W    COP_COLOR00+4,PEN02_RGB
-        DC.W    COP_COLOR00+6,PEN03_RGB
-        DC.W    COP_COLOR00+8,PEN04_RGB
-        DC.W    COP_COLOR00+10,PEN05_RGB
-        DC.W    COP_COLOR00+12,PEN06_RGB
-        DC.W    COP_COLOR00+14,PEN07_RGB
-        DC.W    COP_COLOR00+16,PEN08_RGB
-        DC.W    COP_COLOR00+18,PEN09_RGB
-        DC.W    COP_COLOR00+20,PEN10_RGB
-        DC.W    COP_COLOR00+22,PEN11_RGB
-        DC.W    COP_COLOR00+24,PEN12_RGB
-        DC.W    COP_COLOR00+26,PEN13_RGB
-        DC.W    COP_COLOR00+28,PEN14_RGB
-        DC.W    COP_COLOR00+30,PEN15_RGB
-        DC.W    $FFFF,$FFFE             ; END
-copper_template_end:
-
-; Byte offsets into the copied list of the data words the code writes.
-COP_OFF_BPL1PTH     EQU cop_bplpt-copper_template+2
-COP_OFF_DIWSTOP     EQU cop_diwstop-copper_template+2
-COP_OFF_COLOR00     EQU cop_colours-copper_template+2
-
-; font_8x8.bin: 256 glyphs * 8 bytes = 2048 bytes, no header.
-; One byte per scan line, MSB = leftmost pixel.
-        EVEN
-font_data:
-        INCBIN  "font_8x8.bin"
-font_data_end:
+        INCLUDE "../amiga-common/amiga_screen_data.s"
 
         EVEN
 str_title:
@@ -2886,19 +1949,17 @@ str_log_title:
         DC.B    "Amiga RBCP Bootloader "
         APP_VERSION
         DC.B    0
+
+        INCLUDE "../amiga-common/amiga_device_data.s"
+        INCLUDE "../amiga-common/amiga_input_data.s"
+
         EVEN
-str_rocks:
-        DC.B    "piers.rocks",0
-        EVEN
-; The controls, in the 40 columns there are.
+; The controls line, fitted to the screen's 40 columns.
 str_footer:
         DC.B    "MOVE: ARROWS/CLICK  BOOT: RET/R-CLICK",0
-        EVEN
-str_err:
-        DC.B    "RBCP ERROR",0
-        EVEN
-msg_rule:
-        DC.B    "-----",0
+
+        INCLUDE "../amiga-common/amiga_error_data.s"
+
         EVEN
 msg_resetting:
         DC.B    "Bootloader finished - resetting system",0
@@ -2917,18 +1978,9 @@ msg_indent:
         EVEN
 msg_sp_quote:
         DC.B    " ",$22,0
-        EVEN
-msg_sp:
-        DC.B    " ",0
-        EVEN
-msg_comma:
-        DC.B    ", ",0
-        EVEN
-msg_flash_slots:
-        DC.B    " flash ROM slots, ",0
-        EVEN
-msg_ram_slots:
-        DC.B    " RAM slots",0
+
+        INCLUDE "../amiga-common/amiga_log_data.s"
+
         EVEN
 msg_switching:
         DC.B    "Switching to slot ",0
@@ -2949,7 +2001,7 @@ msg_err_0:
         DC.B    "NO REPLY",0
         EVEN
 msg_err_1:
-        DC.B    "PROTOCOL VERSION",0
+        DC.B    "DEVICE REPORTS INCOMPATIBLE VERSION",0
         EVEN
 msg_err_2:
         DC.B    "NO RAM INFO",0
@@ -2967,55 +2019,7 @@ err_msgs:
         DC.L    msg_err_0, msg_err_1, msg_err_2
         DC.L    msg_err_3, msg_err_4, msg_err_5
 
-; Diagnostic field labels, on screen.
-        EVEN
-str_d_stage:
-        DC.B    "STAGE:",0
-        EVEN
-str_d_sgrp:
-        DC.B    "SGRP:",0
-        EVEN
-str_d_cmd:
-        DC.B    "CMD:",0
-        EVEN
-str_d_dgrp:
-        DC.B    "DGRP:",0
-        EVEN
-str_d_tok:
-        DC.B    "TOK:",0
-        EVEN
-str_d_prg:
-        DC.B    "PRG:",0
-        EVEN
-str_d_rsp:
-        DC.B    "RSP:",0
-        EVEN
-
-; Diagnostic labels, down the pipe.
-msg_err_pre:
-        DC.B    "RBCP ERROR: ",0
-        EVEN
-msg_err_st:
-        DC.B    "  stage ",0
-        EVEN
-msg_err_sent:
-        DC.B    " sent ",0
-        EVEN
-msg_err_slash:
-        DC.B    "/",0
-        EVEN
-msg_err_dev:
-        DC.B    " dev ",0
-        EVEN
-msg_err_tok:
-        DC.B    " tok ",0
-        EVEN
-msg_err_prg:
-        DC.B    " prg ",0
-        EVEN
-msg_err_rsp:
-        DC.B    " rsp ",0
-        EVEN
+        INCLUDE "../amiga-common/amiga_diag_data.s"
 
 ; A colour per flash slot, three bytes each, the slot taken modulo eight.
 ; Slot 0 is the bootloader and never boots, so its white entry is what a slot

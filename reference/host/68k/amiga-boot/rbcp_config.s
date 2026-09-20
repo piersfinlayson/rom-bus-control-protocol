@@ -2,8 +2,8 @@
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
 ; Target: Amiga A500 (68000, 16-bit bus) with a single word-organised (x16)
-; Kickstart ROM.  Both 256 KB and 512 KB Kickstart sizes are supported;
-; change CONFIG_ROM_KB below and everything else follows.
+; Kickstart ROM.  Both 256 KB and 512 KB Kickstart sizes are supported.
+; Change CONFIG_ROM_KB below and everything else follows.
 
 ; ---------------------------------------------------------------------------
 ; ROM geometry
@@ -24,7 +24,7 @@ CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
 ; One x16 device on a 16-bit bus:
 ;   BUS_SHIFT  1  one device bus cycle is 2 CPU address bytes
 ;   DEV_SHIFT  1  the device supplies 2 bytes per bus cycle
-;   DEV_MASK   1  ...so region offset bit 0 selects within the pair
+;   DEV_MASK   1  region offset bit 0 selects within the pair
 ;   LANE_OFF   0  the device occupies the whole bus width
 ;   ENDIAN_XOR 1  the specification puts the even region offset on D0-D7,
 ;                 which on a big-endian 68K is the HIGHER CPU address of the
@@ -74,12 +74,22 @@ CONFIG_RBCP_COMPLETE        EQU $BB             ; inverse $44 = pending
 CONFIG_RBCP_STATUS_OK       EQU $CC             ; inverse $33 = failed
 
 ; ---------------------------------------------------------------------------
-; Timeouts and retries — arbitrary loop counts, no fixed unit.  0 = forever.
+; Timeouts and retries — counts of a poll, and 0 = forever.
+;
+; One turn of the poll loop in rbcp.s is 46 cycles, 6.5us at 7.09MHz, so a
+; count here is that many 6.5us turns.  Somebody is watching the menu
+; while these run, so a device that has stopped answering has to be given up
+; on while they are still willing to wait.
 ; ---------------------------------------------------------------------------
-CONFIG_RBCP_POLL_TIMEOUT    EQU $0000FFFF
-CONFIG_RBCP_NV_POLL_TIMEOUT EQU $00FFFFFF       ; flash erase takes ms
+CONFIG_RBCP_POLL_TIMEOUT    EQU $0000FFFF       ; 0.43s, and LOAD_SLOT polls on it
+CONFIG_RBCP_NV_POLL_TIMEOUT EQU $00080000       ; 3.4s, against a flash erase of ms
 CONFIG_RBCP_TIMEOUT_RETRIES EQU 3
 CONFIG_RBCP_CMD_PAUSE       EQU $100            ; inter-command gap, cmd mode
+
+; SET_AUX with a hold waits on its own timeout rather than the NV one, because
+; the two bound unrelated things.  A hold runs to 2.55 seconds and the device
+; answers only once it has elapsed.
+CONFIG_RBCP_AUX_POLL_TIMEOUT EQU $000C0000      ; 5.1s, over the longest hold
 
 ; ---------------------------------------------------------------------------
 ; Scratch RAM used by the RBCP library — 32 bytes of chip RAM, clear of the

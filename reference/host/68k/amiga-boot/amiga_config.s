@@ -22,7 +22,7 @@ CONFIG_DEV_ALWAYS_MENU      EQU 0
 ;   CONFIG_BANNER_BALL    the checkered ball that bounces behind the logo and
 ;                         the list, and spins as it goes
 ;   CONFIG_BANNER_SHADOW  the ball's drop shadow.  Needs the ball.  Off by
-;                         default, because the background is black and a
+;                         default because the background is black and a
 ;                         shadow on it comes out as a pale halo
 ;
 ; Built with `make ART=0`, `make BALL=0`, `make SHADOW=1`.
@@ -37,9 +37,16 @@ CONFIG_BANNER_BALL          EQU 1
 CONFIG_BANNER_SHADOW        EQU 0
     endc
 
-; No ball means no shadow, whatever the command line said.  This is what the
-; rest of the source tests.
+; No ball means no shadow, whatever the command line said.  The rest of the
+; source tests BANNER_SHADOW.
 BANNER_SHADOW               EQU CONFIG_BANNER_BALL*CONFIG_BANNER_SHADOW
+
+; The shadow draws in pen 14, which the common palette otherwise leaves as
+; background.  Pen 14 is set here because the palette is included after this
+; file and leaves a pen already defined alone.
+    ifne BANNER_SHADOW
+PEN14_RGB                   EQU $0333
+    endc
 
 ; The foreground object exists only to be put back over the ball, so it is
 ; built only when there is a ball.

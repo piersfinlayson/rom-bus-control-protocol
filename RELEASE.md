@@ -11,11 +11,15 @@ application at its own version, never at the tag.
 ## A full RBCP release
 
 1. Set the version at the top of `spec/rbcp.md`, and record the changes in
-   `spec/CHANGELOG.md`.
+   `spec/CHANGELOG.md` under a heading carrying that version. That section
+   opens the release body, so a version with no section of its own fails the
+   release.
 2. Raise the version of every application whose code changed since the last
    release. The section below says where each one lives.
-3. Tag and push. `release.yml` builds the ROM images and `romsel.exe`, and
-   attaches them to a GitHub release with the specification.
+3. Tag and push. `release.yml` builds the ROM images and `romsel.exe` and
+   attaches one zip per platform to a GitHub release, with the specification.
+   `tools/release_assets.py` holds the list of files each zip carries and stops
+   the release if one is missing.
 
    ```
    git tag v0.1.2
@@ -39,13 +43,18 @@ at an RBCP release.
    | `vic20-boot` | `APP_VERSION` in `reference/host/6502/vic20-boot/src/vic20_defs.s` |
    | `apple2-boot` | `APP_VERSION` in `reference/host/6502/apple2-boot/src/apple2_defs.s` |
    | `amiga-boot` | `APP_VERSION` in `reference/host/68k/amiga-boot/amiga_boot.s` |
+   | `amiga-rbcp-stress` | `APP_VERSION` in `reference/host/68k/amiga-rbcp-stress/amiga_stress.s` |
+   | `amiga-pipe-test` | `APP_VERSION` in `reference/host/68k/amiga-pipe-test/amiga_pipe.s` |
+   | `amiga-rbcp-term` | `APP_VERSION` in `reference/host/68k/amiga-rbcp-term/amiga_term.s` |
+   | `amiga-aux-io` | `APP_VERSION` in `reference/host/68k/amiga-aux-io/amiga_auxio.s` |
+   | `amiga-led-test` | `APP_VERSION` in `reference/host/68k/amiga-led-test/amiga_led_test.s` |
    | `romsel` | `CFG_VERSION` in `reference/host/x86/romsel/config.h` |
 
 2. Build it.
 
    - The 6502 images: cc65.
-   - The Amiga ones: `vasmm68k_mot`. `make ROM_KB=512` and `make ROM_KB=256`,
-     taking the swapped image each time.
+   - The Amiga ones: `vasmm68k_mot`. `make images` writes both sizes under the
+     names a release carries, already in the device's byte order.
    - ROMSEL: Open Watcom, which has no macOS build. Use a DOS or Linux
      machine, or the artefact from the `build.yml` run.
 

@@ -85,17 +85,29 @@ jobs:
         working-directory: reference/host/6502/apple2-rbcp-term
         run: make
 
-      # Both sizes, in the device's byte order.  The target goes as well as
-      # the swapped image, or the next size is taken as up to date and never
-      # built.
       - name: Build amiga-boot
         working-directory: reference/host/68k/amiga-boot
-        run: |
-          make ROM_KB=512
-          mv build/amiga_boot_swapped.bin build/amiga_boot_512k.bin
-          rm build/amiga_boot.bin
-          make
-          mv build/amiga_boot_swapped.bin build/amiga_boot_256k.bin
+        run: make images
+
+      - name: Build amiga-rbcp-stress
+        working-directory: reference/host/68k/amiga-rbcp-stress
+        run: make images
+
+      - name: Build amiga-pipe-test
+        working-directory: reference/host/68k/amiga-pipe-test
+        run: make images
+
+      - name: Build amiga-rbcp-term
+        working-directory: reference/host/68k/amiga-rbcp-term
+        run: make images
+
+      - name: Build amiga-aux-io
+        working-directory: reference/host/68k/amiga-aux-io
+        run: make images
+
+      - name: Build amiga-led-test
+        working-directory: reference/host/68k/amiga-led-test
+        run: make images
 
       - name: Build c64-pipe-test
         working-directory: reference/host/6502/c64-pipe-test
@@ -121,44 +133,21 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#spec/}" >> $GITHUB_OUTPUT
 
+      # tools/release_assets.py holds the file list and stops if a file the
+      # steps above should have built is missing.
+      - name: Gather the artefacts and write the release body
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 tools/release_assets.py zips build/release
+          python3 tools/release_assets.py notes "$VERSION" > build/release-body.md
+          cat build/release-body.md
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: RBCP ${{ steps.version.outputs.version }}
+          body_path: build/release-body.md
           files: |
             spec/rbcp.md
-            reference/host/6502/c64-boot/build/c64_boot.bin
-            reference/host/6502/vic20-boot/build/vic20_boot_pal.bin
-            reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
-            reference/host/6502/apple2-boot/build/apple2_boot_f8.bin
-            reference/host/6502/apple2-boot/build/apple2_boot_ef.bin
-            reference/host/6502/c64-rbcp-stress/build/c64_meter_kernal.bin
-            reference/host/6502/c64-rbcp-stress/build/c64_meter_basic.bin
-            reference/host/6502/c64-rbcp-stress/build/c64_meter_combined.bin
-            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_pal.bin
-            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_ntsc.bin
-            reference/host/6502/apple2-rbcp-stress/build/apple2_meter.bin
-            reference/host/6502/c64-aux-io/build/c64_auxio_kernal.bin
-            reference/host/6502/c64-aux-io/build/c64_auxio_basic.bin
-            reference/host/6502/c64-aux-io/build/c64_auxio_combined.bin
-            reference/host/6502/vic20-aux-io/build/vic20_auxio_pal.bin
-            reference/host/6502/vic20-aux-io/build/vic20_auxio_ntsc.bin
-            reference/host/6502/apple2-aux-io/build/apple2_auxio.bin
-            reference/host/6502/c64-rbcp-term/build/c64_term_kernal.bin
-            reference/host/6502/c64-rbcp-term/build/c64_term_basic.bin
-            reference/host/6502/c64-rbcp-term/build/c64_term_combined.bin
-            reference/host/6502/vic20-rbcp-term/build/vic20_term_pal.bin
-            reference/host/6502/vic20-rbcp-term/build/vic20_term_ntsc.bin
-            reference/host/6502/apple2-rbcp-term/build/apple2_term.bin
-            reference/host/6502/c64-pipe-test/build/c64_pipe_kernal.bin
-            reference/host/6502/c64-pipe-test/build/c64_pipe_basic.bin
-            reference/host/6502/c64-pipe-test/build/c64_pipe_combined.bin
-            reference/host/6502/vic20-pipe-test/build/vic20_pipe_pal.bin
-            reference/host/6502/vic20-pipe-test/build/vic20_pipe_ntsc.bin
-            reference/host/6502/apple2-pipe-test/build/apple2_pipe_pal.bin
-            reference/host/6502/apple2-pipe-test/build/apple2_pipe_ntsc.bin
-            reference/host/6502/c64-led-test/build/rbcp_led_test.prg
-            reference/host/6502/c64-led-test/build/rbcp-led-test.d64
-            reference/host/68k/amiga-boot/build/amiga_boot_256k.bin
-            reference/host/68k/amiga-boot/build/amiga_boot_512k.bin
-            reference/host/x86/romsel/build/romsel.exe
+            build/release/*.zip

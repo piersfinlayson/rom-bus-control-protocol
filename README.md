@@ -35,7 +35,13 @@ RBCP is supported by [One ROM](https://onerom.org), the most flexible replacemen
   - [`6502/vic20-rbcp-term/`](reference/host/6502/vic20-rbcp-term/README.md) — An RBCP terminal for a VIC-20
   - [`6502/apple2-rbcp-term/`](reference/host/6502/apple2-rbcp-term/README.md) — An RBCP terminal for an Apple IIe
   - [`68k/rbcp/`](reference/host/68k/rbcp/README.md) — Generic 68K RBCP routines, including the bus mapping needed where the device is narrower than the host's bus
+  - [`68k/amiga-common/`](reference/host/68k/amiga-common/README.md) — Amiga shared routines
   - [`68k/amiga-boot/`](reference/host/68k/amiga-boot/README.md) — A sample Amiga Kickstart bootloader using RBCP
+  - [`68k/amiga-rbcp-stress/`](reference/host/68k/amiga-rbcp-stress/README.md) — An RBCP reliability meter for an Amiga
+  - [`68k/amiga-pipe-test/`](reference/host/68k/amiga-pipe-test/README.md) — A pipe throughput test for an Amiga
+  - [`68k/amiga-rbcp-term/`](reference/host/68k/amiga-rbcp-term/README.md) — An RBCP terminal for an Amiga
+  - [`68k/amiga-aux-io/`](reference/host/68k/amiga-aux-io/README.md) — An auxiliary I/O tester for an Amiga
+  - [`68k/amiga-led-test/`](reference/host/68k/amiga-led-test/README.md) — An LED tester for an Amiga
   - [`x86/romsel/`](reference/host/x86/romsel/README.md) — A DOS program that picks which image a One ROM serves from an 8088 machine's BIOS socket, and resets into it
 - [`reference/device/`](reference/device/README.md) — Reference device implementations (i.e. emulated ROMs supporting RBCP)
 - [`RELEASE.md`](RELEASE.md) — How a release, and an application, is published

@@ -23,7 +23,7 @@ The Amiga bootloader is in `amiga-boot/`, the RBCP library it links in
 
 ## The Amiga
 
-- **The bootloader runs from chip RAM at `$8000`**, so replacing the served ROM
+- **The bootloader runs from chip RAM at `$28000`**, so replacing the served ROM
   under it is safe. It hands over through the new image's reset vector with the
   chipset quiet, and leaves OVL alone.
 - **`key_loop` polls `amiga_getkey` every 10-20us.** A click lasts tens of
@@ -36,7 +36,7 @@ The Amiga bootloader is in `amiga-boot/`, the RBCP library it links in
 - **An operand ends at the first space.** `X EQU FOOTER_COL + 11` silently
   drops the `+ 11`. Write `FOOTER_COL+11`.
 - **RAM-section code reaches ROM data by `LEA (label).L`**, never
-  PC-relative — it is assembled at the ROM address and runs from `$8000`. A
+  PC-relative — it is assembled at the ROM address and runs from `$28000`. A
   PC-relative LEA shows in the listing as `41FA`.
 - **`.S` branches are ±127 bytes.** Adding code to a routine can push an
   existing branch out of range.

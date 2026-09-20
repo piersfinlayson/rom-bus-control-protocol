@@ -12,11 +12,12 @@
 # rewrites them every frame as the pointer moves, so the two written here are
 # zero and exist only to hold the space.
 #
-# The shape is written as text below, which is the only sane way to edit it.
+# The shape below is written as text because that is the only sane way to edit
+# it.
 
 import sys
 
-# . transparent, 1 outline, 2 fill
+# . transparent, 1 outline, 2 fill, 3 the third sprite colour
 #
 # An arrow with its tip at the top left, outlined so it stays visible over the
 # logo and the ball as well as over the background.

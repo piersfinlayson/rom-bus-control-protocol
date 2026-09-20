@@ -12,7 +12,7 @@
 ;
 ; CONFIG_ROM_BASE is the CPU address the ROM is mapped at, and CONFIG_ROM_KB
 ; its size.  On the Amiga the ROM is top-aligned in the 16 MB address space,
-; so the base follows from the size; on other systems set it directly.
+; so the base follows from the size.  On other systems set it directly.
 ; ---------------------------------------------------------------------------
 CONFIG_ROM_KB               EQU 256
 CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
@@ -42,27 +42,12 @@ CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
 ; ENDIAN_XOR  1 where the host's byte order within a bus cycle is opposite
 ;             to the specification's data-line assignment, 0 otherwise.
 ;             The specification places the even back-channel offset on
-;             D0-D7; on a big-endian 68K that is the HIGHER CPU address of a
+;             D0-D7.  On a big-endian 68K that is the higher CPU address of a
 ;             16-bit pair, so a x16 device needs 1 here.  An 8-bit device
 ;             has no intra-cycle ordering, so it needs 0.
 ;
-; Configurations:
-;
-;                                          BUS DEV DEV LANE ENDIAN
-;                                          SHF SHF MSK  OFF   XOR
-;   One x16 device, 16-bit bus  (A500)      1   1   1    0     1
-;   Two 8-bit devices, 16-bit bus, hi lane  1   0   0    0     0
-;                                 lo lane   1   0   0    1     0
-;   Two x16 devices, 32-bit bus,  hi word   2   1   1    0     1
-;                                 lo word   2   1   1    2     1
-;   Four 8-bit devices, 32-bit bus, lane L  2   0   0    L     0
-;
-; Only the first is exercised today.  Note that on a multi-device bus the
-; address lines are shared, so every device decodes every knock and every
-; command, and each maintains its OWN complete back-channel header — the
-; headers interleave in CPU address space at the bus stride, they do not
-; merge.  A host on such a bus must poll every lane's header before treating
-; a command as complete; this library polls one.
+; rbcp_defs.s lists the combinations these five take, and what a bus with
+; more than one device on it needs beyond what this library does.
 ; ===========================================================================
 CONFIG_RBCP_BUS_SHIFT       EQU 1
 CONFIG_RBCP_DEV_SHIFT       EQU 1
@@ -73,7 +58,7 @@ CONFIG_RBCP_ENDIAN_XOR      EQU 1
 ; ---------------------------------------------------------------------------
 ; Command page and back-channel placement
 ;
-; Both are given as CPU addresses; rbcp_defs.s converts them into the device
+; Both are given as CPU addresses.  rbcp_defs.s converts them into the device
 ; terms that ENTER_CMD_RESP actually takes — a command page number counted in
 ; device bus cycles, and a back-channel start counted in device bytes.  The
 ; two are not the same numbers, which is the point of doing it here once.
@@ -84,8 +69,8 @@ CONFIG_RBCP_ENDIAN_XOR      EQU 1
 ; of the way of ordinary ROM reads.
 ;
 ; CONFIG_RBCP_BCH_SIZE is in DEVICE bytes and includes the 8-byte response
-; header.  The resulting start offset must be 4-byte aligned; rbcp_defs.s
-; asserts this at build time.
+; header.  The resulting start offset must be 4-byte aligned, which rbcp_defs.s
+; asserts at build time.
 ; ---------------------------------------------------------------------------
 CONFIG_RBCP_BCH_SIZE        EQU 512
 
@@ -104,12 +89,16 @@ CONFIG_RBCP_COMPLETE        EQU $BB             ; inverse $44 = pending
 CONFIG_RBCP_STATUS_OK       EQU $CC             ; inverse $33 = failed
 
 ; ---------------------------------------------------------------------------
-; Timeouts and retries — arbitrary 32-bit loop counts, no fixed unit.
-; 0 = wait forever.
+; Timeouts — arbitrary 32-bit loop counts, no fixed unit.  0 = wait forever.
+; Retries are a count of whole attempts.
 ; ---------------------------------------------------------------------------
 CONFIG_RBCP_POLL_TIMEOUT    EQU $0000FFFF
 CONFIG_RBCP_NV_POLL_TIMEOUT EQU $00FFFFFF       ; flash erase takes ms
 CONFIG_RBCP_TIMEOUT_RETRIES EQU 3
+
+; SET_AUX with a hold waits on this timeout.  A hold runs to 2.55 seconds and
+; the device answers only once it has elapsed.
+CONFIG_RBCP_AUX_POLL_TIMEOUT EQU $00FFFFFF
 
 ; Blind delay after a command sent in command mode, where there is no
 ; back-channel to tell the host when the device is ready for the next one.

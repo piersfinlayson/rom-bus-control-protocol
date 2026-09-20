@@ -1396,7 +1396,7 @@ str_diag3:          .byte "RESPONSE OK AFTER:00", 0
 str_err:            .byte "RBCP ERROR", 0
 .endif
 msg_err_cmd_resp:   .byte "NO REPLY", 0
-msg_err_version:    .byte "PROTOCOL VERSION", 0
+msg_err_version:    .byte "INCOMPATIBLE VERSION", 0
 msg_err_ram_info:   .byte "NO RAM INFO", 0
 msg_err_ram_count:  .byte "NEED 2 RAM SLOTS", 0
 msg_err_flash_info: .byte "NO SLOT COUNT", 0

@@ -31,8 +31,9 @@ README, and nowhere else.
 
 Adding one under `reference/host/` means all of:
 
-- a job in `.github/workflows/build.yml`, and its binaries in `release.yml` if
-  they are a deliverable
+- a job in `.github/workflows/build.yml`, plus a build step in `release.yml`
+  and its files in `tools/release_assets.py` when the binaries are a
+  deliverable
 - an entry in `README.md`, in `reference/host/README.md`, and in
   `reference/host/<arch>/README.md` — all three
 - its own README, covering what it does, what it needs, how to build it and
@@ -47,8 +48,13 @@ Adding one under `reference/host/` means all of:
   only the commands it calls. Adding a command means adding a file.
 - `reference/host/6502/<app>/` — one application each, with `rbcp_config.s`
   holding its ROM address, size, command page and back-channel region.
-- `reference/host/68k/` — the same for 68K hosts, where the library is a single
-  file included by the application.
+- `reference/host/68k/rbcp/` — the 68K RBCP library, a single file the
+  application includes.
+- `reference/host/68k/amiga-common/` — the routines every Amiga application
+  shares, one file per subject. A file with strings of its own has a `_data.s`
+  beside it.
+- `reference/host/68k/amiga-boot/` — the Amiga bootloader, with its own
+  `rbcp_config.s`, `amiga_config.s` and `amiga_defs.s`.
 - `reference/host/x86/romsel/` — a DOS application, built with Open Watcom's
   `wmake`. `GNUmakefile` catches `make` and says to use `wmake`.
 - `host-apps/` — applications that are not reference implementations.
@@ -56,6 +62,18 @@ Adding one under `reference/host/` means all of:
   checkout and updates its manifests. See `RELEASE.md`.
 
 `build/` is ignored everywhere. Nothing else is generated into the tree.
+
+## Writing
+
+- A routine carries a banner comment giving its purpose, the registers it takes
+  and returns, and the ones it clobbers.
+  `reference/host/68k/rbcp/rbcp.s` is the model for 68K,
+  `reference/host/6502/rbcp/cmd/` for 6502.
+- A comment says why, or says the thing the code cannot. It does not narrate
+  the instruction under it or the history of the code.
+- A README covers the ground listed under **Adding an application**. Tables
+  for images, keys and build switches. Match the length and the detail of the
+  ones already here.
 
 ## Toolchains
 
@@ -67,6 +85,22 @@ Adding one under `reference/host/` means all of:
   repository and must be supplied as a path.
 - C64 testing: VICE. `c1541` builds the `.d64` targets and is not on the
   user's `PATH` by default.
+
+## Running MAME
+
+MAME's default on macOS is fullscreen, which opens a new Space and drags the
+desktop across to it. `-video none` on its own does not stop that, because SDL
+still brings the real video subsystem up.
+
+- `SDL_VIDEODRIVER=dummy` in the environment, every time.
+- `-video none`, unless a snapshot is needed, and then `-video soft -window
+  -nomaximize`. A snapshot comes out correctly under the dummy driver.
+- `-sound none -skip_gameinfo -nothrottle`.
+- `-cfg_directory`, `-nvram_directory` and `-snapshot_directory` under
+  `build/`, so a run writes nothing outside the tree.
+- Bound the run with `-seconds_to_run` or exit from the Lua script.
+
+`reference/host/6502/apple2-boot/test/run.sh` does all of this.
 
 ## Before saying it works
 

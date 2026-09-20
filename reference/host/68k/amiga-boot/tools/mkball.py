@@ -16,7 +16,8 @@ and bands near the middle are wide.  And the ball is cut into rows of latitude
 as well, tilted over so the rows curve, which is what stops the checks reading
 as a barber pole.
 
-Latitude cannot rotate, only longitude.  The original had the same limit.  Each
+Latitude cannot rotate, only longitude.  The Amiga's own Boing demo had the
+same limit.  Each
 row of latitude is offset by half a check so the two colours interlock, and
 that offset belongs to the row, untouched by spinning about the axis.
 
@@ -63,8 +64,8 @@ DIAMETER = 64
 # shifter.
 MARGIN_WORDS = 1
 
-# The pens the ball may use.  Pen 0 is the transparent background and pens 1 to
-# 5 and 14 to 15 belong to other artwork on the same screen.
+# The pens the ball may use.  Pen 0 is the transparent background, pens 1 to 5
+# the logo and the text, pen 14 the ball's drop shadow and pen 15 spare.
 PEN_FIRST = 6
 PENS = 8
 
@@ -211,8 +212,8 @@ def pack_row(bits):
 def cycle(colours):
     """The colour words to write to the ball's registers, one row per step.
 
-    At step s the register holding pen index i shows the band the ball has
-    turned into that place, which is band i - s.  Stepping forward turns the
+    At step s the register holding pen index i shows band i - s, the band the
+    ball has turned into that place.  Stepping forward turns the
     front of the ball towards the right of the screen.
     """
     return [[sphere_colour(i - step, colours) for i in range(PENS)]
@@ -410,7 +411,7 @@ def write_png(path, grid, colours):
 
 
 def parse_colour(text):
-    """A colour as RGB or RRGGBB hex, with or without a # or $, to $0RGB.
+    """A colour as RGB, 0RGB or RRGGBB hex, with or without a # or $, to $0RGB.
 
     Six digits are the colour a paint program shows.  They are rounded to the
     four bits a gun actually has, so what comes out is what the Amiga
@@ -439,8 +440,8 @@ def main():
     ap.add_argument("source", help="assembler source to write")
     ap.add_argument("--colours", nargs=2, metavar=("ONE", "TWO"),
                     default=["%03X" % c for c in DEFAULT_COLOURS],
-                    help="the two colours of the checks, as RGB or RRGGBB "
-                         "hex, default %(default)s")
+                    help="the two colours of the checks, as RGB, 0RGB or "
+                         "RRGGBB hex, default %(default)s")
     ap.add_argument("--incbin-dir", help="directory to put in front of the "
                                          "binaries' names in the INCBIN "
                                          "paths, if not the paths as given")

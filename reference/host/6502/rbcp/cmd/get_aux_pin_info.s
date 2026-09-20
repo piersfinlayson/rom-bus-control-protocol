@@ -16,8 +16,14 @@
 ;
 ; This is the one command here a caller issues in bulk: a host showing a whole
 ; group calls it once per pin, every refresh.
+;
+; The final argument byte is the group number, and $AA there is the reset
+; marker. Sending it would put the session out of step, so this sends nothing
+; and reports rbcp_zp_5 = 4.
 .export rbcp_cmd_get_aux_pin_info
 rbcp_cmd_get_aux_pin_info:
+    cpx #$AA
+    beq @refuse
     sta rbcp_arg0
     stx rbcp_arg1
     lda #RBCP_GRP_AUX
@@ -26,3 +32,8 @@ rbcp_cmd_get_aux_pin_info:
     sta rbcp_zp_1
     lda #2
     jmp rbcp_issue_cmd
+@refuse:
+    lda #4
+    sta rbcp_zp_5
+    sec
+    rts

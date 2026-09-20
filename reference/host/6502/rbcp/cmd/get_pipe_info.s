@@ -14,9 +14,9 @@
 ; the RBCP_PIPE_INFO_* offsets. free and waiting both saturate at $FF, so each
 ; carries a real count only near its limit.
 ;
-; The pipe number is this command's final argument byte, where $AA is the reset
-; marker, so sending it would desynchronise the session rather than being
-; rejected. This refuses it here and sends nothing, reporting rbcp_zp_5 = 4.
+; $AA in a command's final argument byte is the reset marker, and the pipe
+; number is this command's final byte. Sending $AA would desynchronise the
+; session, so this sends nothing and reports rbcp_zp_5 = 4.
 .export rbcp_cmd_get_pipe_info
 rbcp_cmd_get_pipe_info:
     cmp #$AA

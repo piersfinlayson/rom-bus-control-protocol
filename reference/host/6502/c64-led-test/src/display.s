@@ -2031,7 +2031,7 @@ fail_tab:
 
 str_f_nodev:    .byte "NO DEVICE ANSWERED THE KNOCK", 0
 str_f_enter:    .byte "THE DEVICE REFUSED THE SESSION", 0
-str_f_version:  .byte "THE DEVICE SPEAKS A VERSION WE DO NOT", 0
+str_f_version:  .byte "DEVICE REPORTS INCOMPATIBLE VERSION", 0
 str_f_clash:    .byte "THE ROM STILL HOLDS A REPLY  RESET IT", 0
 str_f_slots:    .byte "THE DEVICE NEEDS TWO RAM SLOTS", 0
 str_f_noclean:  .byte "NO FLASH SLOT MATCHES THIS ROM", 0

@@ -2,7 +2,7 @@
 # mkimage.py — convert artwork into Amiga blitter objects
 # Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 #
-# Turns a PNG, or a line of TrueType text, into interleaved 4-bitplane data
+# Turns a PNG, or lines of TrueType text, into interleaved 4-bitplane data
 # for a 16-colour lores screen, plus a single-plane mask and a vasm source
 # file that declares the sizes and pulls the binaries in with INCBIN.
 #
@@ -458,13 +458,14 @@ def render_lines(font_path, lines, size, leading, threshold, pen_of=None,
 
     The lines are drawn as whole strings, exactly as they would be if every
     character shared a pen, and the finished bitmap is then divided up by
-    column: the pixels between where the string layout left the pen before a
-    character and where it left it after belong to that character.  Colouring
+    column: the pixels between where the string layout put one character and
+    where it put the next belong to that character.  Colouring
     a character therefore cannot move, respace or reshape anything, because
     nothing is drawn differently — the same bitmap is simply shared out.
 
     Returns (bitmap, pen_at) where pen_at(x, y) gives the pen for a lit pixel,
-    or (bitmap, None) when pen_of is None.
+    (bitmap, None) when pen_of is None, or (None, None) when the text renders
+    as nothing.
     """
     font = ImageFont.truetype(font_path, size * SUPERSAMPLE)
     ascent, descent = font.getmetrics()
@@ -661,7 +662,7 @@ def main():
                             "letting the average decide — repeatable")
     image.set_defaults(func=cmd_image)
 
-    text = subs.add_parser("text", help="set a line of TrueType text")
+    text = subs.add_parser("text", help="set lines of TrueType text")
     text.add_argument("font", help="TrueType font file")
     text.add_argument("--text", required=True,
                       help="the text, with \\n between lines")

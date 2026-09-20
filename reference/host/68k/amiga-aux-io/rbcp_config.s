@@ -1,0 +1,105 @@
+; rbcp_config.s — RBCP configuration for the Amiga auxiliary I/O tester
+; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
+;
+; Target: Amiga A500 (68000, 16-bit bus) with a single word-organised (x16)
+; Kickstart ROM.  It builds at 256 KB and at 512 KB.
+; Change CONFIG_ROM_KB below and everything else follows.
+
+; ---------------------------------------------------------------------------
+; ROM geometry
+;
+; The Amiga maps its Kickstart ROM at the top of the 16 MB address space, so
+; the base address falls out of the size.  256 KB gives $FC0000, 512 KB gives
+; $F80000.  The Makefile reads CONFIG_ROM_KB from this file to size-check the
+; output image, so keep the "EQU <number>" form on that line.
+; ---------------------------------------------------------------------------
+    ifnd CONFIG_ROM_KB
+CONFIG_ROM_KB               EQU 256             ; 256 or 512
+    endc
+CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
+
+; ---------------------------------------------------------------------------
+; Bus mapping — see the BUS MAPPING commentary in rbcp_defs.s
+;
+; One x16 device on a 16-bit bus:
+;   BUS_SHIFT  1  one device bus cycle is 2 CPU address bytes
+;   DEV_SHIFT  1  the device supplies 2 bytes per bus cycle
+;   DEV_MASK   1  region offset bit 0 selects within the pair
+;   LANE_OFF   0  the device occupies the whole bus width
+;   ENDIAN_XOR 1  the specification puts the even region offset on D0-D7,
+;                 which on a big-endian 68K is the HIGHER CPU address of the
+;                 pair — so the two bytes of every device word appear at the
+;                 opposite CPU addresses to their region offsets
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_BUS_SHIFT       EQU 1
+CONFIG_RBCP_DEV_SHIFT       EQU 1
+CONFIG_RBCP_DEV_MASK        EQU 1
+CONFIG_RBCP_LANE_OFF        EQU 0
+CONFIG_RBCP_ENDIAN_XOR      EQU 1
+
+; ---------------------------------------------------------------------------
+; ROM image layout
+;
+;   CONFIG_ROM_BASE .. $FFFBFF   application code and data
+;   $FFFC00 .. $FFFDFF           back-channel region  (512 bytes, zeroed)
+;   $FFFE00 .. $FFFFFF           command page         (512 bytes, zeroed)
+;
+; Both regions sit at the very top of the image so the application area is
+; unencumbered, and both are identical for 256 KB and 512 KB because the ROM
+; is top-aligned.  The device-side values differ between the two sizes, and
+; rbcp_defs.s derives them from CONFIG_ROM_BASE.
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_BCH_SIZE        EQU 512             ; DEVICE bytes, incl. header
+
+CONFIG_RBCP_CMD_PAGE_ABS    EQU ($1000000-(256<<CONFIG_RBCP_BUS_SHIFT))
+CONFIG_RBCP_BCH_ABS         EQU (CONFIG_RBCP_CMD_PAGE_ABS-((CONFIG_RBCP_BCH_SIZE>>CONFIG_RBCP_DEV_SHIFT)<<CONFIG_RBCP_BUS_SHIFT))
+
+; ---------------------------------------------------------------------------
+; Complete and status-OK sentinel values
+;
+; The back-channel region is zeroed in the ROM image, so $00 is what sits at
+; the progress and response locations before the device takes them over.
+; Neither $BB/$44 nor $CC/$33 collides with that.  Neither may be $AA.
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_COMPLETE        EQU $BB             ; inverse $44 = pending
+CONFIG_RBCP_STATUS_OK       EQU $CC             ; inverse $33 = failed
+
+; ---------------------------------------------------------------------------
+; Timeouts and retries — arbitrary loop counts, no fixed unit.  0 = forever.
+;
+; Two retries, because a command the tester gives up on ends the run on the
+; error screen and there is no way back into the session from there.
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_POLL_TIMEOUT    EQU $0000FFFF
+CONFIG_RBCP_NV_POLL_TIMEOUT EQU $00FFFFFF       ; flash erase takes ms
+CONFIG_RBCP_TIMEOUT_RETRIES EQU 2
+CONFIG_RBCP_CMD_PAUSE       EQU $100            ; inter-command gap, cmd mode
+
+; A SET_AUX with a hold does not complete until the hold has elapsed, and the
+; longest this program asks for is 200ms, so the auxiliary timeout is
+; the one that has to be generous.  A turn of the poll loop is 46 cycles, or
+; 6.5us at 7.09MHz, so this is about 1.7 seconds — eight and a half times the
+; hold, and short enough that a device that dies mid-hold does not hang the
+; reset screen.
+CONFIG_RBCP_AUX_POLL_TIMEOUT EQU $00040000
+
+; ---------------------------------------------------------------------------
+; Scratch RAM used by the RBCP library — 32 bytes of chip RAM, clear of the
+; exception vector table.
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_SCRATCH_BASE    EQU $00001000
+CONFIG_RBCP_SCRATCH_SIZE    EQU 32
+
+; ---------------------------------------------------------------------------
+; Un-swap buffer for the response data section
+;
+; rbcp_read_data copies a run of device bytes out of the back-channel data
+; section into this linear chip RAM buffer, undoing the word-ROM byte
+; transposition.  The longest thing the tester reads is one 32-byte flash slot
+; record out of the GET_FLASH_SLOT_INFO_ALL reply, and the 24-byte device name
+; after it.  48 bytes holds either with room over.  It sits in the application
+; variable area, so the 68000 reaches it with absolute short addressing — see
+; the chip RAM layout in amiga_defs.s.
+; ---------------------------------------------------------------------------
+CONFIG_RBCP_DATA_BUF        EQU $00002200
+CONFIG_RBCP_DATA_BUF_SIZE   EQU 48

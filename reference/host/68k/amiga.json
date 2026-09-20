@@ -1,0 +1,74 @@
+{
+    "$schema": "https://images.onerom.org/configs/schema.json",
+    "version": 1,
+    "name": "Amiga RBCP Applications",
+    "description": "The RBCP bootloader and the four testers, as 256KB images",
+    "categories": [
+        "computer",
+        "commodore",
+        "amiga",
+        "rbcp"
+    ],
+    "chip_sets": [
+        {
+            "type": "single",
+            "chips": [
+                {
+                    "label": "Bootloader",
+                    "file": "amiga-boot/build/amiga_boot_256k.bin",
+                    "type": "27c200"
+                }
+            ]
+        },
+        {
+            "type": "single",
+            "chips": [
+                {
+                    "label": "Terminal",
+                    "file": "amiga-rbcp-term/build/amiga_term_256k.bin",
+                    "type": "27c200"
+                }
+            ]
+        },
+        {
+            "type": "single",
+            "chips": [
+                {
+                    "label": "LED Tester",
+                    "file": "amiga-led-test/build/amiga_led_test_256k.bin",
+                    "type": "27c200"
+                }
+            ]
+        },
+        {
+            "type": "single",
+            "chips": [
+                {
+                    "label": "Aux I/O Tester",
+                    "file": "amiga-aux-io/build/amiga_auxio_256k.bin",
+                    "type": "27c200"
+                }
+            ]
+        },
+        {
+            "type": "single",
+            "chips": [
+                {
+                    "label": "Pipe Throughput Test",
+                    "file": "amiga-pipe-test/build/amiga_pipe_256k.bin",
+                    "type": "27c200"
+                }
+            ]
+        },
+        {
+            "type": "single",
+            "chips": [
+                {
+                    "label": "Reliability Meter",
+                    "file": "amiga-rbcp-stress/build/amiga_meter_256k.bin",
+                    "type": "27c200"
+                }
+            ]
+        }
+    ]
+}

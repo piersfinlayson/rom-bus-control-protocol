@@ -968,7 +968,7 @@ str_prompt:     .byte "SELECT KERNAL:", 0
 str_footer:     .byte "UP/DN=MOVE  RET=BOOT", 0
 
 msg_err_no_cmd_resp:        .byte "RBCP: NO CMD RESP", 0
-msg_err_protocol_version:   .byte "RBCP: PROTOCOL VER", 0
+msg_err_protocol_version:   .byte "INCOMPATIBLE VERSION", 0
 msg_err_ram_info:           .byte "RBCP: RAM INFO FAIL", 0
 msg_err_insuff_ram:         .byte "RBCP: INSUFF RAM", 0
 msg_err_flash_info:         .byte "RBCP: FLASH INFO FAIL", 0

@@ -1344,7 +1344,7 @@ str_n_noswitch: .byte "THIS DEVICE CANNOT SWITCH IMAGES", 0
 
 str_f_nodev:    .byte "NO DEVICE ANSWERED THE KNOCK", 0
 str_f_enter:    .byte "THE DEVICE REFUSED THE SESSION", 0
-str_f_version:  .byte "THE DEVICE SPEAKS A VERSION WE DO NOT", 0
+str_f_version:  .byte "DEVICE REPORTS INCOMPATIBLE VERSION", 0
 str_f_noaux:    .byte "THIS DEVICE HAS NO PINS TO DRIVE", 0
 
 .else
@@ -1377,7 +1377,7 @@ str_n_noswitch: .byte "IT CANNOT SWITCH IMAGES", 0
 
 str_f_nodev:    .byte "NO DEVICE", 0
 str_f_enter:    .byte "THE DEVICE REFUSED US", 0
-str_f_version:  .byte "A VERSION WE DO NOT KNOW", 0
+str_f_version:  .byte "INCOMPATIBLE VERSION", 0
 str_f_noaux:    .byte "NO PINS TO DRIVE", 0
 
 .endif

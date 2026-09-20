@@ -124,6 +124,18 @@ APPS = {
         "source": REPO + "reference/host/6502/apple2-rbcp-term",
         "files": {"apple2_term.bin": {}},
     },
+    "amiga-rbcp-term": {
+        "kind": "rom",
+        "name": "Amiga RBCP Terminal",
+        "description": "Talks to a device over an RBCP pipe (USB) from an Amiga. "
+                       "256KB and 512KB images.",
+        "machine": "amiga",
+        "source": REPO + "reference/host/68k/amiga-rbcp-term",
+        "files": {
+            "amiga_term_256k.bin": {"variant": "256k"},
+            "amiga_term_512k.bin": {"variant": "512k"},
+        },
+    },
     "c64-aux-io": {
         "kind": "rom",
         "name": "C64 RBCP Aux I/O",
@@ -157,6 +169,18 @@ APPS = {
         "machine": "apple2",
         "source": REPO + "reference/host/6502/apple2-aux-io",
         "files": {"apple2_auxio.bin": {}},
+    },
+    "amiga-aux-io": {
+        "kind": "rom",
+        "name": "Amiga RBCP Aux I/O",
+        "description": "Drives and reads a device's auxiliary (GPIO) pins from an "
+                       "Amiga. 256KB and 512KB images.",
+        "machine": "amiga",
+        "source": REPO + "reference/host/68k/amiga-aux-io",
+        "files": {
+            "amiga_auxio_256k.bin": {"variant": "256k"},
+            "amiga_auxio_512k.bin": {"variant": "512k"},
+        },
     },
     "c64-rbcp-stress": {
         "kind": "rom",
@@ -192,6 +216,18 @@ APPS = {
         "machine": "apple2",
         "source": REPO + "reference/host/6502/apple2-rbcp-stress",
         "files": {"apple2_meter.bin": {}},
+    },
+    "amiga-rbcp-stress": {
+        "kind": "rom",
+        "name": "Amiga RBCP Reliability Meter",
+        "description": "Measures how reliably an Amiga and a device "
+                       "communicate over RBCP. 256KB and 512KB images.",
+        "machine": "amiga",
+        "source": REPO + "reference/host/68k/amiga-rbcp-stress",
+        "files": {
+            "amiga_meter_256k.bin": {"variant": "256k"},
+            "amiga_meter_512k.bin": {"variant": "512k"},
+        },
     },
     "c64-pipe-test": {
         "kind": "rom",
@@ -232,6 +268,18 @@ APPS = {
             "apple2_pipe_ntsc.bin": {"variant": "ntsc"},
         },
     },
+    "amiga-pipe-test": {
+        "kind": "rom",
+        "name": "Amiga RBCP Pipe Throughput Test",
+        "description": "Measures how many bytes an Amiga can push through an "
+                       "RBCP pipe (USB). 256KB and 512KB images.",
+        "machine": "amiga",
+        "source": REPO + "reference/host/68k/amiga-pipe-test",
+        "files": {
+            "amiga_pipe_256k.bin": {"variant": "256k"},
+            "amiga_pipe_512k.bin": {"variant": "512k"},
+        },
+    },
     "c64-led-test": {
         "kind": "retro",
         "name": "RBCP LED Tester",
@@ -242,6 +290,18 @@ APPS = {
         "files": {
             "rbcp_led_test.prg": {},
             "rbcp-led-test.d64": {"variant": "d64"},
+        },
+    },
+    "amiga-led-test": {
+        "kind": "rom",
+        "name": "Amiga RBCP LED Tester",
+        "description": "Drives a device's LEDs from an Amiga. 256KB and "
+                       "512KB images.",
+        "machine": "amiga",
+        "source": REPO + "reference/host/68k/amiga-led-test",
+        "files": {
+            "amiga_led_test_256k.bin": {"variant": "256k"},
+            "amiga_led_test_512k.bin": {"variant": "512k"},
         },
     },
     "romsel": {

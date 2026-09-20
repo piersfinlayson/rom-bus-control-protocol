@@ -17,9 +17,9 @@
 ; The type is what a caller wanting a colour reads: LEDs are numbered per
 ; device, so the lowest-numbered RGB one is found rather than assumed.
 ;
-; The LED number is this command's final argument byte, where $AA is the reset
-; marker, so sending it would desynchronise the session rather than being
-; rejected. This refuses it here and sends nothing, reporting rbcp_zp_5 = 4.
+; $AA in a command's final argument byte is the reset marker, and the LED
+; number is this command's final byte. Sending $AA would desynchronise the
+; session, so this sends nothing and reports rbcp_zp_5 = 4.
 .export rbcp_cmd_get_led_info
 rbcp_cmd_get_led_info:
     cmp #$AA

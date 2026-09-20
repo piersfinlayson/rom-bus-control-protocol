@@ -531,7 +531,7 @@ str_no_device:
 str_enter_fail:
     .byte "DEVICE REFUSED CMD-RESP MODE", 0
 str_version:
-    .byte "PROTOCOL VERSION NOT SUPPORTED", 0
+    .byte "INCOMPATIBLE VERSION", 0
 str_no_pipe:
     .byte "DEVICE HAS NO PIPE", 0
 str_pipe_dir:

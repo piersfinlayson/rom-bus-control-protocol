@@ -21,9 +21,9 @@
 ; The device does not wait out the hold before answering, and the hold outlives
 ; the session, so a caller may set a mode and leave.
 ;
-; The LED number is this command's final argument byte, where $AA is the reset
-; marker, so sending it would desynchronise the session rather than being
-; rejected. This refuses it here and sends nothing, reporting rbcp_zp_5 = 4.
+; $AA in a command's final argument byte is the reset marker, and the LED
+; number is this command's final byte. Sending $AA would desynchronise the
+; session, so this sends nothing and reports rbcp_zp_5 = 4.
 .export rbcp_cmd_set_led
 rbcp_cmd_set_led:
     cmp #$AA

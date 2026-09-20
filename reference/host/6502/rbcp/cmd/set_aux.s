@@ -23,11 +23,23 @@
 ; the 2.55 seconds the protocol's hold argument can express. Ask for a longer
 ; hold than that and this reports failure through rbcp_zp_5 = 2 while the
 ; device carries on holding.
+;
+; The final argument byte is the group number, and $AA there is the reset
+; marker. Sending it would put the session out of step, so this sends nothing
+; and reports rbcp_zp_5 = 4.
 .export rbcp_cmd_set_aux
 rbcp_cmd_set_aux:
+    lda rbcp_arg4
+    cmp #$AA
+    beq @refuse
     lda #RBCP_GRP_AUX
     sta rbcp_zp_0
     lda #RBCP_CMD_SET_AUX
     sta rbcp_zp_1
     lda #5
     jmp rbcp_issue_cmd_aux_poll
+@refuse:
+    lda #4
+    sta rbcp_zp_5
+    sec
+    rts
