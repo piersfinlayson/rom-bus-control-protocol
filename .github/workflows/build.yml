@@ -450,6 +450,7 @@ jobs:
   # markers are the lines that say the run did what it was meant to, and its
   # frame count and keys are what that application's test needs.
   apple2-test:
+    name: apple2-test (${{ matrix.app }}${{ matrix.target && format(', {0}', matrix.target) || '' }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
