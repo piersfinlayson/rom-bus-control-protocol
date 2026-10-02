@@ -508,8 +508,8 @@ release_settle:
 
 ; ---------------------------------------------------------------------------
 ; state_menu — acts on the key key_poll is holding.  A left click or the
-; arrows change the choice, a right click or RETURN boots it, and a digit
-; picks one of the first nine.
+; arrows change the choice, a right click or RETURN boots it, and 1-9 or A-F
+; picks an entry.
 ;
 ; Acting on a key redraws, which needs the blitter, so a key that arrives
 ; mid-frame is held until the frame is on screen rather than waited out on
@@ -518,12 +518,12 @@ release_settle:
 ; ---------------------------------------------------------------------------
 state_menu:
         TST.B   VAR_PEND_KEY
-        BEQ.S   .sm_done
+        BEQ     .sm_done
     ifne CONFIG_BANNER_BALL
         TST.B   VAR_ANIM_STEP
-        BNE.S   .sm_done                ; a frame is part way through
+        BNE     .sm_done                ; a frame is part way through
         BTST    #6,(DMACONR).L          ; BBUSY: its last blit is still running
-        BNE.S   .sm_done
+        BNE     .sm_done
     endc
         MOVEQ   #0,D0
         MOVE.B  VAR_PEND_KEY,D0
@@ -541,8 +541,17 @@ state_menu:
         CMPI.B  #'1',D0
         BCS.S   .sm_done
         CMPI.B  #'9'+1,D0
+        BCS.S   .sm_digit
+        ORI.B   #$20,D0                 ; A-F and a-f alike
+        CMPI.B  #'a',D0
+        BCS.S   .sm_done
+        CMPI.B  #'f'+1,D0
         BCC.S   .sm_done
+        SUBI.B  #'a'-9,D0               ; A is the tenth entry
+        BRA.S   .sm_entry
+.sm_digit:
         SUBI.B  #'1',D0                 ; the digit is the entry
+.sm_entry:
         CMP.B   VAR_NUM_DISPLAY,D0
         BCC.S   .sm_done
         BRA     menu_select
@@ -841,9 +850,9 @@ draw_list:
 ; ---------------------------------------------------------------------------
 ; draw_entry — D7.B = display index.  Draws "N) name" in the current pen, at
 ; the column draw_list settled on for every entry.  The number shown is the
-; flash slot, one more than the list place because slot 0 is the bootloader,
-; and it doubles as the digit key that picks the entry.  An entry the device
-; would not name is left alone.
+; flash slot in hex, one more than the list place because slot 0 is the
+; bootloader, and it doubles as the key that picks the entry.  An entry the
+; device would not name is left alone.
 ; ---------------------------------------------------------------------------
 draw_entry:
         MOVEM.L D0-D3/A0-A1,-(SP)
@@ -858,6 +867,10 @@ draw_entry:
         MOVE.B  D7,D0
         ADDQ.B  #1,D0
         ADDI.B  #'0',D0                 ; '1'..'9'
+        CMPI.B  #'9'+1,D0
+        BCS.S   .de_digit
+        ADDQ.B  #'A'-'9'-1,D0           ; 'A'..'F'
+.de_digit:
         MOVE.B  VAR_MENU_COL,D1
         BSR     screen_putchar
         MOVEQ   #')',D0
@@ -1720,7 +1733,10 @@ fg_mask_sel:
         MULU    #8*SCREEN_BPL_W,D1
         MOVEA.L #CHIP_FG_MASK+FG_LIST_W0*2,A1
         ADDA.L  D1,A1
-        MOVE.W  #MAX_DISPLAY*8-1,D4
+        MOVEQ   #0,D4
+        MOVE.B  VAR_NUM_DISPLAY,D4
+        LSL.W   #3,D4                   ; eight pixel rows an entry
+        SUBQ.W  #1,D4
 .fms_row:
         MOVE.W  #FG_LIST_WORDS-1,D3
 .fms_word:

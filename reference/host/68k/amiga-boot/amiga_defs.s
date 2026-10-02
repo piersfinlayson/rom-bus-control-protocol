@@ -77,8 +77,7 @@ RELEASE_SETTLE      EQU $2000
 ;
 ;   y   6- 19   the tagline artwork, 288x14, centred — the page heading
 ;   y  50-141   the logo, 112x92, at x=4
-;   y  56- 63   row  7      the heading as text, columns 16-39
-;   y  72-143   rows 9-17   the images, columns 16-39
+;   y  24-159   rows 3-19   at most, the heading as text and the images
 ;   y 168-175   row 21   the controls
 ;   y 184-191   row 23   the device line, with piers.rocks beside it
 ;
@@ -93,15 +92,16 @@ RELEASE_SETTLE      EQU $2000
 ;
 ;     (MENU_CENTRE_SUM - N) / 2
 ;
-; and the entries start MENU_TITLE_GAP rows below it.  VAR_MENU_ROW0 holds the
-; result, worked out once the count is known.
+; and the entries start MENU_TITLE_GAP rows below it.  An odd N sits half a row
+; high, which puts the longest list on rows 3-19 with a blank row above the
+; controls.  VAR_MENU_ROW0 holds the result, worked out once the count is known.
 ; ---------------------------------------------------------------------------
-MENU_CENTRE_SUM     EQU 23
+MENU_CENTRE_SUM     EQU 22
 MENU_TITLE_GAP      EQU 2
 MENU_COL            EQU 16                  ; first column right of the logo
 FOOTER_ROW          EQU 21
 
-MAX_DISPLAY         EQU 9                   ; rows 9-17, one digit key each
+MAX_DISPLAY         EQU 15                  ; keys 1-9 then A-F, one each
 MENU_PREFIX         EQU 3                   ; the "N) " in front of a name
 
 ; Menu name store — one slot name per entry, as read from the device.  NAME_BUF

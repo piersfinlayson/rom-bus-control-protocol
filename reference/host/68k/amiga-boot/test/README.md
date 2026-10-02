@@ -125,7 +125,7 @@ Everything is an environment variable:
 | `RBCP_MOUSE` | unset | Frame the held mouse buttons come up. They are held from the first frame, the gesture that asks for the menu. |
 | `RBCP_RCLICK` | unset | Frame of a right click, which boots the highlighted entry. |
 | `RBCP_KEYS` | unset | `frame:Key;frame:Key`, each key held for six frames. A key is named by its cap or by any legend on it — `Cursor Up`, `Cursor Down`, `Enter`, `1`, `S` — and otherwise by the start of a cap. |
-| `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than eight exercises the entries the menu cannot show. |
+| `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than sixteen exercises the entries the menu cannot show. |
 | `RBCP_RAM_SLOTS` | 2 | One makes the bootloader boot with `LOAD_AND_EXIT` and store its choice without a staging slot. Two make it stage the load in the spare and `SWITCH_AND_EXIT` to it. |
 | `RBCP_NV` | 0 | The slot the device has stored. 0 stands for never written. |
 | `RBCP_NV_FAIL` | unset | Fail every NV write, which the bootloader carries on through. |
@@ -137,7 +137,7 @@ Everything is an environment variable:
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails. |
 | `RBCP_SEND` | unset | A line the far end sends unprompted. `\n` in it is a line feed. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, in place of the one `run.sh` finds for itself. |
-| `RBCP_SNAP` | unset | Save a screenshot at the end of the run, to `build/a500/0000.png`. MAME runs in a window when this is set. |
+| `RBCP_SNAP` | unset | Save a screenshot at the end of the run, to `build/a500/`, numbered from `0000.png`. MAME runs in a window when this is set. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
 
 The progress byte and the response byte share a word, and a 68000 cannot read

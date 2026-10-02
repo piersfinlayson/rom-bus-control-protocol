@@ -13,14 +13,14 @@ it has none.
 | --- | --- |
 | left click, or cursor up/down | move the highlight |
 | right click, or RETURN | boot the highlighted image |
-| `1`-`8` | select a ROM image |
+| `1`-`9`, `A`-`F` | select a ROM image |
 
 ## LED
 
 If the device has an RGB LED:
 
 - It cycles through colours while the menu is shown.
-- It breathes a different colour for each image once you boot.
+- It breathes the image's colour once you boot, the colours repeating after eight.
 
 ## Logging
 
