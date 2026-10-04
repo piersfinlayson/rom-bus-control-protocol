@@ -281,15 +281,16 @@ APPS = {
         },
     },
     "c64-led-test": {
-        "kind": "retro",
-        "name": "RBCP LED Tester",
-        "description": "Drives a device's LEDs from a Commodore 64. Loads "
-                       "from disk.",
+        "kind": "rom",
+        "name": "C64 RBCP LED Tester",
+        "description": "Drives a device's LEDs from a Commodore 64. Kernal, "
+                       "BASIC and combined 16KB images.",
         "machine": "c64",
         "source": REPO + "reference/host/6502/c64-led-test",
         "files": {
-            "rbcp_led_test.prg": {},
-            "rbcp-led-test.d64": {"variant": "d64"},
+            "c64_led_kernal.bin": {"variant": "kernal"},
+            "c64_led_basic.bin": {"variant": "basic"},
+            "c64_led_combined.bin": {"variant": "combined"},
         },
     },
     "amiga-led-test": {

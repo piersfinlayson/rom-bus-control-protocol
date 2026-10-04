@@ -1,142 +1,88 @@
-# RBCP LED Tester
+# C64 RBCP LED Tester
 
-Drive a device's LEDs from a Commodore 64.
+A ROM image for a Commodore 64 that drives a device's LEDs and shows what each one should be doing.
 
----
+**This tester is untested on real hardware.**
 
-In a longboard C64, the RBCP capable device should replace the 8 KB BASIC ROM — a 2364 serving $A000–$BFFF. [Other ROM types](#other-rom-types) covers serving a combined 16KB BASIC/Kernal as used by a shortboard C64.
-
-## Overview
-
-Each LED is shown with:
-
-- the colour it is showing
-- how brightly it is lit
-- the mode it is using (e.g. blink, cycle, breathe)
-
-The selected LED is bracketed.
-
-The information shown comes from RBCP's `GET_LED_INFO` command, so directly from the device.
+The device requires LEDs for this tester to operate.
 
 ## Controls
 
-| Key | Selects |
-| --- | --- |
-| `F1`, `F3` | an LED |
-| `0`–`5` | a mode |
-| cursor left, right | the LED |
-| cursor up, down | the colour |
-
 | Key | Action |
 | --- | --- |
-| `C` | colour list |
-| `B` | brightness |
-| `P` | period |
-| `H` | hold |
-| `SPACE` | steps all supported LED modes |
-| `A` | displays the device's LED data |
-| `Q` | quit |
+| cursor left, right | select LED |
+| `F1`, `F3` | select LED 0 or 1 |
+| `0`–`5` | set mode |
+| cursor up, down | change colour |
+| `C` | pick a colour from a list |
+| `B` | change brightness |
+| `P` | change period |
+| `H` | change hold |
+| `SPACE` | show every mode in turn |
+| `A` | show everything the device reports |
+
+In the colour list the cursor keys move, `RETURN` picks the colour and `Q` goes back.
+
+## Display
+
+Each LED is shown with:
+
+- its colour
+- its brightness
+- its mode, for example blink, breathe or cycle
+
+The selected LED is bracketed.
+
+## Display blanking
+
+The display goes off while the tester is talking to the device due to a C64 limitation. This happens once a second and whenever you change an LED.
+
+## Images
+
+| Image | Size | Socket | Command page | Back channel |
+| --- | --- | --- | --- | --- |
+| `c64_led_kernal.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
+| `c64_led_basic.bin` | 8KB, 2364 | BASIC | $A000 | $A100, 512 bytes |
+| `c64_led_combined.bin` | 16KB, 23128 | shared BASIC/kernal | $A000 | $A100, 512 bytes |
+
+The kernal and BASIC images are for a longboard C64. Use one or the other. The BASIC image requires a stock kernal image to be present in the kernal socket.
+
+The combined image is for a shortboard.
+
+The 8KB images start with a black screen for about half a second.
 
 ## Dependencies
 
 - [cc65](https://cc65.github.io/)
-- `c1541`, for the disk image. Inside the [VICE](https://vice-emu.sourceforge.io/) bundle.
+- Python 3
 
 ## Building
 
-Provide the path to `c1541` if it is not on your system's PATH, e.g.
-
-```bash
-make C1541=/Applications/vice-arm64-gtk3-3.9/bin/c1541
+```
+make
 ```
 
-`make LED_DIAGS=1` adds two rows showing internal diagnostics.
+## Testing
 
-## Demo Build
+Under VICE with no device fitted the program draws the screen and stops at `NO DEVICE ANSWERED THE KNOCK`:
 
-For testing under VICE without a device:
+```
+x64sc -default -kernal build/c64_led_kernal.bin
+x64sc -default -basic build/c64_led_basic.bin
+```
 
-```bash
+The 16KB image is two 8KB halves, and VICE takes them one socket at a time:
+
+```
+dd if=build/c64_led_combined.bin of=basic.bin bs=8192 count=1
+dd if=build/c64_led_combined.bin of=kernal.bin bs=8192 skip=1 count=1
+x64sc -default -basic basic.bin -kernal kernal.bin
+```
+
+Anything past the screen needs a One ROM running the host-control plugin, with LEDs on it.
+
+```
 make demo
 ```
 
-Builds `rbcp_led_demo.prg`, which runs standalone emulating the device. This is a separate binary to the one designed for real hardware.
-
-`BOARD` picks the imaginary device:
-
-| BOARD | Device |
-|-------|--------|
-| `0` | Mono status LED and an RGB one. Times a period and a hold. |
-| `1` | One RGB LED. No period, no hold. |
-| `2` | No LEDs. |
-| `3` | Three LEDs, and LED 0 reports its own brightness whatever it is given. |
-
-`SCRIPT` reaches one screen at startup, through the dispatch the keyboard uses:
-
-| SCRIPT | Screen |
-|--------|--------|
-| `1` | RGB LED lit, in a colour it was given. |
-| `2` | Breathing, half brightness, with a period. |
-| `3` | The colour list. |
-| `4` | Every byte the device reported. |
-| `5` | A mode this LED does not have, refused. |
-| `6` | A parade, run to the end. |
-| `7` | Half brightness, dithered. On board 3, the read back catching the device out. |
-| `8` | A hold on a device that times none. |
-| `9` | A beacon. |
-
-For example with VICE:
-
-```bash
-make BOARD=0 SCRIPT=2 demo
-x64sc -warp -limitcycles 90000000 -exitscreenshot shot.png -autostart build/rbcp_led_demo.prg
-```
-
-Notes:
-
-- `-keybuf` cannot reach this program, which reads the keyboard matrix directly with interrupts masked.
-
-## Other ROM Types
-
-This build serves one 8 KB ROM at $A000–$BFFF. To serve a 16 KB 23128 covering BASIC and KERNAL:
-
-| Change | In | To |
-| --- | --- | --- |
-| `CONFIG_ROM_SIZE` | `rbcp_config.s` | the image size |
-| `CONFIG_ROM_TYPE` | `rbcp_config.s` | that chip type's code, from the spec |
-| `checksum_image` | `../common/rbcp_session.s` | walk $A000–$BFFF, then $E000–$FFFF |
-
-A 16 KB image appears in two separate places in the C64's memory map, so the checksum must walk both, in image order.
-
-## Technical Details
-
-### Display Blanking
-
-With the display on, some commands come back wrong. The VIC-II takes the bus for 40+ cycles on every eighth raster line, and across that handover a device can:
-
-- see a phantom access
-- see one access as two
-- miss one
-
-Each slips the command frame by a byte.
-
-| Display | Commands wrong |
-| --- | --- |
-| on | 1 in 500 to 1 in 20,000, by board |
-| off | none |
-
-So the program clears bit 4 of `$D011` to disable the device around every exchange. The idle refresh runs once a second rather than every pass, which strobed the screen hard enough to be a hazard.
-
-### Recovery
-
-If the device fails to answer an RBCP command, RBCP framing breaks for every subsequent command, because the device is left waiting for argument bytes that never arrive. When detected, the program resets RBCP communications using [`../common/rbcp_recover.s`](../common/rbcp_recover.s), shared with the reliability meter implementation.
-
-### Clean Exit
-
-RBCP works by replacing part of the ROM image being served by the device (BASIC here) with a data section for transmitting data from the device to the host.
-
-When exiting, it is important this section is replaced with the original data, or BASIC will not work properly, subsequently.
-
-Exiting uses `Q` cleans the BASIC image on its way out.
-
-This is [`../common/rbcp_session.s`](../common/rbcp_session.s), shared with the auxiliary I/O tester.
+builds `build/c64_led_demo.bin`, a kernal socket image that answers its own questions. Run it under VICE as above and every screen is reachable with no device fitted. `BOARD` picks which imaginary board it describes.

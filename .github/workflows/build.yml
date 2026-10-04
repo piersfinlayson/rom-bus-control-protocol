@@ -88,35 +88,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cc65 and VICE
+      - name: Install cc65
         run: |
           sudo apt-get update
-          sudo apt-get install -y cc65 vice
+          sudo apt-get install -y cc65
 
-      # The default target builds the .prg and the .d64 that carries it, so
-      # c1541 from VICE has to be here.
-      #
-      # Every demo board too, because each one assembles different code and
-      # only a build catches a board whose tables no longer match the program.
-      # Each demo board starts by clearing the build directory, so they go
-      # first and the real build last.
+      # Each demo board assembles different code, so each is built to check its
+      # tables still match the program.
       - name: Build c64-led-test
         working-directory: reference/host/6502/c64-led-test
         run: |
-          for board in 0 1 2 3; do
-            make clean
-            make BOARD=$board build/rbcp_led_demo.prg
-          done
-          make clean
           make
+          for board in 0 1 2 3; do
+            make BOARD=$board demo
+          done
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: c64-led-test
           path: |
-            reference/host/6502/c64-led-test/build/rbcp_led_test.prg
-            reference/host/6502/c64-led-test/build/rbcp-led-test.d64
+            reference/host/6502/c64-led-test/build/c64_led_kernal.bin
+            reference/host/6502/c64-led-test/build/c64_led_basic.bin
+            reference/host/6502/c64-led-test/build/c64_led_combined.bin
 
   build-pipe-test:
     runs-on: ubuntu-latest
@@ -651,6 +645,53 @@ jobs:
             image: ''
             markers: |
               SET_AUX 0/4 high hold 0
+          # F3 selects the RGB LED, two cursor presses step its colour to red
+          # and 1 turns it on.  The discs and the read-back line come from
+          # GET_LED_INFO, not from what was sent.
+          - app: c64-led-test
+            target: kernal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'F3;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;1  !'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              GET_LED_INFO 1 = RGB
+              SET_LED 1 on rgb FF0000 bright 0 period 0 hold 0
+              |    .....OFF.....      .....ON......    |
+              |    .............      .....RED.....    |
+              BAD 0000
+              READ BACK AGREES
+          - app: c64-led-test
+            target: basic
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'F3;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;1  !'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              SET_LED 1 on rgb FF0000 bright 0 period 0 hold 0
+              |    .....OFF.....      .....ON......    |
+              BAD 0000
+              READ BACK AGREES
+          - app: c64-led-test
+            target: combined
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'F3;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;1  !'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              SET_LED 1 on rgb FF0000 bright 0 period 0 hold 0
+              |    .....OFF.....      .....ON......    |
+              BAD 0000
+              READ BACK AGREES
           - app: c64-pipe-test
             target: kernal
             leg: ''

@@ -47,7 +47,7 @@ RBCP_BCH_BASE=0xFC00
 RBCP_BCH_SIZE=512
 export RBCP_ROM_BASE RBCP_BCH_BASE RBCP_BCH_SIZE
 
-[ -f "$image" ] || { echo "no $image — run make first" >&2; exit 1; }
+[ -f "$image" ] || { echo "$image not found — use make to build it" >&2; exit 1; }
 [ -f "$dev" ] || { echo "no $dev" >&2; exit 1; }
 command -v mame >/dev/null || { echo "mame is not installed" >&2; exit 1; }
 

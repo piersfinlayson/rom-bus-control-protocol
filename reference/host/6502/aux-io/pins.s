@@ -23,9 +23,8 @@
 ;   pins_set_exit     as pins_set, and terminal.
 ;   pins_switch_exit  as pins_set_exit, plus sess_slot.  Terminal.
 ;
-; Everything that is about the session rather than the pins — opening it,
-; leaving it cleanly, the device's identity and the flash slots — is
-; rbcp_session.s, and both of these use it.
+; Opening the session, the device's identity and the flash slots are in
+; session.s.
 ;
 ; Indexing
 ; --------

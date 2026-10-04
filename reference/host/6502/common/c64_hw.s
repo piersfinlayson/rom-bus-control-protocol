@@ -1,8 +1,11 @@
-; c64_hw.s — C64 hardware initialisation, keyboard scan, screen output
+; c64_hw.s — C64 hardware initialisation and screen output
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
 ; c64_hw_init is in the BOOT segment (runs from ROM, called pre-relocation).
 ; All other routines are in the CODE segment (run from RAM post-relocation).
+;
+; Every C64 application links all of this file, so a routine only one of them
+; calls is kept elsewhere, for example in c64_menu.s.
 ;
 ; ZP addresses (zp_ptr_lo etc.) are plain constants exported for importers.
 ; No ZEROPAGE segment is used; ZP allocation is managed via the constants
@@ -181,116 +184,4 @@ c64_print_at:
     iny
     bne @loop
 @done:
-    rts
-
-; ---------------------------------------------------------------------------
-; row_to_ptrs — internal helper
-; A = row. Sets zp_ptr_lo/hi = screen row start, zp_tmp0/1 = colour row start.
-; Clobbers: A, X
-; ---------------------------------------------------------------------------
-
-row_to_ptrs:
-    tax
-    lda row_off_lo, x
-    sta zp_ptr_lo
-    lda row_scr_hi, x
-    sta zp_ptr_hi
-    lda row_off_lo, x
-    sta zp_tmp0
-    lda row_col_hi, x
-    sta zp_tmp1
-    rts
-
-; ---------------------------------------------------------------------------
-; c64_highlight_row
-; Sets bit 7 (reverse video) on all 40 screen chars in row; colour = white.
-; Input: A = row. Clobbers: A, X, Y.
-; ---------------------------------------------------------------------------
-
-.export c64_highlight_row
-c64_highlight_row:
-    jsr row_to_ptrs
-    ldy #39
-@loop:
-    lda (zp_ptr_lo), y
-    ora #$80
-    sta (zp_ptr_lo), y
-    lda #COL_WHITE
-    sta (zp_tmp0), y
-    dey
-    bpl @loop
-    rts
-
-; ---------------------------------------------------------------------------
-; c64_unhighlight_row
-; Clears bit 7 on all 40 screen chars in row; colour = light blue.
-; Input: A = row. Clobbers: A, X, Y.
-; ---------------------------------------------------------------------------
-
-.export c64_unhighlight_row
-c64_unhighlight_row:
-    jsr row_to_ptrs
-    ldy #39
-@loop:
-    lda (zp_ptr_lo), y
-    and #$7F
-    sta (zp_ptr_lo), y
-    lda #COL_WHITE
-    sta (zp_tmp0), y
-    dey
-    bpl @loop
-    rts
-
-; ---------------------------------------------------------------------------
-; c64_scan_key
-; Scans CIA1 for RETURN, cursor DOWN, cursor UP (= cursor + left/right
-; SHIFT).
-; Returns: A = KEY_NONE | KEY_RETURN | KEY_DOWN | KEY_UP. Clobbers: A, X.
-; ---------------------------------------------------------------------------
-
-.export c64_scan_key
-c64_scan_key:
-    lda #KEY_RET_COL
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_RET_ROW_BIT
-    bne @check_cursor
-    lda #KEY_RETURN
-    bne @debounce           ; always taken
-
-@check_cursor:
-    lda #KEY_CRS_COL
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_CRS_ROW_BIT
-    bne @no_key
-
-    lda #KEY_LSH_COL
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_LSH_ROW_BIT
-    bne @check_rsh
-    lda #KEY_UP
-    bne @debounce           ; always taken
-
-@check_rsh:
-    lda #KEY_RSH_COL
-    sta CIA1_PRA
-    lda CIA1_PRB
-    and #KEY_RSH_ROW_BIT
-    bne @is_down
-    lda #KEY_UP
-    bne @debounce           ; always taken
-
-@is_down:
-    lda #KEY_DOWN
-@debounce:
-    ldx #DEBOUNCE_COUNT
-@dly:
-    dex
-    bne @dly
-    rts
-
-@no_key:
-    lda #KEY_NONE
     rts

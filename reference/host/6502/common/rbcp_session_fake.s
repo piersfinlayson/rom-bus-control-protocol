@@ -1,9 +1,8 @@
 ; rbcp_session_fake.s — a session with no device at the other end
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; Provides the rbcp_session.s interface out of fixed answers, so that the demo
-; build of a tester can be looked at under an emulator, where there is nothing
-; to knock on and nothing past the knock can run.  It is never linked into a
+; Provides the session interface from fixed answers for a tester's demo build,
+; which runs under an emulator without a device.  It is never linked into a
 ; binary that talks to hardware.
 ;
 ; What it does not model: the knock, the command encoding, the polling

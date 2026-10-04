@@ -63,7 +63,7 @@ esac
 export RBCP_ROM_KB="$RBCP_TARGET"
 
 image="$build/amiga_auxio.bin"
-[ -f "$image" ] || { echo "no $image — run make first" >&2; exit 1; }
+[ -f "$image" ] || { echo "$image not found — use make to build it" >&2; exit 1; }
 
 # The Makefile writes the same file name whichever size it built, so the size
 # on disk is the only thing that says which build is there.

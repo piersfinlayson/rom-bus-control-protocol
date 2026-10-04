@@ -1,10 +1,8 @@
 ; led_test.s — the main loop, the keys that drive it, and what each one does
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; Entered from BASIC by SYS 2061 and returns to BASIC by rts.  Taking the
-; machine over and handing it back is c64_app.s's job, and scanning the matrix
-; is c64_keys.s's — this file supplies the table of keys it wants and says what
-; each one does.
+; Runs until the machine is switched off.  c64_keys.s scans the matrix against
+; app_key_table.
 ;
 ; Every key that changes something sends one SET_LED, reads every LED back and
 ; compares.  That comparison is the only check available — nothing the host
@@ -14,13 +12,10 @@
 
     .include "led_defs.s"
 
-.import c64_app_enter
-.import c64_app_leave
 .import c64_keys_scan
 .import c64_keys_wait_none
 .import c64_keys_wait_any
 .import sess_open
-.import sess_close
 .import sess_gone
 
 .import display_dark
@@ -41,9 +36,7 @@
 .import display_fail
 
 .import charset_build
-.import charset_restore
 .import ticker_start
-.import ticker_stop
 .import ticker_poll
 
 .import leds_discover
@@ -89,26 +82,7 @@
 .import pal_g
 .import pal_b
 
-; ---------------------------------------------------------------------------
-; PRG header and BASIC stub
-; ---------------------------------------------------------------------------
-
-.segment "LOADADDR"
-    .word $0801
-
-; 10 SYS 2061
-.segment "BASICSTUB"
-    .byte $0B, $08          ; link to the end-of-program marker at $080B
-    .byte $0A, $00          ; line number 10
-    .byte $9E               ; SYS token
-    .byte "2061"
-    .byte $00               ; end of line
-    .byte $00, $00          ; end of program
-
-; The entry point has a segment of its own so that SYS 2061 lands on it
-; whatever order the linker puts the CODE segment's contributors in.
-.segment "ENTRY"
-    jmp main
+.export main
 
 ; ---------------------------------------------------------------------------
 .bss
@@ -152,11 +126,10 @@ pause_left:     .res 1
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; main — SYS 2061 arrives here with interrupts on and the kernal live.
+; main — entered from boot.s with the hardware set up and the code in RAM.
 ; ---------------------------------------------------------------------------
 
 main:
-    jsr c64_app_enter
     jsr charset_build
     jsr ticker_start
 
@@ -343,7 +316,7 @@ frame_matched:
 dispatch:
     cmp #KEY_QUIT
     bne @not_q
-    jmp quit
+    rts                         ; a ROM image has no exit
 @not_q:
     cmp #KEY_LED_NEXT
     bne @not_ln
@@ -1157,25 +1130,12 @@ pause:
     rts
 
 ; ---------------------------------------------------------------------------
-; wait_quit — the resting state when there is nothing to show.  Only Q leaves.
+; wait_quit — the resting state when there is nothing to show.  The reason
+; stays on screen until the machine is switched off.
 ; ---------------------------------------------------------------------------
 
 wait_quit:
-    jsr c64_keys_scan
-    cmp #KEY_QUIT
-    bne wait_quit
-    ; fall through
-
-quit:
-    lda armed
-    beq @leave
-    jsr display_dark
-    jsr sess_close
-    jsr display_light
-@leave:
-    jsr ticker_stop
-    jsr charset_restore
-    jmp c64_app_leave
+    jmp wait_quit
 
 ; ---------------------------------------------------------------------------
 ; script — nothing at all in a real build.  In a demo build it puts the

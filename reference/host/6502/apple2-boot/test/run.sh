@@ -61,7 +61,7 @@ esac
 
 export RBCP_ROM_BASE
 
-[ -f "$image" ] || { echo "no $image — run make first" >&2; exit 1; }
+[ -f "$image" ] || { echo "$image not found — use make to build it" >&2; exit 1; }
 command -v mame >/dev/null || { echo "mame is not installed" >&2; exit 1; }
 
 # The socket the bootloader goes in is the one file taken from the build rather

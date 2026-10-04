@@ -19,6 +19,7 @@ RBCP_OBJS = $(patsubst $(RBCP_DIR)/%.s,$(BUILD)/rbcp/%.o,$(RBCP_SRCS))
 RBCP_LIB  = $(BUILD)/rbcp.lib
 
 OBJS    = $(BUILD)/c64_hw.o \
+          $(BUILD)/c64_menu.o \
           $(BUILD)/c64_boot.o \
           $(BUILD)/vectors.o
 
@@ -44,6 +45,9 @@ $(RBCP_LIB): $(RBCP_OBJS)
 
 $(BUILD)/c64_hw.o: ../common/c64_hw.s ../common/c64_defs.s $(FLAGS_FILE)
 	$(AS) $(ASFLAGS) ../common/c64_hw.s -o $@
+
+$(BUILD)/c64_menu.o: ../common/c64_menu.s ../common/c64_defs.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) ../common/c64_menu.s -o $@
 
 $(BUILD)/c64_boot.o: src/c64_boot.s ../rbcp/rbcp_defs.s ../common/c64_defs.s $(FLAGS_FILE)
 	$(AS) $(ASFLAGS) src/c64_boot.s -o $@

@@ -83,8 +83,8 @@ Adding one under `reference/host/` means all of:
   http://sun.hasenbraten.de/vasm/ with `make CPU=m68k SYNTAX=mot`.
 - Apple II testing: MAME, plus the machine's ROM files, which are not in the
   repository and must be supplied as a path.
-- C64 testing: VICE. `c1541` builds the `.d64` targets and is not on the
-  user's `PATH` by default.
+- C64 and VIC-20 testing: MAME, plus the machines' ROM files, which are not in
+  the repository and must be supplied as a path.
 
 ## Running MAME
 

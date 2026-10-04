@@ -1,15 +1,10 @@
-; session.s — opening the meter's session, and nothing more
+; session_rom.s — opening the LED tester's session
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; The meter is a ROM.  It owns the machine from reset, it never gives it back,
-; and you switch off when you have read the number.  So there is no exit to
-; repair.  The device reloads its RAM slot from flash at power-on, so
-; switching off is the repair.
-;
-; What is left is the knock, command-response mode, the version check and the
-; three strings the device calls itself.
+; The tester owns the machine from reset and never exits, so the session
+; doesn't set up an exit.
 
-    .include "stress_defs.s"
+    .include "led_defs.s"
 
 .import rbcp_reset
 .import rbcp_cmd_enter_cmd_resp
@@ -22,13 +17,15 @@
 .bss
 ; ---------------------------------------------------------------------------
 
+.export sess_gone
 .export sess_dev_type
 .export sess_dev_ver
 .export sess_proto
 
-; What the device calls itself.  Read once, while the session is opening, and
-; drawn from here afterwards.  A device that has stopped answering will not
-; answer a question about its own name either.
+sess_gone:      .res 1          ; a terminal command has been issued
+
+; The device's identity, read once as the session opens so the title row can
+; still be drawn after the device stops answering.
 sess_dev_type:  .res 25
 sess_dev_ver:   .res 25
 sess_proto:     .res 12
@@ -41,29 +38,33 @@ sess_proto:     .res 12
 ; sess_open — knocks, enters command-response mode, checks the protocol
 ; version and reads the device's identity.
 ;
-; Carry clear open, carry set refused with a FAIL_ code in A.
+; Carry clear on success, carry set on failure with a SESS_FAIL_ code in A.
+; Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
 
 .export sess_open
 sess_open:
+    lda #0
+    sta sess_gone
+
     jsr rbcp_reset
     jsr rbcp_cmd_enter_cmd_resp
     bcc @entered
     lda rbcp_zp_5
     cmp #1
     bne @refused                ; it answered, so something is there
-    lda #FAIL_NO_DEVICE         ; the token never moved
+    lda #SESS_FAIL_NO_DEVICE    ; the token never moved
     sec
     rts
 @refused:
-    lda #FAIL_ENTER
+    lda #SESS_FAIL_ENTER
     sec
     rts
 
 @entered:
     jsr rbcp_check_protocol_version
     bcc @ver_ok
-    lda #FAIL_VERSION
+    lda #SESS_FAIL_VERSION
     sec
     rts
 @ver_ok:
@@ -73,8 +74,7 @@ sess_open:
 
 ; ---------------------------------------------------------------------------
 ; read_identity — device type, device version and protocol version into the
-; buffers the display reads.  Each response is ASCII, null-terminated, in the
-; data section.  Clobbers A, X, Y.
+; sess_ buffers.  Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
 
 read_identity:

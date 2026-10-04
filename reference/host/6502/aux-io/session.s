@@ -2,10 +2,7 @@
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
 ; The tester is a ROM.  It owns the machine from reset and the image it is
-; running out of is its own, so there is no exit to repair and none of the
-; apparatus common/rbcp_session.s carries for one — the image checksum, the
-; hunt for a flash slot holding a pristine copy, the SLOT_PEEK verification,
-; the switch on the way out.
+; running out of is its own, so there is no exit to repair.
 ;
 ; What is left is the knock, command-response mode, the version check, the
 ; three strings the device calls itself, and the flash slots, because the

@@ -3,8 +3,7 @@
 ;
 ; Provides the leds.s interface out of a table instead of a device, so that
 ; every screen this program can draw is reachable under an emulator.  It is
-; never linked into the shipped binary — the Makefile builds rbcp_led_test.prg
-; from leds_dev.s and rbcp_led_demo.prg from this.
+; linked only into the demo image.
 ;
 ; What it models, and why each part is here:
 ;

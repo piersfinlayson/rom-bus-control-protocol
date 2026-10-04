@@ -128,6 +128,12 @@ local pending = nil
 local LED_TYPE = { [0] = 0x00, [1] = 0x01 }
 local MODE_NAME = { [0] = "off", "on", "blink", "breathe", "cycle", "beacon" }
 
+-- GET_LED_INFO reports what SET_LED last set, as the spec requires.
+local led_state = {}
+for n in pairs(LED_TYPE) do
+  led_state[n] = { mode = 0, r = 0, g = 0, b = 0, bright = 100, period = 0 }
+end
+
 local ARGS = {                   -- [group][cmd] = argument count
   [0x00] = { [0x00] = 0, [0x01] = 9, [0x04] = 1 },
   [0x01] = { [0x00] = 0, [0x01] = 1, [0x02] = 0, [0x03] = 0, [0x04] = 0, [0x05] = 0,
@@ -434,8 +440,15 @@ local function execute()
   elseif g == 0x06 and c == 0x01 then             -- GET_LED_INFO
     local n = a[1]
     if LED_TYPE[n] == nil then answer(false) return end
+    local st = led_state[n]
     put_data(0, LED_TYPE[n])
     for i = 1, 15 do put_data(i, 0) end
+    put_data(1, st.mode)
+    put_data(2, st.r)
+    put_data(3, st.g)
+    put_data(4, st.b)
+    put_data(5, st.bright)
+    put_data(6, st.period)
     put_data(8, 0x3F)                             -- every defined mode
     log("GET_LED_INFO %d = %s", n, LED_TYPE[n] == 1 and "RGB" or "monochrome")
     answer(true)
@@ -443,9 +456,17 @@ local function execute()
     put_data(0, 0) put_data(1, 0)
     answer(true)
   elseif g == 0x06 and c == 0x03 then             -- SET_LED
-    local mode, r, gr, b, led = a[1], a[2], a[3], a[4], a[8]
+    local mode, r, gr, b = a[1], a[2], a[3], a[4]
+    local bright, period, hold, led = a[5], a[6], a[7], a[8]
     if LED_TYPE[led] == nil then answer(false) return end
-    log("SET_LED %d %s rgb %02X%02X%02X", led, MODE_NAME[mode] or mode, r, gr, b)
+    local st = led_state[led]
+    st.mode, st.period = mode, period
+    -- Zero brightness keeps the current value.  A monochrome LED's colour
+    -- can't be set and stays zero.
+    if bright ~= 0 then st.bright = bright end
+    if LED_TYPE[led] == 0x01 then st.r, st.g, st.b = r, gr, b end
+    log("SET_LED %d %s rgb %02X%02X%02X bright %d period %d hold %d", led,
+        MODE_NAME[mode] or mode, r, gr, b, bright, period, hold)
     answer(true)
   elseif g == 0x04 and c == 0x02 then             -- PIPE_WRITE
     local n, s = a[6], ""

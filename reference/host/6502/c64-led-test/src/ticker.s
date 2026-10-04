@@ -27,7 +27,6 @@ last_lo:        .res 1
 last_hi:        .res 1
 acc_lo:         .res 1          ; phi2 cycles not yet worth a tick
 acc_hi:         .res 1
-saved_crb:      .res 1
 
 ; ---------------------------------------------------------------------------
 .code
@@ -39,8 +38,6 @@ saved_crb:      .res 1
 
 .export ticker_start
 ticker_start:
-    lda CIA2_CRB
-    sta saved_crb
     lda #$FF
     sta CIA2_TB_LO
     sta CIA2_TB_HI
@@ -52,16 +49,6 @@ ticker_start:
     jsr read_timer
     sta last_lo
     stx last_hi
-    rts
-
-; ---------------------------------------------------------------------------
-; ticker_stop — puts the timer back as it was found.  Clobbers A.
-; ---------------------------------------------------------------------------
-
-.export ticker_stop
-ticker_stop:
-    lda saved_crb
-    sta CIA2_CRB
     rts
 
 ; ---------------------------------------------------------------------------

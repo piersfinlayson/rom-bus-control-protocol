@@ -73,7 +73,7 @@ for i = 0, BCH_SIZE - 1 do bch[i] = 0 end
 local late_g, late_c, late_n
 if LATE then
   local g, c, n = LATE:match("^(%x%x):(%x%x):(%d+)$")
-  if not g then error("RBCP_LATE_RSP must be GG:CC:reads, e.g. 00:01:5") end
+  if not g then error("RBCP_LATE_RSP must be GG:CC:reads, for example 00:01:5") end
   late_g, late_c, late_n = tonumber(g, 16), tonumber(c, 16), tonumber(n)
 end
 local late_left, late_val = 0, 0

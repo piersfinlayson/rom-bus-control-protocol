@@ -2,12 +2,8 @@
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
 ; Everything here runs with interrupts masked and the program executing from
-; RAM.  Between the knock and the exit nothing may read $A000-$BFFF except the
-; command page reads the protocol makes and the back-channel reads it requires.
-;
-; Opening the session, reading the device's identity and finding a clean way
-; out are rbcp_session.s's, shared with the other testers.  What is left here
-; is the LEDs group and nothing else.
+; RAM.  After the knock nothing may read the ROM image except the protocol's
+; command page and back-channel reads.
 
     .include "led_defs.s"
 

@@ -591,6 +591,8 @@ display_init:
     sta (ZP_SCR_LO), y
     dey
     bpl @rev
+    lda #VIC_CTRL1_VAL          ; the display stays off from c64_hw_init until
+    sta VIC_CTRL1               ; the screen is drawn
     rts
 
 ; ---------------------------------------------------------------------------
@@ -1518,12 +1520,6 @@ display_fail:
     jsr row_ptrs
     ldy #1
     ldx #COL_LIGHT_RED
-    jsr put_str
-    lda #ROW_KEYS1
-    jsr row_ptrs
-    set_ptr str_quit_only
-    ldy #1
-    ldx #COL_MED_GREY
     jmp put_str
 @out:
     rts
@@ -1960,8 +1956,8 @@ str_modes:      .byte "MODES", 0
 ; The mode keys are not here — they are on the screen under the modes they set.
 str_keys1:      .byte "CRSR L/R  LED       CRSR U/D  COLOUR", 0
 str_keys2:      .byte "C COLOURS  B BRIGHT  P PERIOD  H HOLD", 0
-str_keys3:      .byte "SPACE PARADE   A ALL   Q QUIT", 0
-str_quit_only:  .byte "Q QUITS", 0
+; Q isn't listed because it only backs out of the colour screen.
+str_keys3:      .byte "SPACE PARADE   A ALL", 0
 str_any_key:    .byte "ANY KEY BACK", 0
 str_pick_keys1: .byte "CRSR MOVES    RETURN SETS IT", 0
 str_pick_keys2: .byte "Q BACKS OUT", 0

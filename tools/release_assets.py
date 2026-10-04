@@ -87,8 +87,9 @@ RELEASE = [
         "c64_pipe_combined.bin",
     ]),
     ("c64", "c64-led-test", "reference/host/6502/c64-led-test/build", [
-        "rbcp_led_test.prg",
-        "rbcp-led-test.d64",
+        "c64_led_kernal.bin",
+        "c64_led_basic.bin",
+        "c64_led_combined.bin",
     ]),
     ("vic20", "vic20-boot", "reference/host/6502/vic20-boot/build", [
         "vic20_boot_pal.bin",

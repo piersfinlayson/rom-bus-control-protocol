@@ -7,7 +7,6 @@
 
     .include "app_defs.s"
     .include "rbcp_stage.s"
-    .include "disc_glyphs.inc"
 
 ; Screen and colour row pointers, built by display.s from the c64_hw.s tables.
 ZP_SCR_LO   = ZP_APP0

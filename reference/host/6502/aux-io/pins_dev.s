@@ -2,15 +2,8 @@
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
 ; Everything here runs with interrupts masked and the program executing from
-; RAM.  Between the knock and the exit nothing may read $A000-$BFFF except the
-; command page reads the protocol makes and the back-channel reads it requires.
-; The image checksum, the knock and the way out are rbcp_session.s's, shared
-; with the other testers.  What is left here is the auxiliary I/O group and
-; nothing else.
-;
-; This file has never run.  There is no 6502 emulator here that speaks RBCP and
-; the demo build deliberately does not exercise it: hardware is the only thing
-; that can.
+; RAM.  Between the knock and the exit nothing may read the ROM image except
+; command page and back-channel reads.  The knock is in session.s.
 
     .include "auxio_defs.s"
 

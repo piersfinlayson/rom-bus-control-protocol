@@ -24,6 +24,9 @@ non-volatile storage and two LEDs. The RGB one is the second, so a host has to
 find the lowest-numbered RGB LED rather than land on zero. The slot names are
 mostly mixed case, because inverse video treats the two cases differently.
 
+A `SET_LED` is remembered and read back through `GET_LED_INFO`, which the
+tester compares against what it asked for.
+
 Three groups of auxiliary pins:
 
 - ten GPIO, only pins 2, 4, 6 and 8 drivable
