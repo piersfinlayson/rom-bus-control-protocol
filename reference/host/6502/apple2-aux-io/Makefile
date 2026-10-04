@@ -19,9 +19,11 @@ TARGET   = $(BUILD)/apple2_auxio.bin
 TARGET_D = $(BUILD)/apple2_auxio_demo.bin
 
 # BOARD only reaches the sources through the command line, so make cannot see
-# a change to it.  The stamp gives it something to depend on.
+# a change to it.  The demo build is deleted on a change, before any rule runs.
 BOARD   ?= 0
-BOARD_STAMP = $(BUILD_D)/.board
+$(shell [ "`cat $(BUILD_D)/.flags 2>/dev/null`" = "$(BOARD)" ] || \
+    { rm -rf $(BUILD_D) $(TARGET_D) && mkdir -p $(BUILD_D) && \
+      echo "$(BOARD)" > $(BUILD_D)/.flags; })
 
 # The RBCP library is an ar65 archive, so the linker takes only the command
 # modules this application refers to.
@@ -39,7 +41,7 @@ FAKE_SRCS = $(AUX_DIR)/pins_fake.s $(AUX_DIR)/session_fake.s
 DEPS = src/plat_defs.s $(AUX_DIR)/auxio_defs.s $(RBCP_DIR)/rbcp_defs.s \
        rbcp_config.s
 
-.PHONY: all demo clean test FORCE
+.PHONY: all demo clean test
 
 all: $(TARGET)
 demo: $(TARGET_D)
@@ -49,8 +51,7 @@ demo: $(TARGET_D)
 # Makefile reads, because $(NAME) of a define expands to the whole block.
 #
 # One rule set per image.  $(1) is the build directory, $(2) the extra ca65
-# flags, $(3) the image, $(4) the sources that differ between them, and $(5)
-# anything else every object in it depends on.
+# flags, $(3) the image and $(4) the sources that differ between them.
 # ---------------------------------------------------------------------------
 
 define IMAGE_RULES
@@ -63,11 +64,11 @@ $(1)/rbcp.lib: $$(patsubst $$(RBCP_DIR)/%.s,$(1)/rbcp/%.o,$$(RBCP_SRCS))
 	@rm -f $$@
 	ar65 a $$@ $$^
 
-$(1)/aux/%.o: $$(AUX_DIR)/%.s $$(DEPS) $(5)
+$(1)/aux/%.o: $$(AUX_DIR)/%.s $$(DEPS)
 	@mkdir -p $$(dir $$@)
 	$$(AS) $$(ASFLAGS) $(2) $$< -o $$@
 
-$(1)/app/%.o: src/%.s $$(DEPS) $(5)
+$(1)/app/%.o: src/%.s $$(DEPS)
 	@mkdir -p $$(dir $$@)
 	$$(AS) $$(ASFLAGS) $(2) $$< -o $$@
 
@@ -79,14 +80,8 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE_RULES,$(BUILD_M),,$(TARGET),$(DEV_SRCS),))
-$(eval $(call IMAGE_RULES,$(BUILD_D),-D BOARD=$(BOARD),$(TARGET_D),$(FAKE_SRCS),$(BOARD_STAMP)))
-
-$(BOARD_STAMP): FORCE
-	@mkdir -p $(dir $@)
-	@echo "$(BOARD)" | cmp -s - $@ || echo "$(BOARD)" > $@
-
-FORCE:
+$(eval $(call IMAGE_RULES,$(BUILD_M),,$(TARGET),$(DEV_SRCS)))
+$(eval $(call IMAGE_RULES,$(BUILD_D),-D BOARD=$(BOARD),$(TARGET_D),$(FAKE_SRCS)))
 
 test: $(TARGET)
 	test/run.sh $(ROMS) $(TARGET)

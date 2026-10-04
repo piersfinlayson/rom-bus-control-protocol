@@ -21,7 +21,12 @@ TARGET_P = $(BUILD)/vic20_auxio_pal.bin
 TARGET_N = $(BUILD)/vic20_auxio_ntsc.bin
 TARGET_D = $(BUILD)/vic20_auxio_demo.bin
 
+# BOARD only reaches the sources through the command line, so make cannot see
+# a change to it.  The demo build is deleted on a change, before any rule runs.
 BOARD   ?= 0
+$(shell [ "`cat $(BUILD_D)/.flags 2>/dev/null`" = "$(BOARD)" ] || \
+    { rm -rf $(BUILD_D) $(TARGET_D) && mkdir -p $(BUILD_D) && \
+      echo "$(BOARD)" > $(BUILD_D)/.flags; })
 
 # The RBCP library is an ar65 archive, so the linker takes only the command
 # modules this application refers to.  One archive per image, since each is
