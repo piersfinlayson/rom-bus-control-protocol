@@ -32,7 +32,8 @@ As well as the core [specification](spec/rbcp.md), this repo also contains many 
   - [`6502/pipe/`](reference/host/6502/pipe/README.md) — Pipe throughput test shared 6502 routines, and the script that receives the stream
   - [`6502/c64-led-test/`](reference/host/6502/c64-led-test/README.md) — A C64 LED tester, driving a device's LEDs and showing on screen what each one should be doing
   - [`6502/apple2-boot/`](reference/host/6502/apple2-boot/README.md) — An Apple II bootloader, picking between monitor, dead test and other images, in a 2KB F8 ROM on a II or II+ and an 8KB EF ROM on a IIe
-  - [`6502/apple2-boot/test/`](reference/host/6502/apple2-boot/test/README.md) — A fake RBCP device in MAME's Lua, which runs the Apple II bootloader against an emulated machine with no hardware attached
+  - [`6502/apple2-boot/test/`](reference/host/6502/apple2-boot/test/README.md) — An emulated RBCP device in MAME's Lua, which runs the Apple II bootloader against an emulated machine with no hardware attached
+  - [`6502/c64-boot/test/`](reference/host/6502/c64-boot/test/README.md) — A test harness that runs every C64 and VIC-20 image under MAME against an emulated RBCP device
   - [`6502/c64-rbcp-stress/`](reference/host/6502/c64-rbcp-stress/README.md) — A C64 RBCP reliability meter, showing how well RBCP works on the C64.
   - [`6502/vic20-rbcp-stress/`](reference/host/6502/vic20-rbcp-stress/README.md) — An RBCP reliability meter for a VIC-20
   - [`6502/apple2-rbcp-stress/`](reference/host/6502/apple2-rbcp-stress/README.md) — An RBCP reliability meter for an Apple IIe

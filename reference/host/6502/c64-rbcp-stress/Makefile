@@ -42,7 +42,7 @@ APP_SRCS    = src/plat.s
 DEPS = src/plat_defs.s ../common/c64_defs.s ../common/rbcp_stage.s \
        $(STRESS_DIR)/stress_defs.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(TARGET_K) $(TARGET_B) $(TARGET_C)
 
@@ -89,6 +89,11 @@ endef
 $(eval $(call IMAGE_RULES,$(BUILD_K),,c64_meter_kernal.cfg,$(TARGET_K)))
 $(eval $(call IMAGE_RULES,$(BUILD_B),-D BASIC_SOCKET=1,c64_meter_basic.cfg,$(TARGET_B)))
 $(eval $(call IMAGE_RULES,$(BUILD_C),-D COMBINED=1,c64_meter_combined.cfg,$(TARGET_C)))
+
+# ROMS is the directory of C64 ROM files, which aren't in this repository.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=kernal|basic|combined]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),kernal) test/run.sh "$(ROMS)"
 
 clean:
 	rm -rf $(BUILD)

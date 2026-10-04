@@ -36,7 +36,7 @@ APP_SRCS    = src/plat.s
 DEPS = src/plat_defs.s ../common/rbcp_stage.s $(PIPE_DIR)/pipe_defs.s \
        $(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(TARGET_P) $(TARGET_N)
 
@@ -83,6 +83,13 @@ endef
 
 $(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P)))
 $(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N)))
+
+# ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
+# Rates are timed in CPU cycles and the PAL and NTSC clocks differ, so TARGET
+# selects the machine as well as the build.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=pal|ntsc]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),pal) test/run.sh "$(ROMS)"
 
 clean:
 	rm -rf $(BUILD)

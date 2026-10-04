@@ -40,7 +40,7 @@ FAKE_SRCS = $(AUX_DIR)/pins_fake.s $(AUX_DIR)/session_fake.s
 DEPS = src/plat_defs.s $(AUX_DIR)/auxio_defs.s $(RBCP_DIR)/rbcp_defs.s \
        rbcp_config.s
 
-.PHONY: all demo clean
+.PHONY: all demo clean test
 
 all: $(TARGET_P) $(TARGET_N)
 demo: $(TARGET_D)
@@ -82,6 +82,11 @@ endef
 $(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P),$(DEV_SRCS)))
 $(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N),$(DEV_SRCS)))
 $(eval $(call IMAGE_RULES,$(BUILD_D),-D PAL=1 -D BOARD=$(BOARD),$(TARGET_D),$(FAKE_SRCS)))
+
+# ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=pal|ntsc]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),pal) test/run.sh "$(ROMS)"
 
 clean:
 	@echo "Cleaning build artifacts..."

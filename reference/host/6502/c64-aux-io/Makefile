@@ -46,7 +46,7 @@ FAKE_SRCS = $(AUX_DIR)/pins_fake.s $(AUX_DIR)/session_fake.s
 DEPS = src/plat_defs.s ../common/c64_defs.s $(AUX_DIR)/auxio_defs.s \
        $(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 
-.PHONY: all demo clean
+.PHONY: all demo clean test
 
 all: $(TARGET_K) $(TARGET_B) $(TARGET_C)
 demo: $(TARGET_D)
@@ -96,6 +96,11 @@ $(eval $(call IMAGE_RULES,$(BUILD_K),,c64_auxio_kernal.cfg,$(TARGET_K),$(DEV_SRC
 $(eval $(call IMAGE_RULES,$(BUILD_B),-D BASIC_SOCKET=1,c64_auxio_basic.cfg,$(TARGET_B),$(DEV_SRCS)))
 $(eval $(call IMAGE_RULES,$(BUILD_C),-D COMBINED=1,c64_auxio_combined.cfg,$(TARGET_C),$(DEV_SRCS)))
 $(eval $(call IMAGE_RULES,$(BUILD_D),-D BOARD=$(BOARD),c64_auxio_kernal.cfg,$(TARGET_D),$(FAKE_SRCS)))
+
+# ROMS is the directory of C64 ROM files, which aren't in this repository.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=kernal|basic|combined]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),kernal) test/run.sh "$(ROMS)"
 
 clean:
 	rm -rf $(BUILD)

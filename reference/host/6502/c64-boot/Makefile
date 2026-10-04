@@ -22,7 +22,7 @@ OBJS    = $(BUILD)/c64_hw.o \
           $(BUILD)/c64_boot.o \
           $(BUILD)/vectors.o
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(BUILD) $(TARGET)
 $(FLAGS_FILE): FORCE
@@ -54,6 +54,11 @@ $(BUILD)/vectors.o: ../common/vectors.s $(FLAGS_FILE)
 $(TARGET): $(OBJS) $(RBCP_LIB) c64_boot.cfg $(FLAGS_FILE)
 	$(LD) $(LDFLAGS) $(OBJS) $(RBCP_LIB) -o $@
 	@echo "Output: $@ ($$(wc -c < $@) bytes)"
+
+# ROMS is the directory of C64 ROM files, which aren't in this repository.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir>" >&2; exit 1; }
+	@test/run.sh "$(ROMS)"
 
 clean:
 	@echo "Cleaning build artifacts..."

@@ -36,7 +36,7 @@ APP_SRCS    = src/plat.s
 DEPS = src/plat_defs.s ../common/rbcp_stage.s $(TERM_DIR)/term_defs.s \
        $(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 
-.PHONY: all selftest clean
+.PHONY: all selftest clean test test-selftest
 
 all: $(TARGET_P) $(TARGET_N)
 
@@ -85,6 +85,17 @@ endef
 $(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P),))
 $(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N),))
 $(eval $(call IMAGE_RULES,$(BUILD_S),-D PAL=1 -D SELFTEST=1,$(TARGET_S),$(BUILD_S)/term/selftest.o))
+
+# ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
+# RBCP_SEND is the text from the far end of the pipe.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=pal|ntsc]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),pal) RBCP_SEND='you said hello\n' \
+	    test/run.sh "$(ROMS)"
+
+test-selftest: selftest
+	@[ -n "$(ROMS)" ] || { echo "usage: make test-selftest ROMS=<rom-dir>" >&2; exit 1; }
+	@RBCP_TARGET=pal RBCP_SEND='you said hello\n' test/run.sh "$(ROMS)" "$(TARGET_S)"
 
 clean:
 	rm -rf $(BUILD)

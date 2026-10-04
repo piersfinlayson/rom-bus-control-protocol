@@ -41,7 +41,7 @@ APP_SRCS    = src/plat.s
 DEPS = src/plat_defs.s ../common/c64_defs.s ../common/rbcp_stage.s \
        $(TERM_DIR)/term_defs.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s
 
-.PHONY: all selftest clean
+.PHONY: all selftest clean test test-selftest
 
 all: $(TARGET_K) $(TARGET_B) $(TARGET_C)
 
@@ -92,6 +92,17 @@ $(eval $(call IMAGE_RULES,$(BUILD_K),,c64_term_kernal.cfg,$(TARGET_K),))
 $(eval $(call IMAGE_RULES,$(BUILD_B),-D BASIC_SOCKET=1,c64_term_basic.cfg,$(TARGET_B),))
 $(eval $(call IMAGE_RULES,$(BUILD_C),-D COMBINED=1,c64_term_combined.cfg,$(TARGET_C),))
 $(eval $(call IMAGE_RULES,$(BUILD_S),-D BASIC_SOCKET=1 -D SELFTEST=1,c64_term_basic.cfg,$(TARGET_S),$(BUILD_S)/term/selftest.o))
+
+# ROMS is the directory of C64 ROM files, which aren't in this repository.
+# RBCP_SEND is the text from the far end of the pipe.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=kernal|basic|combined]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),kernal) RBCP_SEND='you said hello\n' \
+	    test/run.sh "$(ROMS)"
+
+test-selftest: selftest
+	@[ -n "$(ROMS)" ] || { echo "usage: make test-selftest ROMS=<rom-dir>" >&2; exit 1; }
+	@RBCP_TARGET=basic RBCP_SEND='you said hello\n' test/run.sh "$(ROMS)" "$(TARGET_S)"
 
 clean:
 	rm -rf $(BUILD)

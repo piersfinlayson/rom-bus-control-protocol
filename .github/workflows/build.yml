@@ -582,6 +582,402 @@ jobs:
                   || { echo "not in the log: $marker" >&2; exit 1; }
           done < "$RUNNER_TEMP/markers"
 
+  cbm-test:
+    name: cbm-test (${{ matrix.app }}, ${{ matrix.target }}${{ matrix.leg && format(', {0}', matrix.leg) || '' }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every leg sets every key.  An unset key reaches the step as an empty
+        # string, which the fake device reads as a number.
+        include:
+          - app: c64-boot
+            target: kernal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              GET_FLASH_SLOT_INFO_ALL 5 of 5
+              SWITCH_AND_EXIT ram slot 1
+              **** COMMODORE 64 BASIC V2 ****
+          - app: c64-aux-io
+            target: kernal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'H'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              GET_AUX_GROUP_INFO 2 = type $81, 2 pins
+              SET_AUX 0/2 high hold 0
+              |  4 OF 10 PINS CAN BE DRIVEN
+          - app: c64-aux-io
+            target: basic
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'H'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              SET_AUX 0/2 high hold 0
+              |  4 OF 10 PINS CAN BE DRIVEN
+          - app: c64-aux-io
+            target: combined
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'H'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              SET_AUX 0/2 high hold 0
+              |  4 OF 10 PINS CAN BE DRIVEN
+          - app: c64-aux-io
+            target: kernal
+            leg: 'cursor'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ← →|Crsr Right Left;H'
+            send: ''
+            image: ''
+            markers: |
+              SET_AUX 0/4 high hold 0
+          - app: c64-pipe-test
+            target: kernal
+            leg: ''
+            make_target: all
+            frames: 900
+            keys: 'T'
+            send: ''
+            image: ''
+            markers: |
+              | STOPPED
+              | SECONDS                    10
+              | REFUSALS                    0
+              | ERRORS                      0
+          - app: c64-pipe-test
+            target: basic
+            leg: ''
+            make_target: all
+            frames: 900
+            keys: 'T'
+            send: ''
+            image: ''
+            markers: |
+              | STOPPED
+              | SECONDS                    10
+              | ERRORS                      0
+          - app: c64-pipe-test
+            target: combined
+            leg: ''
+            make_target: all
+            frames: 900
+            keys: 'T'
+            send: ''
+            image: ''
+            markers: |
+              | STOPPED
+              | SECONDS                    10
+              | ERRORS                      0
+          - app: c64-rbcp-stress
+            target: kernal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              | RBCP RELIABILITY METER     PIERS.ROCKS |
+              [pipe] RBCP METER START
+              | ON 1 IN -----       OFF 1 IN -----     |
+              ERR          0      |
+              |                   LOST          0      |
+          - app: c64-rbcp-stress
+            target: basic
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              [pipe] RBCP METER START
+              ERR          0      |
+              |                   LOST          0      |
+          - app: c64-rbcp-stress
+            target: combined
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              [pipe] RBCP METER START
+              ERR          0      |
+              |                   LOST          0      |
+          - app: c64-rbcp-term
+            target: kernal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: ''
+            markers: |
+              [pipe<] you said hello
+              |<YOU SAID HELLO
+              | READY                          38 LEFT |
+          - app: c64-rbcp-term
+            target: basic
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: ''
+            markers: |
+              [pipe<] you said hello
+              |<YOU SAID HELLO
+          - app: c64-rbcp-term
+            target: combined
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: ''
+            markers: |
+              [pipe<] you said hello
+              |<YOU SAID HELLO
+          - app: c64-rbcp-term
+            target: basic
+            leg: 'selftest'
+            make_target: selftest
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: 'build/c64_term_selftest.bin'
+            markers: |
+              [pipe] LINE 28
+              |<YOU SAID HELLO
+          - app: vic20-boot
+            target: pal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              GET_FLASH_SLOT_INFO_ALL 5 of 5
+              SWITCH_AND_EXIT ram slot 1
+              **** CBM BASIC V2 ****
+          - app: vic20-boot
+            target: ntsc
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              SWITCH_AND_EXIT ram slot 1
+              **** CBM BASIC V2 ****
+          - app: vic20-aux-io
+            target: pal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'H'
+            send: ''
+            image: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              GET_AUX_GROUP_INFO 2 = type $81, 2 pins
+              SET_AUX 0/2 high hold 0
+              |4 OF 10 CAN BE DRIVEN |
+          - app: vic20-aux-io
+            target: ntsc
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: 'H'
+            send: ''
+            image: ''
+            markers: |
+              SET_AUX 0/2 high hold 0
+              |4 OF 10 CAN BE DRIVEN |
+          - app: vic20-aux-io
+            target: pal
+            leg: 'cursor'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ← →|Crsr Right Left;H'
+            send: ''
+            image: ''
+            markers: |
+              SET_AUX 0/4 high hold 0
+          - app: vic20-pipe-test
+            target: pal
+            leg: ''
+            make_target: all
+            frames: 900
+            keys: 'T'
+            send: ''
+            image: ''
+            markers: |
+              | STOPPED
+              | SECS               10|
+              | REFUSED             0|
+              | ERRORS              0|
+          - app: vic20-pipe-test
+            target: ntsc
+            leg: ''
+            make_target: all
+            frames: 900
+            keys: 'T'
+            send: ''
+            image: ''
+            markers: |
+              | STOPPED
+              | SECS               10|
+              | ERRORS              0|
+          - app: vic20-rbcp-stress
+            target: pal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              |RBCP METER PIERS.ROCKS|
+              [pipe] RBCP METER START
+              | 1 IN -----
+              |   ERR          0     |
+              |  LOST          0     |
+          - app: vic20-rbcp-stress
+            target: ntsc
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            markers: |
+              [pipe] RBCP METER START
+              |   ERR          0     |
+              |  LOST          0     |
+          - app: vic20-rbcp-term
+            target: pal
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: ''
+            markers: |
+              [pipe<] you said hello
+              |<YOU SAID HELLO       |
+              | READY        20 LEFT |
+          - app: vic20-rbcp-term
+            target: ntsc
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: ''
+            markers: |
+              [pipe<] you said hello
+              |<YOU SAID HELLO       |
+          - app: vic20-rbcp-term
+            target: pal
+            leg: 'selftest'
+            make_target: selftest
+            frames: 600
+            keys: ''
+            send: 'you said hello\n'
+            image: 'build/vic20_term_selftest.bin'
+            markers: |
+              [pipe] LINE 28
+              |<YOU SAID HELLO       |
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65 and MAME
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cc65 mame
+
+      # Both machines' files go in one directory because their names don't
+      # overlap.  mame -verifyroms always fails for c64 and vic20 because both
+      # list 901229-04.uab5, and a good dump of it doesn't exist.
+      - name: Fetch the machine ROMs
+        run: |
+          roms="$RUNNER_TEMP/cbm-roms"
+          mkdir -p "$roms"
+          curl -sSLo "$RUNNER_TEMP/c64.zip" \
+            https://raw.githubusercontent.com/piersfinlayson/RetroLibre/master/roms/bios/c64.zip
+          echo "ebbc33805acd104cd6ddc0e81e17bb7a813ca566  $RUNNER_TEMP/c64.zip" | sha1sum -c -
+          unzip -qoj "$RUNNER_TEMP/c64.zip" \
+            906114-01.u17 901225-01.u5 901226-01.u3 901227-03.u4 -d "$roms"
+          base=https://raw.githubusercontent.com/Abdess/retrobios/main/bios/Commodore/VIC-20
+          curl -sSLo "$roms/901486-01.ue11" "$base/basic.bin"
+          curl -sSLo "$roms/901460-03.ud7"  "$base/characters-english.bin"
+          curl -sSLo "$roms/901486-06.ue12" "$base/kernel-ntsc.bin"
+          curl -sSLo "$roms/901486-07.ue12" "$base/kernel-pal.bin"
+          cd "$roms"
+          sha1sum -c - <<'EOF'
+          efb315f560b6f72444b8f0b2ca4b0ccbcd144a1b  906114-01.u17
+          adc7c31e18c7c7413d54802ef2f4193da14711aa  901225-01.u5
+          79015323128650c742a3694c9429aa91f355905e  901226-01.u3
+          1d503e56df85a62fee696e7618dc5b4e781df1bb  901227-03.u4
+          587d1e90950675ab6b12d91248a3f0d640d02e8d  901486-01.ue11
+          4fd85ab6647ee2ac7ba40f729323f2472d35b9b4  901460-03.ud7
+          06de7ec017a5e78bd6746d89c2ecebb646efeb19  901486-06.ue12
+          ce0137ed69f003a299f43538fa9eee27898e621e  901486-07.ue12
+          EOF
+
+      - name: Build ${{ matrix.app }}
+        working-directory: reference/host/6502/${{ matrix.app }}
+        run: make ${{ matrix.make_target }}
+
+      # MAME exits 0 even on an error screen.  A marker is a line of the
+      # device's log or of the screen it prints at the end.
+      - name: Run ${{ matrix.app }} under MAME
+        working-directory: reference/host/6502/${{ matrix.app }}
+        env:
+          RBCP_TARGET: ${{ matrix.target }}
+          RBCP_FRAMES: ${{ matrix.frames }}
+          RBCP_KEYS: ${{ matrix.keys }}
+          RBCP_SEND: ${{ matrix.send }}
+          IMAGE: ${{ matrix.image }}
+          MARKERS: ${{ matrix.markers }}
+        run: |
+          set -o pipefail
+          test/run.sh "$RUNNER_TEMP/cbm-roms" ${IMAGE:+"$IMAGE"} 2>&1 \
+              | tee "$RUNNER_TEMP/run.log"
+          printf '%s\n' "$MARKERS" > "$RUNNER_TEMP/markers"
+          while IFS= read -r marker; do
+              [ -n "$marker" ] || continue
+              grep -qF -- "$marker" "$RUNNER_TEMP/run.log" \
+                  || { echo "not in the log: $marker" >&2; exit 1; }
+          done < "$RUNNER_TEMP/markers"
+
   build-romsel:
     runs-on: ubuntu-latest
     steps:

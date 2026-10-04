@@ -35,7 +35,7 @@ OBJS_NTSC = $(BUILD_NTSC)/vic20_boot.o \
             $(BUILD_NTSC)/vic20_hw.o \
             $(BUILD_NTSC)/vectors.o
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(TARGET_PAL) $(TARGET_NTSC)
 
@@ -105,6 +105,11 @@ $(TARGET_NTSC): $(OBJS_NTSC) $(RBCP_LIB_NTSC) vic20_boot.cfg $(FLAGS_NTSC)
 	@echo "Output: $@ ($$(wc -c < $@) bytes)"
 
 # ---------------------------------------------------------------------------
+
+# ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
+test: all
+	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=pal|ntsc]" >&2; exit 1; }
+	@RBCP_TARGET=$(if $(TARGET),$(TARGET),pal) test/run.sh "$(ROMS)"
 
 clean:
 	@echo "Cleaning build artifacts..."
