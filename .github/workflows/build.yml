@@ -301,10 +301,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # vasm is not packaged, and upstream ships a tarball rather than a repo.
+      # vasm is not packaged.  one-rom-build-deps holds a copy of the upstream
+      # tarball, so a build does not depend on upstream's server.
       - name: Build vasm
         run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
+          curl -sSfLo vasm.tar.gz https://github.com/piersfinlayson/one-rom-build-deps/releases/download/vasm-2.0f/vasm-2.0f.tar.gz
+          echo "c84b2de1cbb87831795fe64a85c5d9a7002a766e3a7c30b0a2d7d5e99d878f49  vasm.tar.gz" | sha256sum -c -
           tar xzf vasm.tar.gz
           make -C vasm CPU=m68k SYNTAX=mot
           echo "$PWD/vasm" >> "$GITHUB_PATH"
@@ -371,7 +373,8 @@ jobs:
 
       - name: Build vasm
         run: |
-          curl -sSLO http://sun.hasenbraten.de/vasm/release/vasm.tar.gz
+          curl -sSfLo vasm.tar.gz https://github.com/piersfinlayson/one-rom-build-deps/releases/download/vasm-2.0f/vasm-2.0f.tar.gz
+          echo "c84b2de1cbb87831795fe64a85c5d9a7002a766e3a7c30b0a2d7d5e99d878f49  vasm.tar.gz" | sha256sum -c -
           tar xzf vasm.tar.gz
           make -C vasm CPU=m68k SYNTAX=mot
           echo "$PWD/vasm" >> "$GITHUB_PATH"
@@ -1025,10 +1028,12 @@ jobs:
       - uses: actions/checkout@v4
 
       # Open Watcom is not packaged, and its installer needs a terminal.  The
-      # snapshot tarball is the same tree it would lay down.
+      # snapshot tarball is the same tree it would lay down.  Upstream rebuilds
+      # the snapshot with every change, so one-rom-build-deps holds a fixed copy.
       - name: Install Open Watcom
         run: |
-          curl -sSLO https://github.com/open-watcom/open-watcom-v2/releases/download/Current-build/ow-snapshot.tar.xz
+          curl -sSfLo ow-snapshot.tar.xz https://github.com/piersfinlayson/one-rom-build-deps/releases/download/open-watcom-2026-10-05/ow-snapshot-2026-10-05.tar.xz
+          echo "b5ed4218322c9827cb6d847603d277b0caace396872aba4eebbeea48da46ea91  ow-snapshot.tar.xz" | sha256sum -c -
           mkdir -p "$HOME/watcom"
           tar xJf ow-snapshot.tar.xz -C "$HOME/watcom" --strip-components=1
           chmod -R +x "$HOME/watcom/binl64"
@@ -1057,7 +1062,10 @@ jobs:
       - name: Install Open Watcom
         shell: pwsh
         run: |
-          curl.exe -sSLo ow-snapshot.tar.xz https://github.com/open-watcom/open-watcom-v2/releases/download/Current-build/ow-snapshot.tar.xz
+          curl.exe -sSfLo ow-snapshot.tar.xz https://github.com/piersfinlayson/one-rom-build-deps/releases/download/open-watcom-2026-10-05/ow-snapshot-2026-10-05.tar.xz
+          if ((Get-FileHash ow-snapshot.tar.xz -Algorithm SHA256).Hash -ne 'b5ed4218322c9827cb6d847603d277b0caace396872aba4eebbeea48da46ea91') {
+            throw "ow-snapshot.tar.xz: SHA256 mismatch"
+          }
           New-Item -ItemType Directory -Force "$env:USERPROFILE\watcom" | Out-Null
           tar -xf ow-snapshot.tar.xz -C "$env:USERPROFILE\watcom" --strip-components=1
           Add-Content $env:GITHUB_ENV "WATCOM=$env:USERPROFILE\watcom"
