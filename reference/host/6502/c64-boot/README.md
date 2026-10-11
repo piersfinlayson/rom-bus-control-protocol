@@ -29,6 +29,26 @@ A device with no pipe, or one whose protocol version predates the Pipes group, i
 
 The kernal image is for a longboard C64. The combined image is for a shortboard.
 
+## Programming
+
+One ROM's stock configs contain:
+- the bootloader
+- the stock ROM
+- the RBCP test applications
+
+| Config | Name |
+| --- | --- |
+| [`c64-bootloader-longboard.json`](https://images.onerom.org/configs/c64-bootloader-longboard.json) | C64 Bootloader (longboard) |
+| [`28-c64-bootloader-shortboard.json`](https://images.onerom.org/configs/28-c64-bootloader-shortboard.json) | C64 Bootloader (shortboard) |
+
+To add an image of your own, copy a slot in a downloaded config updating `label` and `file`. If using a relative `file` path with the CLI, it must start from the directory `onerom` runs in.
+
+Program it with Studio or the CLI:
+
+```bash
+onerom program --config c64-bootloader-longboard.json
+```
+
 ## Display blanking
 
 The display goes off while the bootloader is talking to the device due to a C64 limitation.

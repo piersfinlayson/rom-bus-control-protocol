@@ -88,6 +88,9 @@ onerom program \
 Image select pin D may also be used.  Pins A and B are not 5V tolerant, so
 should not be used.
 
+One ROM's stock configs use the published images instead of local builds. See
+[`amiga-boot`](amiga-boot/README.md#programming).
+
 ## Running The ROMs
 
 Once selected and booted into, each ROM is self-documenting.  See the READMEs

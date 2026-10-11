@@ -80,7 +80,21 @@ make COUNTDOWN=10 NV_FATAL=1
 
 ## Programming
 
-For a IIe:
+One ROM's stock IIe config [`28-apple2e-bootloader.json`](https://images.onerom.org/configs/28-apple2e-bootloader.json) contains:
+- the bootloader
+- the stock ROM
+- a dead test ROM
+- the RBCP test applications
+
+To add an image of your own, copy a slot in a downloaded config updating `label` and `file`. If using a relative `file` path with the CLI, it must start from the directory `onerom` runs in.
+
+Program it with Studio or the CLI:
+
+```
+onerom program --config 28-apple2e-bootloader.json
+```
+
+Or, without using a config file, for a IIe:
 
 ```
 onerom program --plugin usb --plugin host-control \

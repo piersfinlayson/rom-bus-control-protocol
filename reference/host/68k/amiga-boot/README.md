@@ -69,6 +69,43 @@ test/run.sh <rom-dir>
 
 ## Programming
 
+You can use One ROM's stock configs to program the bootloader and the RBCP test applications.
+
+| Config | Name |
+| --- | --- |
+| [`40-amiga-bootloader-256k.json`](https://images.onerom.org/configs/40-amiga-bootloader-256k.json) | Amiga Bootloader (256KB) |
+| [`40l-amiga-bootloader-512k.json`](https://images.onerom.org/configs/40l-amiga-bootloader-512k.json) | Amiga Bootloader (512KB) |
+
+The 512KB config requires a size L One ROM.
+
+The configs don't contain a Kickstart image. To use a Kickstart image add it after the bootloader like this:
+
+```json
+{
+    "type": "single",
+    "chips": [
+        {
+            "label": "Kickstart 3.1",
+            "file": "kick31.rom",
+            "type": "27C400"
+        }
+    ]
+},
+```
+
+Notes:
+- A 256KB Kickstart image in the 512KB config requires `"size_handling": "duplicate"`.
+- If `onerom` prints a warning that the Kickstart is high byte first, add `"transform": ["swap_bytes"]`.
+- If using a relative `file` path with the CLI, it must start from the directory `onerom` runs in.
+
+Program it with Studio or the CLI:
+
+```
+onerom program --config 40l-amiga-bootloader-512k.json
+```
+
+Or, without using a config file:
+
 ```
 onerom program --plugin usb --plugin host-control \
     --slot file=build/amiga_boot_512k.bin,type=27c400,label="Bootloader" \
@@ -76,4 +113,4 @@ onerom program --plugin usb --plugin host-control \
     --slot file=diagrom-16bit.bin,type=27c400,label="DiagROM V2"
 ```
 
-If `onerom` says a ROM is high byte first, add `transform=swap_bytes` to its slot.
+If `onerom` prints a warning that a ROM is high byte first, add `transform=swap_bytes` to its slot.

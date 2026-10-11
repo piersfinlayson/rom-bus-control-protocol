@@ -18,7 +18,25 @@ On any RBCP error the bootloader displays a message and halts; power-cycle to re
 
 ## Usage
 
-Install the built binary as the first ROM image slot, followed by the kernal images you wish to switch between.
+One ROM's stock configs contain:
+- the bootloader
+- the stock kernal
+- the RBCP test applications
+
+| Config | Name |
+| --- | --- |
+| [`vic20-bootloader-pal.json`](https://images.onerom.org/configs/vic20-bootloader-pal.json) | VIC-20 Bootloader (PAL) |
+| [`vic20-bootloader-ntsc.json`](https://images.onerom.org/configs/vic20-bootloader-ntsc.json) | VIC-20 Bootloader (NTSC) |
+
+To add an image of your own, copy a slot in a downloaded config updating `label` and `file`. If using a relative `file` path with the CLI, it must start from the directory `onerom` runs in.
+
+Program it with Studio or the CLI:
+
+```
+onerom program --config vic20-bootloader-pal.json
+```
+
+Or, without using a config file, install the built binary as the first ROM image slot, followed by the kernal images you wish to switch between.
 
 For example, using One ROM and the pre-built bootloader binary:
 
@@ -29,7 +47,7 @@ onerom program  --plugin usb --plugin host-control \
                 --slot kernal2.bin,type=2364,cs1=0
 ```
 
-For NTSC, modify `vic20_pal_boot.bin` to `vic20_ntsc_boot.bin` in the above command.
+For NTSC, modify `vic20_boot_pal.bin` to `vic20_boot_ntsc.bin` in the above command.
 
 ## Dependencies
 
