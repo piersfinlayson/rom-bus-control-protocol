@@ -49,10 +49,14 @@ APPS = {
     "c64-boot": {
         "kind": "rom",
         "name": "C64 RBCP Reference Bootloader",
-        "description": "A C64 kernal bootloader reference implementation",
+        "description": "A C64 kernal bootloader reference implementation. "
+                       "Kernal and combined 16KB images.",
         "machine": "c64",
         "source": REPO + "reference/host/6502/c64-boot",
-        "files": {"c64_boot.bin": {}},
+        "files": {
+            "c64_boot.bin": {},
+            "c64_boot_combined.bin": {"variant": "combined"},
+        },
     },
     "vic20-boot": {
         "kind": "rom",

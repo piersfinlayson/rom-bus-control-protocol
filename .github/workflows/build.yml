@@ -33,7 +33,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: c64-boot
-          path: reference/host/6502/c64-boot/build/c64_boot.bin
+          path: |
+            reference/host/6502/c64-boot/build/c64_boot.bin
+            reference/host/6502/c64-boot/build/c64_boot_combined.bin
 
   build-vic20-boot:
     runs-on: ubuntu-latest
@@ -596,11 +598,43 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               GET_FLASH_SLOT_INFO_ALL 5 of 5
               SWITCH_AND_EXIT ram slot 1
               **** COMMODORE 64 BASIC V2 ****
+          # LOAD_SLOT completes after the bootloader stops waiting.  RETURN at
+          # the prompt sends the report.
+          - app: c64-boot
+            target: kernal
+            leg: 'report'
+            make_target: all
+            frames: 600
+            keys: 'Return'
+            send: ''
+            image: ''
+            slow: '02:02:30'
+            markers: |
+              [pipe] RBCP ERROR: LOAD FAILED
+              [pipe] SENT 02 02 01 01 TOKEN 07 HEADER 02 02 08 00 44 CC NOT COMPLETED
+              [pipe] COMPLETED IN
+              [pipe] END
+              |REPORT SENT TO PIPE 0                   |
+          - app: c64-boot
+            target: combined
+            leg: ''
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            slow: ''
+            markers: |
+              ENTER_CMD_RESP page=$00 bch=$0100 size=512
+              GET_FLASH_SLOT_INFO_ALL 5 of 5
+              [pipe] SWITCHING TO SLOT $01
+              SWITCH_AND_EXIT ram slot 1
           - app: c64-aux-io
             target: kernal
             leg: ''
@@ -609,6 +643,7 @@ jobs:
             keys: 'H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               GET_AUX_GROUP_INFO 2 = type $81, 2 pins
@@ -622,6 +657,7 @@ jobs:
             keys: 'H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               SET_AUX 0/2 high hold 0
@@ -634,6 +670,7 @@ jobs:
             keys: 'H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               SET_AUX 0/2 high hold 0
@@ -646,6 +683,7 @@ jobs:
             keys: 'CRSR ← →|Crsr Right Left;H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               SET_AUX 0/4 high hold 0
           # F3 selects the RGB LED, two cursor presses step its colour to red
@@ -659,6 +697,7 @@ jobs:
             keys: 'F3;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;1  !'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               GET_LED_INFO 1 = RGB
@@ -675,6 +714,7 @@ jobs:
             keys: 'F3;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;1  !'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               SET_LED 1 on rgb FF0000 bright 0 period 0 hold 0
@@ -689,6 +729,7 @@ jobs:
             keys: 'F3;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;1  !'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               SET_LED 1 on rgb FF0000 bright 0 period 0 hold 0
@@ -703,6 +744,7 @@ jobs:
             keys: 'T'
             send: ''
             image: ''
+            slow: ''
             markers: |
               | STOPPED
               | SECONDS                    10
@@ -716,6 +758,7 @@ jobs:
             keys: 'T'
             send: ''
             image: ''
+            slow: ''
             markers: |
               | STOPPED
               | SECONDS                    10
@@ -728,6 +771,7 @@ jobs:
             keys: 'T'
             send: ''
             image: ''
+            slow: ''
             markers: |
               | STOPPED
               | SECONDS                    10
@@ -740,6 +784,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               | RBCP RELIABILITY METER     PIERS.ROCKS |
               [pipe] RBCP METER START
@@ -754,6 +799,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               [pipe] RBCP METER START
               ERR          0      |
@@ -766,6 +812,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               [pipe] RBCP METER START
               ERR          0      |
@@ -778,6 +825,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: ''
+            slow: ''
             markers: |
               [pipe<] you said hello
               |<YOU SAID HELLO
@@ -790,6 +838,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: ''
+            slow: ''
             markers: |
               [pipe<] you said hello
               |<YOU SAID HELLO
@@ -801,6 +850,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: ''
+            slow: ''
             markers: |
               [pipe<] you said hello
               |<YOU SAID HELLO
@@ -812,6 +862,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: 'build/c64_term_selftest.bin'
+            slow: ''
             markers: |
               [pipe] LINE 28
               |<YOU SAID HELLO
@@ -823,6 +874,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               GET_FLASH_SLOT_INFO_ALL 5 of 5
@@ -836,6 +888,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               SWITCH_AND_EXIT ram slot 1
               **** CBM BASIC V2 ****
@@ -847,6 +900,7 @@ jobs:
             keys: 'H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               GET_AUX_GROUP_INFO 2 = type $81, 2 pins
@@ -860,6 +914,7 @@ jobs:
             keys: 'H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               SET_AUX 0/2 high hold 0
               |4 OF 10 CAN BE DRIVEN |
@@ -871,6 +926,7 @@ jobs:
             keys: 'CRSR ← →|Crsr Right Left;H'
             send: ''
             image: ''
+            slow: ''
             markers: |
               SET_AUX 0/4 high hold 0
           - app: vic20-pipe-test
@@ -881,6 +937,7 @@ jobs:
             keys: 'T'
             send: ''
             image: ''
+            slow: ''
             markers: |
               | STOPPED
               | SECS               10|
@@ -894,6 +951,7 @@ jobs:
             keys: 'T'
             send: ''
             image: ''
+            slow: ''
             markers: |
               | STOPPED
               | SECS               10|
@@ -906,6 +964,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               |RBCP METER PIERS.ROCKS|
               [pipe] RBCP METER START
@@ -920,6 +979,7 @@ jobs:
             keys: ''
             send: ''
             image: ''
+            slow: ''
             markers: |
               [pipe] RBCP METER START
               |   ERR          0     |
@@ -932,6 +992,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: ''
+            slow: ''
             markers: |
               [pipe<] you said hello
               |<YOU SAID HELLO       |
@@ -944,6 +1005,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: ''
+            slow: ''
             markers: |
               [pipe<] you said hello
               |<YOU SAID HELLO       |
@@ -955,6 +1017,7 @@ jobs:
             keys: ''
             send: 'you said hello\n'
             image: 'build/vic20_term_selftest.bin'
+            slow: ''
             markers: |
               [pipe] LINE 28
               |<YOU SAID HELLO       |
@@ -1009,6 +1072,7 @@ jobs:
           RBCP_FRAMES: ${{ matrix.frames }}
           RBCP_KEYS: ${{ matrix.keys }}
           RBCP_SEND: ${{ matrix.send }}
+          RBCP_SLOW: ${{ matrix.slow }}
           IMAGE: ${{ matrix.image }}
           MARKERS: ${{ matrix.markers }}
         run: |

@@ -154,6 +154,7 @@ Every setting is an environment variable:
 | `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
 | `RBCP_REFUSE` | unset | `GG:CC` — the command the device answers with failed. |
 | `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said it is complete. That is a device publishing its completion before its result. |
+| `RBCP_SLOW` | unset | `GG:CC:frames` — the command the device leaves pending for that many frames after its token moves. |
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails. |
 | `RBCP_SEND` | unset | A line the far end of the pipe sends unprompted. `\n` in it is a line feed. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, in place of the one `run.sh` finds for itself. `c64-basic` and `c64-combined` find none. |
@@ -173,8 +174,9 @@ RBCP_HOLD=CBM RBCP_HOLD_UNTIL=200 RBCP_KEY_AT=240 RBCP_FRAMES=500 \
     test/run.sh <rom-dir>
 ```
 
-Ignore `ENTER_CMD_RESP` and read the error screen the application draws:
+Ignore `ENTER_CMD_RESP` and read the error screen the application draws. The
+bootloader waits ten seconds on a command that timed out before drawing it:
 
 ```bash
-RBCP_DEAF=00:01 test/run.sh <rom-dir>
+RBCP_DEAF=00:01 RBCP_FRAMES=900 test/run.sh <rom-dir>
 ```

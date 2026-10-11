@@ -65,6 +65,7 @@ RELEASE = [
     ]),
     ("c64", "c64-boot", "reference/host/6502/c64-boot/build", [
         "c64_boot.bin",
+        "c64_boot_combined.bin",
     ]),
     ("c64", "c64-rbcp-stress", "reference/host/6502/c64-rbcp-stress/build", [
         "c64_meter_kernal.bin",

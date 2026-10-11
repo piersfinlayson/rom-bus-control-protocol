@@ -2,6 +2,13 @@
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
 ; C64 bootloader kernal configuration for RBCP.
+;
+; Two images.  The kernal build is an 8KB 2364 for a longboard.  The combined
+; build, made with COMBINED=1, is a 16KB 23128 for a shortboard.  The first
+; half of the 23128 is mapped at $A000, where BASIC would be.  The bootloader
+; doesn't use that half, so the command page and the back channel go there.
+
+.ifndef COMBINED
 
 ; Set to the high byte of the address the ROM is mapped to in the host system.
 ; For example, the C64 kernal ROM is mapped to $E000, hence $E0.
@@ -15,13 +22,23 @@ CONFIG_ROM_SIZE = $2000
 ; for other things, $E0xx is a good choice in which case the HI value is $E0.
 CONFIG_RBCP_CMD_PAGE = $E0
 
-; The command page value relative to the start of the ROM image.  This is
-; the value used to configure the device.
-CONFIG_RBCP_CMD_PAGE_REL = CONFIG_RBCP_CMD_PAGE - CONFIG_ROM_BASE_HI
-
 ; Set to the base address of the back channel region, if used.  Should not
 ; conflict with the RBCP address read 
 CONFIG_RBCP_BCH_BASE = $E100
+
+.else
+
+; The combined image's values for the four settings above.
+CONFIG_ROM_BASE_HI = $A0
+CONFIG_ROM_SIZE = $4000
+CONFIG_RBCP_CMD_PAGE = $A0
+CONFIG_RBCP_BCH_BASE = $A100
+
+.endif
+
+; The command page value relative to the start of the ROM image.  This is
+; the value used to configure the device.
+CONFIG_RBCP_CMD_PAGE_REL = CONFIG_RBCP_CMD_PAGE - CONFIG_ROM_BASE_HI
 
 ; Back-channel region start address, as a ROM-relative offset. Must be
 ; 4-byte aligned. $0100 places it at $E100 in the C64 address space,

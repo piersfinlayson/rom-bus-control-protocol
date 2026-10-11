@@ -1,7 +1,7 @@
 ; c64_boot.s — Reset entry, relocation, RBCP session, menu UX
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-.include "c64_defs.s"
+.include "boot_defs.s"
 
 ; ---------------------------------------------------------------------------
 ; This bootloader's own version, shown in the header.  It is not the
@@ -9,7 +9,7 @@
 ; changes and how it is published.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.1.1"
+.define APP_VERSION "0.1.2"
 
 ; ---------------------------------------------------------------------------
 ; Imports
@@ -35,6 +35,22 @@
 .import rbcp_cmd_nv_poke_commit_byte
 .import rbcp_cmd_get_pipe_capability
 .import rbcp_cmd_pipe_write
+
+.import diag_init
+.import diag_begin
+.import diag_end
+.import diag_late
+.import diag_screen
+.import diag_send
+.import diag_result
+.import diag_ms
+
+.export buf_putc
+.export buf_puts
+.export byte_to_hex
+.export buf_dec16
+.export pipe_log
+.export str_app
 
 .import row_off_lo
 .import row_scr_hi
@@ -69,7 +85,7 @@ MAX_DISPLAY     = 14
 ; data section, which itself includes an 8 byte header.
 ; Entry 0 = flash slot 1, entry N = flash slot N+1.
 slot_name_buf:  .res MAX_DISPLAY * 32
-status_line_buf: .res 32
+status_line_buf: .res 48
 device_type_buf:    .res 24
 device_version_buf: .res 24
 device_line_buf:    .res 50
@@ -85,6 +101,12 @@ var_cbm_held:   .res 1      ; $00 = C= held; non-zero = not held
 var_nv_present: .res 1      ; 0 = absent or not writable, 1 = writable
 var_pipe_present: .res 1    ; 0 = device has no pipe, 1 = pipe 0 is available
 var_boot_flash: .res 1      ; resolved flash slot to boot
+var_nv_done:    .res 1      ; 1 once this boot has committed to NV storage
+var_nv_ms:      .res 2      ; how long the commit took
+
+dec_val:        .res 2      ; buf_dec16's state
+dec_tmp:        .res 1
+dec_lead:       .res 1
 
 ; ===========================================================================
 ; BOOT segment — runs from ROM, executes before relocation
@@ -96,7 +118,7 @@ var_boot_flash: .res 1      ; resolved flash slot to boot
 ; boot_entry — RESET vector target
 ; Runs from ROM. Must not call into the CODE segment (not in RAM yet).
 ; Calls c64_hw_init (also in BOOT) and copies CODE to RAM, then jumps to
-; boot_ram_entry (CODE segment run address = $C000+).
+; boot_ram_entry.
 ; ---------------------------------------------------------------------------
 
 .export boot_entry
@@ -125,7 +147,7 @@ boot_entry:
     ; Relocate CODE segment from ROM to RAM.
     ;
     ; __CODE_LOAD__ = load address of CODE in ROM image
-    ; __CODE_RUN__  = run address of CODE in RAM ($C000)
+    ; __CODE_RUN__  = run address of CODE in RAM
     ; __CODE_SIZE__ = byte count of CODE segment
     ;
     ; ZP use: ZP_PTR_LO/hi = ROM source, ZP_TMP0/1 = RAM destination.
@@ -172,7 +194,7 @@ boot_entry:
     jmp boot_ram_entry      ; run (RAM) address of boot_ram_entry
 
 ; ===========================================================================
-; CODE segment — runs from RAM ($C000+) after relocation
+; CODE segment — runs from RAM after relocation
 ; ===========================================================================
 
 .code
@@ -184,8 +206,10 @@ boot_entry:
 boot_ram_entry:
     ldy #COL_BLACK
     jsr c64_clear_screen
-    lda #VIC_CTRL1_VAL
-    sta VIC_CTRL1               ; Enable display
+    jsr diag_init
+    jsr boot_dark
+    lda #0
+    sta var_nv_done
 
     ; ------------------------------------------------------------------
     ; RBCP common setup
@@ -206,18 +230,18 @@ boot_ram_entry:
     jsr rbcp_reset
 
     ; Enter command-response mode using the settings in rbcp_config.s
-    jsr rbcp_cmd_enter_cmd_resp
+    recorded rbcp_cmd_enter_cmd_resp
     bcc @ok_enter
     jmp err_no_cmd_resp
 
     ; Check device's RBCP protocol version 
 @ok_enter:
-    jsr rbcp_check_protocol_version
+    recorded rbcp_check_protocol_version
     bcc @ok_version
     jmp err_protocol_version
 
 @ok_version:
-    jsr rbcp_cmd_get_ram_slot_info_all
+    recorded rbcp_cmd_get_ram_slot_info_all
     bcc @ok_ram
     jmp err_ram_info
 @ok_ram:
@@ -241,7 +265,7 @@ boot_ram_entry:
     lda #0
     sta var_total_flash
     sta var_whole_flash
-    jsr rbcp_cmd_get_flash_slot_info_all
+    recorded rbcp_cmd_get_flash_slot_info_all
     bcs @flash_info_done        ; on failure totals stay zero; menu path catches this, auto-boot falls back to slot 1
     lda RBCP_DATA_ADDR + 0
     sta var_total_flash
@@ -255,7 +279,7 @@ boot_ram_entry:
     lda #1
     sta var_boot_flash              ; default: flash slot 1
 
-    jsr rbcp_cmd_get_nv_capability
+    recorded rbcp_cmd_get_nv_capability
     bcs @nv_skip                    ; command failed
     lda RBCP_DATA_ADDR + RBCP_NV_CAP_SIZE_LO
     ora RBCP_DATA_ADDR + RBCP_NV_CAP_SIZE_HI
@@ -270,7 +294,7 @@ boot_ram_entry:
     lda #0
     sta rbcp_arg1                   ; location LSB = 0
     sta rbcp_arg2                   ; location MSB = 0
-    jsr rbcp_cmd_nv_peek
+    recorded rbcp_cmd_nv_peek
     bcs @nv_skip                    ; peek failed
 
     lda RBCP_DATA_ADDR              ; the stored slot byte
@@ -288,7 +312,7 @@ boot_ram_entry:
     ; count of zero lead to the same place, so neither is told from the other.
     lda #0
     sta var_pipe_present
-    jsr rbcp_cmd_get_pipe_capability
+    recorded rbcp_cmd_get_pipe_capability
     bcs @pipe_skip
     lda RBCP_DATA_ADDR + RBCP_PIPE_CAP_COUNT
     beq @pipe_skip                  ; count == 0, no pipes
@@ -309,7 +333,7 @@ boot_ram_entry:
 
     ldx var_boot_flash
     lda var_target_ram
-    jsr rbcp_cmd_load_slot
+    recorded rbcp_cmd_load_slot
     bcc @ok_load_auto
     jmp err_load
 @ok_load_auto:
@@ -335,7 +359,7 @@ path_menu:
     ;sty VIC_BORDER
     jsr c64_clear_screen
 
-    jsr rbcp_cmd_get_device_type
+    recorded rbcp_cmd_get_device_type
     bcc @ok_devtype
     jmp err_device_type
 @ok_devtype:
@@ -354,7 +378,7 @@ path_menu:
     ;ldy #COL_BLUE
     ;sty VIC_BORDER
 
-    jsr rbcp_cmd_get_device_version
+    recorded rbcp_cmd_get_device_version
     bcc @ok_devver
     jmp err_device_version
 @ok_devver:
@@ -505,6 +529,7 @@ path_menu:
 @sel_ok:
     sta var_selection
     jsr highlight_selection
+    jsr boot_light
 
     ; ------------------------------------------------------------------
     ; Keyboard polling loop
@@ -552,6 +577,7 @@ key_delay:
     jmp key_loop
 
 do_boot:
+    jsr boot_dark
     inc var_selection       ; convert to 1-based flash slot index
     lda var_nv_present
     beq @nv_skip_write
@@ -564,14 +590,21 @@ do_boot:
     sta rbcp_arg2           ; location MSB
     lda var_target_ram
     sta rbcp_arg3           ; RAM slot for staging
-    jsr rbcp_cmd_nv_poke_commit_byte
-    bcc @nv_skip_write
+    recorded rbcp_cmd_nv_poke_commit_byte
+    bcc @nv_committed
     jmp err_nv_commit
+@nv_committed:
+    lda diag_ms
+    sta var_nv_ms
+    lda diag_ms + 1
+    sta var_nv_ms + 1
+    lda #1
+    sta var_nv_done
 
 @nv_skip_write:
     ldx var_selection       ; X = flash slot
     lda var_target_ram      ; A = RAM slot
-    jsr rbcp_cmd_load_slot
+    recorded rbcp_cmd_load_slot
     bcc @ok_load_menu
     jmp err_load
 @ok_load_menu:
@@ -686,35 +719,82 @@ err_load:
     sta ZP_PTR_HI
     ; fall through
 
+; ---------------------------------------------------------------------------
+; halt_with_msg — reports the failure and stops.  ZP_PTR is the message.
+;
+; The display is off on every path here.  It comes on for the prompt and goes
+; off again for the reset and the pipe report, which are exchanges with the
+; device.
+;
+; Nothing reads the ROM between the prompt and RETURN, so One ROM's ring of
+; the last 64 ROM reads still holds the failure when the user captures it.
+; ---------------------------------------------------------------------------
 halt_with_msg:
-    ; Turn on the display if turned off
-    lda #VIC_CTRL1_VAL
-    sta VIC_CTRL1
-
-    ; Set colour for text
-    ldy #COL_WHITE
-    jsr c64_clear_screen
-
-    lda #12
-    sta ZP_TMP0
-    lda #0
-    sta ZP_TMP1
-    jsr c64_print_at
-
-    jsr build_status_line
-
-    lda #<status_line_buf
-    sta ZP_PTR_LO
-    lda #>status_line_buf
-    sta ZP_PTR_HI
-    lda #13
-    sta ZP_TMP0
-    lda #0
-    sta ZP_TMP1
-    jsr c64_print_at
+    jsr diag_late
+    lda #COL_RED
+    sta VIC_BORDER
+    jsr diag_screen
+    jsr boot_light
+    jsr wait_return
+    jsr boot_dark
+    jsr diag_send
+    jsr diag_result
+    jsr boot_light
 
 @halt:
     jmp @halt
+
+; ---------------------------------------------------------------------------
+; boot_dark — turns the display off and returns once the VIC-II has stopped
+; fetching characters.
+;
+; While the VIC-II fetches characters it holds the bus.  Around each handover
+; the device can decode an access that wasn't one, decode one twice or miss
+; one.
+;
+; The VIC-II reads the bit during line $30 and uses that value for the rest of
+; the frame.  So this waits for a line $30 that starts with the bit already
+; clear, which takes up to a frame.
+;
+; Clobbers A.
+; ---------------------------------------------------------------------------
+boot_dark:
+    lda VIC_CTRL1
+    and #<(~VIC_CTRL1_DEN)
+    sta VIC_CTRL1
+@leave:
+    lda VIC_RASTER              ; the VIC-II may have read the bit set in this line
+    cmp #VIC_DEN_LINE
+    beq @leave
+@wait:
+    lda VIC_CTRL1
+    and #VIC_CTRL1_RST8         ; line $130 has the same low byte
+    bne @wait
+    lda VIC_RASTER
+    cmp #VIC_DEN_LINE
+    bne @wait
+    rts
+
+; wait_return — returns once RETURN is pressed.  A key held on entry, for
+; example the RETURN that chose the kernal, has to be released first.
+; Clobbers A, X.
+wait_return:
+@release:
+    jsr c64_scan_key
+    cmp #KEY_NONE
+    bne @release
+@press:
+    jsr c64_scan_key
+    cmp #KEY_RETURN
+    bne @press
+    rts
+
+; boot_light — turns the display back on.  Clobbers A.
+boot_light:
+    lda VIC_CTRL1
+    ora #VIC_CTRL1_DEN
+    sta VIC_CTRL1
+    rts
 
 .macro set_ptr addr
     lda #<addr
@@ -724,7 +804,8 @@ halt_with_msg:
 .endmacro
 
 ; ---------------------------------------------------------------------------
-; log_switch — sends "SWITCHING TO SLOT $XX" out through the device.
+; log_switch — sends "SWITCHING TO SLOT $XX" out through the device, followed
+; by " NV COMMIT nMS" when this boot stored the slot.
 ;
 ; The last thing the bootloader does before SWITCH_AND_EXIT, which is the last
 ; moment it can send anything: the switch ends the command-response session,
@@ -752,6 +833,16 @@ log_switch:
     jsr buf_puts
     lda ZP_TMP2                 ; done with it before pipe_log wants it back
     jsr byte_to_hex
+    lda var_nv_done
+    beq @end
+    set_ptr msg_nv_commit
+    jsr buf_puts
+    lda var_nv_ms
+    ldx var_nv_ms + 1
+    jsr buf_dec16
+    set_ptr msg_ms
+    jsr buf_puts
+@end:
     lda #13                     ; the device's log is CRLF terminated
     jsr buf_putc
     lda #10
@@ -773,6 +864,7 @@ log_switch:
 ; line is never worth not booting for.  The library reports the refusal and
 ; leaves that choice here, which is what this is.
 ;
+; Carry clear if the whole string was sent, carry set if a chunk failed.
 ; Clobbers A, X, Y, ZP_PTR_LO/HI, ZP_TMP2 and the RBCP arguments.
 ; ---------------------------------------------------------------------------
 pipe_log:
@@ -792,7 +884,7 @@ pipe_log:
     bne @gather
 @flush:
     txa                         ; A = count, and sets Z when none
-    beq @done                   ; nothing gathered, the string is finished
+    beq @sent                   ; nothing gathered, the string is finished
     stx ZP_TMP2                 ; count, to tell a full chunk from a short one
     ldx #0                      ; pipe 0
     jsr rbcp_cmd_pipe_write
@@ -800,6 +892,8 @@ pipe_log:
     lda ZP_TMP2
     cmp #RBCP_PIPE_WRITE_MAX
     beq @chunk                  ; a full chunk, so there may be more
+@sent:
+    clc
 @done:
     rts
 
@@ -854,71 +948,49 @@ byte_to_hex:
     jmp buf_putc        ; tail call
 
 ; ---------------------------------------------------------------------------
-; build_status_line
-;
-; Accesses RBCP library zero page addresses
+; buf_dec16 — writes A (low) and X (high) in decimal via buf_putc, without
+; leading zeros.  Clobbers A, X, Y.
 ; ---------------------------------------------------------------------------
-
-build_status_line:
-    lda #<status_line_buf
-    sta ZP_TMP0
-    lda #>status_line_buf
-    sta ZP_TMP1
-
-    set_ptr str_sl_stg
-    jsr buf_puts
-    lda rbcp_zp_5
-    clc
-    adc #'0'
-    jsr buf_putc
-
-    set_ptr str_sl_grp
-    jsr buf_puts
-    lda rbcp_zp_0
-    jsr byte_to_hex
-
-    set_ptr str_sl_cmd
-    jsr buf_puts
-    lda rbcp_zp_1
-    jsr byte_to_hex
-
-    set_ptr str_sl_tok
-    jsr buf_puts
-    lda RBCP_TOKEN_LSB_ADDR
-    jsr byte_to_hex
-
-    set_ptr str_sl_prog
-    jsr buf_puts
-    lda RBCP_PROGRESS_ADDR
-    jsr byte_to_hex
-
-    set_ptr str_sl_resp
-    jsr buf_puts
-    lda RBCP_RESPONSE_ADDR
-    jsr byte_to_hex
-
-    set_ptr str_sl_dgrp
-    jsr buf_puts
-    lda CONFIG_RBCP_BCH_BASE + 0
-    jsr byte_to_hex
-
-    set_ptr str_sl_dcmd
-    jsr buf_puts
-    lda CONFIG_RBCP_BCH_BASE + 1
-    jsr byte_to_hex
-
+buf_dec16:
+    sta dec_val
+    stx dec_val + 1
     lda #0
-    jsr buf_putc
-    rts
+    sta dec_lead
+    ldx #0
+@power:
+    ldy #'0'
+@subtract:
+    lda dec_val
+    sec
+    sbc dec_power_lo, x
+    sta dec_tmp
+    lda dec_val + 1
+    sbc dec_power_hi, x
+    bcc @digit
+    sta dec_val + 1
+    lda dec_tmp
+    sta dec_val
+    iny
+    bne @subtract               ; always
+@digit:
+    tya
+    cmp #'0'
+    bne @emit
+    ldy dec_lead
+    beq @next
+@emit:
+    sta dec_lead
+    jsr buf_putc                ; keeps X
+@next:
+    inx
+    cpx #4
+    bne @power
+    lda dec_val
+    ora #'0'
+    jmp buf_putc
 
-str_sl_stg:  .byte "STG:", 0
-str_sl_grp:  .byte " GRP:", 0
-str_sl_cmd:  .byte " CMD:", 0
-str_sl_tok:  .byte " TOK:", 0
-str_sl_prog: .byte " PRG:", 0
-str_sl_resp: .byte " RSP:", 0
-str_sl_dgrp:  .byte "DGRP:", 0
-str_sl_dcmd:  .byte " DCMD:", 0
+dec_power_lo: .byte <10000, <1000, <100, <10
+dec_power_hi: .byte >10000, >1000, >100, >10
 
 ; ===========================================================================
 ; draw_menu
@@ -1134,3 +1206,6 @@ msg_err_no_kernals:     .byte "NO KERNALS FOUND TO BOOT", 0
 msg_err_load:           .byte "RBCP ERROR: LOAD FAILED", 0
 msg_halt:               .byte "HALTING", 0
 msg_switching:          .byte "SWITCHING TO SLOT $", 0
+msg_nv_commit:          .byte " NV COMMIT ", 0
+msg_ms:                 .byte "MS", 0
+str_app:                .byte "C64 BOOTLOADER ", APP_VERSION, 0

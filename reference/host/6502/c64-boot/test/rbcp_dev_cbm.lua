@@ -75,6 +75,17 @@ if LATE then
 end
 local late_left, late_val = 0, 0
 
+-- "GG:CC:frames" leaves that command pending for that many frames after the
+-- token moves, like a device that is slow to complete it.
+local SLOW = os.getenv("RBCP_SLOW")
+local slow_g, slow_c, slow_n
+if SLOW and SLOW ~= "" then
+  local g, c, n = SLOW:match("^(%x%x):(%x%x):(%d+)$")
+  if not g then error("RBCP_SLOW must be GG:CC:frames, for example 03:06:90") end
+  slow_g, slow_c, slow_n = tonumber(g, 16), tonumber(c, 16), tonumber(n)
+end
+local slow = nil
+
 -- Three groups, so a host written for one fails.  The loopback pair lets a
 -- host read a pin it does not drive.
 local AUX_GROUPS = {
@@ -249,7 +260,7 @@ local function aux_ok(n, p, state, after, hold)
   return true
 end
 
-local function execute()
+local function execute_now()
   local g, c, a = dev.group, dev.cmd, dev.args
   if DEAF == string.format("%02X:%02X", g, c) then
     log("%02X/%02X ignored", g, c)
@@ -481,6 +492,19 @@ local function execute()
   end
 end
 
+-- Until a slow command completes, the host reads the previous command's
+-- response, so that is what stays there.
+local function execute()
+  local g, c, token, response = dev.group, dev.cmd, dev.token, bch[5]
+  execute_now()
+  if slow_g and g == slow_g and c == slow_c and dev.token ~= token then
+    slow = { at = frames + slow_n, progress = bch[4], response = bch[5] }
+    bch[4] = (~COMPLETE) & 0xFF
+    bch[5] = response
+    log("%02X/%02X pending for %d frames", g, c, slow_n)
+  end
+end
+
 -- One command byte, from the low byte of a command page address.  Outside
 -- command-response mode a command must follow the knock, except group $AA, so
 -- a reset always works.
@@ -666,6 +690,11 @@ emu.register_frame_done(function()
     aux_apply(pending.group, pending.pin, pending.after)
     if pending.ok then answer(true, pending.g, pending.c) end
     pending = nil
+  end
+  if slow and frames >= slow.at then
+    bch[5] = slow.response
+    bch[4] = slow.progress
+    slow = nil
   end
   -- The bootloaders read the matrix just after reset, before this script ran,
   -- so the machine is reset again with the keys held.
