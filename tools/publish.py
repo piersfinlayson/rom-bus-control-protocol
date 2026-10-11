@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
-"""Copy a built artefact into a one-rom-images checkout and update its manifest.
+"""Publish an application's binary to one-rom-images.
 
-    publish.py <images-path> app <id> <version> <binary> [<binary> ...]
+    publish.py <images-path> app <id> [--version <v>] <binary> [<binary> ...]
 
-Every application carries its own version, whatever the delivery. A ROM image
-the device serves goes to roms.json, a program the machine loads goes to
-retro-apps.json, and the two manifests have the same shape.
+The APPS dictionary in this script lists every application that can be
+published and the file names of its binaries.
 
-The version is named on the command line. Publishing a version that is already
-listed with different contents is refused, which is the mistake worth
-catching: building a change and publishing it under the version it had before.
+- <images-path> is the path to a one-rom-images checkout.
+- <id> is the application, for example c64-boot.
+- <binary> is the path to one of its binaries, for example
+  reference/host/6502/c64-boot/build/c64_boot.bin.
+- --version is the version to publish, for example v0.1.1. Use it only when
+  the application's source isn't in this repository. Otherwise the version is
+  read from APP_VERSION or CFG_VERSION in the application's source.
 
-Builds nothing and downloads nothing. See RELEASE.md.
+Publishing fails if the version is already published with different contents.
+
+See RELEASE.md.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -28,8 +34,8 @@ COLLECTION = "host-control"
 
 # Everything published to images.onerom.org from here, which is not the same
 # as everything this repository builds. Adding an application means adding an
-# entry. `kind` says which manifest it belongs in: an image the device serves,
-# or a program the machine loads.
+# entry. `kind` is rom for an image the device serves and retro for a program
+# the machine loads.
 APPS = {
     # Not built here. R107sl's bootloader, from the fork the published images
     # are built from.
@@ -322,6 +328,17 @@ APPS = {
     },
 }
 
+# This repository's root.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# APP_VERSION or CFG_VERSION as ca65, vasm and C define it.
+VERSION_FORMS = (
+    r'^\s*\.define\s+(?:APP|CFG)_VERSION\s+"([^"]*)"',
+    r'^(?:APP|CFG)_VERSION\s+MACRO\s*\n\s*DC\.B\s+"([^"]*)"',
+    r'^\s*#define\s+(?:APP|CFG)_VERSION\s+"([^"]*)"',
+)
+SOURCE_SUFFIXES = (".s", ".h", ".c", ".inc")
+
 # Where each kind lives. The manifest key differs because the two sections of
 # the site mean different things to someone reading it.
 KINDS = {
@@ -396,10 +413,44 @@ def find(entries, field, value):
     return None
 
 
+def source_version(app_id, app):
+    """The version defined in the application's directory, as vX.Y.Z, or None
+    when its source isn't in this repository."""
+    if not app["source"].startswith(REPO):
+        return None
+    top = os.path.join(ROOT, app["source"][len(REPO):])
+    found = []
+    for d, dirs, files in os.walk(top):
+        dirs[:] = [x for x in dirs if x != "build"]
+        for name in files:
+            if not name.endswith(SOURCE_SUFFIXES):
+                continue
+            path = os.path.join(d, name)
+            with open(path, errors="replace") as f:
+                text = f.read()
+            for form in VERSION_FORMS:
+                for m in re.finditer(form, text, re.M):
+                    found.append((os.path.relpath(path, ROOT), m.group(1)))
+    if len(found) != 1:
+        die("%s: %d version definitions in %s, not one: %s"
+            % (app_id, len(found), os.path.relpath(top, ROOT),
+               ", ".join(p for p, _ in found)))
+    return "v" + found[0][1]
+
+
 def publish(images, app_id, version, binaries):
     if app_id not in APPS:
         die("no application called %s, add one to APPS in this script" % app_id)
     app = APPS[app_id]
+
+    from_source = source_version(app_id, app)
+    if from_source and version:
+        die("%s: the version is read from its source. Leave out --version."
+            % app_id)
+    if not from_source and not version:
+        die("%s: its source isn't in this repository, so --version is required"
+            % app_id)
+    version = version or from_source
 
     files = []
     for binary in binaries:
@@ -495,7 +546,8 @@ def main():
 
     app = sub.add_parser("app", help="publish one application's built files")
     app.add_argument("id", help="application id, for example romsel")
-    app.add_argument("version", help="its own version, for example v0.1.0")
+    app.add_argument("--version", help="the version, for example v0.1.0, of "
+                     "an application whose source isn't in this repository")
     app.add_argument("binary", nargs="+", help="the built files")
 
     args = p.parse_args()

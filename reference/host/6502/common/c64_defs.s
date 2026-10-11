@@ -20,6 +20,7 @@ CPU_PORT_VAL    = %00100111 ; HIRAM=1, LORAM=1, CHAREN=1, CASSWR=0, MOTOR=0
 ; ---------------------------------------------------------------------------
 
 VIC_CTRL1       = $D011
+VIC_RASTER      = $D012     ; raster line bits 0-7
 VIC_CTRL2       = $D016
 VIC_MEMSETUP    = $D018
 VIC_BORDER      = $D020
@@ -28,6 +29,9 @@ VIC_BACKGROUND  = $D021
 VIC_CTRL1_VAL   = %00011011 ; screen on, 25 rows, normal height, y-scroll=3
 VIC_CTRL2_VAL   = %00001000 ; 40 cols, normal width, multicolour off
 VIC_MEMSETUP_VAL= %00010100 ; screen at $0400, charset at $1000 (char ROM)
+
+VIC_CTRL1_RST8  = %10000000 ; raster line bit 8, when read
+VIC_DEN_LINE    = $30       ; DEN set in this line turns on the frame's badlines
 
 ; ---------------------------------------------------------------------------
 ; CIA1 — keyboard matrix

@@ -14,6 +14,7 @@
 
 .import c64_hw_init
 .import c64_clear_screen
+.import c64_wait_den_line
 .import row_off_lo
 .import row_scr_hi
 .import row_col_hi
@@ -192,8 +193,9 @@ plat_key:
 ; ---------------------------------------------------------------------------
 ; plat_vary_set — A non-zero puts the display back on, zero stops it.
 ;
-; Stopping the display stops every badline and every other cycle the VIC takes
-; off the processor.  Clobbers A, X.
+; A frame's badlines follow DEN as it was on raster line $30, so this waits up
+; to a frame for the next line $30.  Every count after it belongs to the new
+; setting.  Clobbers A, X.
 ; ---------------------------------------------------------------------------
 
 .export plat_vary_set
@@ -206,7 +208,7 @@ plat_vary_set:
     ora #VIC_CTRL1_DEN
 @put:
     sta VIC_CTRL1
-    rts
+    jmp c64_wait_den_line
 
 ; ---------------------------------------------------------------------------
 .rodata

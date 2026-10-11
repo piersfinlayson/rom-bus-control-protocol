@@ -41,6 +41,7 @@
 
 .import c64_clear_screen
 .import c64_print_at
+.import c64_wait_den_line
 .import row_off_lo
 .import row_scr_hi
 .import row_col_hi
@@ -510,8 +511,10 @@ scr_code:
 ; badline it holds it for over forty cycles.  The address bus and the chip
 ; select change hands across that, and around the handover the device can see
 ; an access that was not one, see one as two, or miss one — any of which slips
-; the command frame by a byte.  Clearing the display enable bit stops every
-; fetch, and with the display off the frames go out intact.
+; the command frame by a byte.  The VIC-II reads the display enable bit on
+; raster line $30 and fetches for the rest of the frame on what it read there.
+; So this clears the bit and waits up to a frame for the next line $30.  With
+; the display off the frames go out intact.
 ;
 ; The pair nests, so a routine that brackets a batch may call one that brackets
 ; a single command.  Neither touches a register or a flag — display_dark runs
@@ -531,6 +534,7 @@ display_dark:
     sta dark_saved
     and #<(~VIC_CTRL1_DEN)
     sta VIC_CTRL1
+    jsr c64_wait_den_line
 @out:
     pla
     plp
@@ -1946,7 +1950,7 @@ str_c_ltblue:   .byte "LT BLUE", 0
 str_c_ltgrey:   .byte "LT GREY", 0
 str_device:     .byte "DEVICE", 0
 
-str_title:      .byte "RBCP LED TESTER", 0
+str_title:      .byte "RBCP LED TESTER ", APP_VERSION, 0
 str_brand:      .byte "PIERS.ROCKS", 0
 str_led:        .byte "LED ", 0
 str_mono:       .byte "MONO", 0

@@ -7,15 +7,20 @@
     .include "c64_defs.s"
 
 ; ---------------------------------------------------------------------------
-; Registers c64_defs.s does not name
+; This program's own version, displayed in the title bar.  It is not the
+; protocol's version or the device's.  See RELEASE.md for when it changes.
 ; ---------------------------------------------------------------------------
 
-VIC_RASTER      = $D012     ; raster line, bit 8 in VIC_CTRL1 bit 7
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
+; Registers c64_defs.s does not name
+; ---------------------------------------------------------------------------
 
 ; The kernal's NMI vector, which only the BASIC socket image has a use for.
 NMINV           = $0318
 
-; The display enable bit.  Clearing it stops every fetch the VIC-II makes.
+; The display enable bit.  See plat_dark.
 VIC_CTRL1_DEN   = %00010000
 
 ; CIA2 carries the clock.  CIA1 has the keyboard matrix and is read for keys

@@ -16,6 +16,7 @@
 
 .import c64_hw_init
 .import c64_clear_screen
+.import c64_wait_den_line
 .import row_off_lo
 .import row_scr_hi
 
@@ -466,6 +467,10 @@ detect_video:
 ; access that was not one, see one as two, or miss one, and any of those slips
 ; the command frame by a byte.  With the display off there are no fetches.
 ;
+; Clearing the display enable bit is not enough on its own.  The VIC-II reads
+; it on raster line $30 and fetches for the rest of the frame on what it read
+; there, so this waits up to a frame for the next line $30.
+;
 ; A pair covers a whole operation — the session opening, a run — not a command,
 ; so the screen never changes state at loop rate.  Counters carry on being
 ; written while it is dark and are there to read the moment a run ends.
@@ -494,6 +499,7 @@ plat_dark:
     sta dark_border
     lda #COL_BLUE
     sta VIC_BORDER
+    jsr c64_wait_den_line
 @out:
     pla
     plp

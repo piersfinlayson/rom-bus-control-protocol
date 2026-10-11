@@ -16,6 +16,7 @@
 
 .import c64_hw_init
 .import c64_clear_screen
+.import c64_wait_den_line
 .import row_off_lo
 .import row_scr_hi
 
@@ -416,13 +417,7 @@ plat_dark:
     sta dark_ctrl
     and #<(~VIC_CTRL1_DEN)
     sta VIC_CTRL1
-@wait:
-    lda VIC_CTRL1
-    and #VIC_CTRL1_RST8         ; so that line $130 is not taken for line $30
-    bne @wait
-    lda VIC_RASTER
-    cmp #VIC_DEN_LINE
-    bne @wait
+    jsr c64_wait_den_line
 @out:
     pla
     plp

@@ -7,15 +7,23 @@
     .include "c64_defs.s"
 
 ; ---------------------------------------------------------------------------
+; This program's own version, displayed in the title bar.  It is not the
+; protocol's version or the device's.  See RELEASE.md for when it changes.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
 ; What a C64 varies
 ;
 ; The VIC-II takes cycles off the processor.  Every eighth raster line in the
 ; display window is a badline, where it stops the 6510 for 40 cycles or more to
-; fetch a row of characters, and sprites and refresh take more on top.  Turning
-; the display off stops all of it, and the meter counts the two cases apart
-; because they are not the same machine as far as the device is concerned.
+; fetch a row of characters.  Turning the display off stops the badlines, and
+; the meter counts the two cases apart because they are not the same machine as
+; far as the device is concerned.
 ;
-; Clearing bit 4 of $D011 is what stops it.  Nothing else here writes $D011.
+; Bit 4 of $D011 turns the display on and off.  See plat_vary_set for when the
+; badlines follow it.  Nothing else here writes $D011.
 ; ---------------------------------------------------------------------------
 
 PLAT_VARY       = 1

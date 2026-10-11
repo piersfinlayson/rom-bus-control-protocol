@@ -8,6 +8,13 @@
     .include "app_defs.s"
     .include "rbcp_stage.s"
 
+; ---------------------------------------------------------------------------
+; This program's own version, displayed in the title bar.  It is not the
+; protocol's version or the device's.  See RELEASE.md for when it changes.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
 ; Screen and colour row pointers, built by display.s from the c64_hw.s tables.
 ZP_SCR_LO   = ZP_APP0
 ZP_SCR_HI   = ZP_APP1
@@ -78,11 +85,10 @@ ANIM_DEFAULT_PERIOD = 20    ; two seconds, where the device reports none
 ; and is left as found.
 ; ---------------------------------------------------------------------------
 
-VIC_RASTER      = $D012
 VIC_CTRL1_DEN   = %00010000 ; display enable, and with it the badlines
 
 ; Ticks between refresh scans, in 10ms units.  The scan blanks the display for
-; the length of the exchange, so a scan every pass strobes the screen.
+; at least a frame, so a scan every pass strobes the screen.
 SCAN_TICKS      = 100
 
 ; One ROM's own flame mode.  The spec reserves $80 to $FE for implementations

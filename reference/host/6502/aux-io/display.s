@@ -233,10 +233,13 @@ display_init:
     ldx #COL_TITLE
     jsr print_str
 
+    ; Under 32 columns only the version fits beside the name.
+.if SCREEN_COLS >= 32
     set_ptr str_brand
     lda #ROW_TITLE
     ldx #COL_BRAND
     jsr print_str
+.endif
 
     lda #ROW_TITLE              ; the band goes on last, behind both
     ldx #0
@@ -1295,7 +1298,6 @@ display_fail:
 .rodata
 ; ---------------------------------------------------------------------------
 
-str_brand:      .byte "PIERS.ROCKS", 0
 str_leg_ours:   .byte "DRIVEN BY US", 0
 str_leg_free:   .byte "FREE", 0
 str_leg_theirs: .byte "IN USE BY ROM", 0
@@ -1317,7 +1319,8 @@ str_keys_tab:
 
 .if SCREEN_COLS >= 32
 
-str_title:      .byte "RBCP AUX I/O", 0
+str_title:      .byte "RBCP AUX I/O ", APP_VERSION, 0
+str_brand:      .byte "PIERS.ROCKS", 0
 str_all_title:  .byte "ALL PINS", 0
 str_keys1:      .byte "CRSR MOVES  [ ] PAGE  R RESET", 0
 str_keys2:      .byte "L LOW  H HIGH  Z REL  B BLINK", 0
@@ -1349,7 +1352,7 @@ str_f_noaux:    .byte "THIS DEVICE HAS NO PINS TO DRIVE", 0
 
 .else
 
-str_title:      .byte "RBCP I/O", 0
+str_title:      .byte "RBCP I/O ", APP_VERSION, 0
 str_all_title:  .byte "ALL PINS", 0
 str_keys1:      .byte "CRSR MOVES  [ ] PAGE", 0
 str_keys2:      .byte "L LOW H HIGH Z REL", 0

@@ -185,3 +185,27 @@ c64_print_at:
     bne @loop
 @done:
     rts
+
+; ---------------------------------------------------------------------------
+; c64_wait_den_line
+; Returns in the first raster line $30 that begins after the call, up to a
+; frame and a line later.  A frame has badlines if DEN is set in any cycle of
+; that line, even if DEN changes later.  So the frame this returns in follows
+; DEN as it was at the call.
+; Clobbers: A
+; ---------------------------------------------------------------------------
+
+.export c64_wait_den_line
+c64_wait_den_line:
+@leave:
+    lda VIC_RASTER              ; the VIC-II may have read DEN in this line
+    cmp #VIC_DEN_LINE
+    beq @leave
+@wait:
+    lda VIC_CTRL1
+    and #VIC_CTRL1_RST8         ; line $130 has the same low byte
+    bne @wait
+    lda VIC_RASTER
+    cmp #VIC_DEN_LINE
+    bne @wait
+    rts

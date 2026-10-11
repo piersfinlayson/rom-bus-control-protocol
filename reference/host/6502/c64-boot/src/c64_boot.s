@@ -9,7 +9,7 @@
 ; changes and how it is published.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.1.2"
+.define APP_VERSION "0.1.3"
 
 ; ---------------------------------------------------------------------------
 ; Imports
@@ -21,6 +21,7 @@
 .import c64_highlight_row
 .import c64_unhighlight_row
 .import c64_scan_key
+.import c64_wait_den_line
 
 .import rbcp_reset
 .import rbcp_cmd_enter_cmd_resp
@@ -752,28 +753,13 @@ halt_with_msg:
 ; the device can decode an access that wasn't one, decode one twice or miss
 ; one.
 ;
-; The VIC-II reads the bit during line $30 and uses that value for the rest of
-; the frame.  So this waits for a line $30 that starts with the bit already
-; clear, which takes up to a frame.
-;
 ; Clobbers A.
 ; ---------------------------------------------------------------------------
 boot_dark:
     lda VIC_CTRL1
     and #<(~VIC_CTRL1_DEN)
     sta VIC_CTRL1
-@leave:
-    lda VIC_RASTER              ; the VIC-II may have read the bit set in this line
-    cmp #VIC_DEN_LINE
-    beq @leave
-@wait:
-    lda VIC_CTRL1
-    and #VIC_CTRL1_RST8         ; line $130 has the same low byte
-    bne @wait
-    lda VIC_RASTER
-    cmp #VIC_DEN_LINE
-    bne @wait
-    rts
+    jmp c64_wait_den_line
 
 ; wait_return — returns once RETURN is pressed.  A key held on entry, for
 ; example the RETURN that chose the kernal, has to be released first.

@@ -72,10 +72,13 @@ display_init:
     ldx #COL_TITLE
     jsr print_at
 
+    ; Under 32 columns only the version fits beside the name.
+.if SCREEN_COLS >= 32
     set_ptr str_brand
     lda #ROW_TITLE
     ldx #COL_BRAND
     jsr print_at
+.endif
 
     lda #ROW_TITLE              ; the band goes on last, behind both
     ldx #0
@@ -511,8 +514,6 @@ str_status_tab:
     .word str_send_only
     .word str_rx_fail
 
-str_brand:
-    .byte "PIERS.ROCKS", 0
 str_left:
     .byte "LEFT", 0
 str_blank:
@@ -523,7 +524,9 @@ str_ready:
 .if SCREEN_COLS >= 32
 
 str_title:
-    .byte "RBCP TERMINAL", 0
+    .byte "RBCP TERMINAL ", APP_VERSION, 0
+str_brand:
+    .byte "PIERS.ROCKS", 0
 str_opening:
     .byte "OPENING RBCP SESSION", 0
 str_no_device:
@@ -554,7 +557,7 @@ str_rx_fail:
 .else
 
 str_title:
-    .byte "RBCP TERM", 0
+    .byte "RBCP TERM ", APP_VERSION, 0
 str_opening:
     .byte "OPENING", 0
 str_no_device:

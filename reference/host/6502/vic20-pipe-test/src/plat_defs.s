@@ -7,6 +7,13 @@
     .include "../rbcp/rbcp_defs.s"
 
 ; ---------------------------------------------------------------------------
+; This program's own version, displayed in the title bar.  It is not the
+; protocol's version or the device's.  See RELEASE.md for when it changes.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)
 ; ---------------------------------------------------------------------------
 
@@ -166,10 +173,8 @@ ROW_ERRORS      = 16
 ROW_STATUS      = 19
 ROW_KEYS        = 21        ; and the row under it
 
-; The title bar.  The name hard left, the brand hard right, and the whole row
-; reversed behind both.
+; The title bar.  The name hard left and the whole row reversed behind it.
 COL_TITLE       = 1
-COL_BRAND       = SCREEN_COLS - 11
 COL_DEV         = 1
 COL_VER         = 1
 COL_PROTO       = 1

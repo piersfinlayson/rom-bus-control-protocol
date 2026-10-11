@@ -466,17 +466,13 @@ display_init:
     set_ptr str_title
 .if SCREEN_COLS >= 32
     ldy #1
-.else
-    ldy #0                      ; 22 columns hold the name and the brand only
-.endif                          ; if the name starts hard against the edge
     jsr put_str
     lda #ROW_TITLE
     jsr plat_row
     set_ptr str_brand
-.if SCREEN_COLS >= 32
     ldy #SCREEN_COLS - 12
 .else
-    ldy #SCREEN_COLS - 11
+    ldy #0                      ; only the version fits beside the name
 .endif
     jsr put_str
     rts
@@ -1133,8 +1129,9 @@ fld_ofs:
     .byte i * FLD_STRIDE
     .endrepeat
 
+str_title:      .byte "RBCP METER ", APP_VERSION, 0
+
 .if SCREEN_COLS >= 32
-str_title:      .byte "RBCP RELIABILITY METER", 0
 str_brand:      .byte "PIERS.ROCKS", 0
 .if PLAT_VARY
 str_big_on:     .byte "ON 1 IN", 0
@@ -1161,8 +1158,6 @@ str_tok:        .byte "  TOK ", 0
 str_prg:        .byte "  PRG ", 0
 str_rsp:        .byte "  RSP ", 0
 .else
-str_title:      .byte "RBCP METER", 0
-str_brand:      .byte "PIERS.ROCKS", 0
 str_one_in:     .byte "1 IN", 0
 str_sent_lbl:   .byte "SENT", 0
 str_bad_lbl:    .byte "ERR", 0

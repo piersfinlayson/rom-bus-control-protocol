@@ -7,6 +7,13 @@
     .include "../rbcp/rbcp_defs.s"
 
 ; ---------------------------------------------------------------------------
+; This program's own version, displayed in the title bar.  It is not the
+; protocol's version or the device's.  See RELEASE.md for when it changes.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
 ; Soft switches
 ; ---------------------------------------------------------------------------
 

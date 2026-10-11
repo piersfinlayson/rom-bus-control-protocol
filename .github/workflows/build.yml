@@ -786,7 +786,7 @@ jobs:
             image: ''
             slow: ''
             markers: |
-              | RBCP RELIABILITY METER     PIERS.ROCKS |
+              | RBCP METER
               [pipe] RBCP METER START
               | ON 1 IN -----       OFF 1 IN -----     |
               ERR          0      |
@@ -966,7 +966,7 @@ jobs:
             image: ''
             slow: ''
             markers: |
-              |RBCP METER PIERS.ROCKS|
+              |RBCP METER
               [pipe] RBCP METER START
               | 1 IN -----
               |   ERR          0     |

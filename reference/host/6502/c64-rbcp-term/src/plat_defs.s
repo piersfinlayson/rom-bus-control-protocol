@@ -7,20 +7,21 @@
     .include "c64_defs.s"
 
 ; ---------------------------------------------------------------------------
+; This program's own version, displayed in the title bar.  It is not the
+; protocol's version or the device's.  See RELEASE.md for when it changes.
+; ---------------------------------------------------------------------------
+
+.define APP_VERSION "0.1.1"
+
+; ---------------------------------------------------------------------------
 ; Registers c64_defs.s does not name
 ; ---------------------------------------------------------------------------
 
 ; The kernal's NMI vector, which only the BASIC socket image has a use for.
 NMINV           = $0318
 
-; The display enable bit, and the raster counter plat_dark waits on.  Bit 8 of
-; the raster line is bit 7 of VIC_CTRL1.
+; The display enable bit.
 VIC_CTRL1_DEN   = %00010000
-VIC_CTRL1_RST8  = %10000000
-VIC_RASTER      = $D012
-
-; The raster line the VIC-II decides the frame at.
-VIC_DEN_LINE    = $30
 
 ; A line goes out with the display off.  See plat_dark.
 PLAT_DARK       = 1

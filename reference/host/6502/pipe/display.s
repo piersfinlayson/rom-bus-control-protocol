@@ -70,10 +70,13 @@ display_init:
     ldx #COL_TITLE
     jsr print_at
 
+    ; Under 32 columns only the version fits beside the name.
+.if SCREEN_COLS >= 32
     set_ptr str_brand
     lda #ROW_TITLE
     ldx #COL_BRAND
     jsr print_at
+.endif
 
     lda #ROW_TITLE              ; the band goes on last, behind both
     ldx #0
@@ -456,20 +459,21 @@ str_status_tab:
     .word str_pipe_stuck
     .word str_no_recover
 
-str_brand:
-    .byte "PIERS.ROCKS", 0
+str_title:
+    .byte "RBCP PIPE ", APP_VERSION, 0
 str_blank:
     .byte 0
 
 .if SCREEN_COLS >= 32
+
+str_brand:
+    .byte "PIERS.ROCKS", 0
 
 path_col_tab:
     .byte 3, 15, 27
 path_len_tab:
     .byte 6, 6, 8
 
-str_title:
-    .byte "RBCP PIPE THROUGHPUT TEST", 0
 str_paths:
     .byte "   1 LIB4      2 LIB1      3 TUNED4", 0
 
@@ -528,8 +532,6 @@ path_col_tab:
 path_len_tab:
     .byte 5, 5, 5
 
-str_title:
-    .byte "RBCP PIPE", 0
 str_paths:
     .byte "1LIB4 2LIB1 3TUN4", 0
 

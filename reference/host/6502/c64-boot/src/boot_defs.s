@@ -7,15 +7,8 @@
 ; VIC-II
 ; ---------------------------------------------------------------------------
 
-; The display enable bit, and the raster counter boot_dark waits on.  Bit 8 of
-; the raster line is bit 7 of VIC_CTRL1.
+; The display enable bit.
 VIC_CTRL1_DEN   = %00010000
-VIC_CTRL1_RST8  = %10000000
-VIC_RASTER      = $D012
-
-; The raster line during which the VIC-II reads the display enable bit for
-; the whole frame.
-VIC_DEN_LINE    = $30
 
 ; ---------------------------------------------------------------------------
 ; CIA2 timers.  Timer A counts a millisecond of clock cycles and timer B
