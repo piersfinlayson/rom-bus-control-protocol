@@ -1,0 +1,12 @@
+{
+    "kind": "retro",
+    "name": "ROMSEL",
+    "description": "Picks which image a One ROM serves from the BIOS socket of an 8088 machine, and resets into it. Runs from DOS.",
+    "machine": "ibm-pc",
+    "os": "dos",
+    "zip": "x86",
+    "build": "wmake",
+    "files": {
+        "romsel.exe": {}
+    }
+}

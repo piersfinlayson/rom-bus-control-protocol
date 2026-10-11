@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Apple II RBCP Reference Bootloader",
+    "description": "An Apple II ROM bootloader reference implementation, a 2KB F8 image for a II or II+ and an 8KB EF image for a IIe",
+    "machine": "apple2",
+    "zip": "apple2",
+    "build": "make",
+    "files": {
+        "apple2_boot_f8.bin": {"variant": "f8"},
+        "apple2_boot_ef.bin": {"variant": "ef"}
+    }
+}

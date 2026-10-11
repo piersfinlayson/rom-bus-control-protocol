@@ -3,11 +3,11 @@
 
     publish.py <images-path> app <id> [--version <v>] <binary> [<binary> ...]
 
-The APPS dictionary in this script lists every application that can be
-published and the file names of its binaries.
+Each application that can be published has an app.json in its directory. It
+contains the file names of the application's binaries.
 
 - <images-path> is the path to a one-rom-images checkout.
-- <id> is the application, for example c64-boot.
+- <id> is the application's directory name, for example c64-boot.
 - <binary> is the path to one of its binaries, for example
   reference/host/6502/c64-boot/build/c64_boot.bin.
 - --version is the version to publish, for example v0.1.1. Use it only when
@@ -27,309 +27,12 @@ import re
 import shutil
 import sys
 
+import apps
+
 REPO = "https://github.com/piersfinlayson/rom-bus-control-protocol/tree/main/"
 
 # The ROM images are grouped under the plugin they need.
 COLLECTION = "host-control"
-
-# Everything published to images.onerom.org from here, which is not the same
-# as everything this repository builds. Adding an application means adding an
-# entry. `kind` is rom for an image the device serves and retro for a program
-# the machine loads.
-APPS = {
-    # Not built here. R107sl's bootloader, from the fork the published images
-    # are built from.
-    "c64-bootloader": {
-        "kind": "rom",
-        "name": "C64 Bootloader",
-        "description": "A C64 kernal bootloader compatible with cartridges. "
-                       "The c64c image is a combined 16KB kernal and basic "
-                       "ROM.",
-        "machine": "c64",
-        "source": "https://github.com/piersfinlayson/c64-bootloader",
-        "files": {
-            "c64_bootloader.bin": {},
-            "c64_bootloader_c64c.bin": {"variant": "c64c"},
-        },
-    },
-    "c64-boot": {
-        "kind": "rom",
-        "name": "C64 RBCP Reference Bootloader",
-        "description": "A C64 kernal bootloader reference implementation. "
-                       "Kernal and combined 16KB images.",
-        "machine": "c64",
-        "source": REPO + "reference/host/6502/c64-boot",
-        "files": {
-            "c64_boot.bin": {},
-            "c64_boot_combined.bin": {"variant": "combined"},
-        },
-    },
-    "vic20-boot": {
-        "kind": "rom",
-        "name": "VIC-20 RBCP Reference Bootloader",
-        "description": "A VIC-20 kernal bootloader reference implementation",
-        "machine": "vic20",
-        "source": REPO + "reference/host/6502/vic20-boot",
-        "files": {
-            "vic20_boot_pal.bin": {"variant": "pal"},
-            "vic20_boot_ntsc.bin": {"variant": "ntsc"},
-        },
-    },
-    "apple2-boot": {
-        "kind": "rom",
-        "name": "Apple II RBCP Reference Bootloader",
-        "description": "An Apple II ROM bootloader reference implementation, "
-                       "a 2KB F8 image for a II or II+ and an 8KB EF image "
-                       "for a IIe",
-        "machine": "apple2",
-        "source": REPO + "reference/host/6502/apple2-boot",
-        "files": {
-            "apple2_boot_f8.bin": {"variant": "f8"},
-            "apple2_boot_ef.bin": {"variant": "ef"},
-        },
-    },
-    "amiga-boot": {
-        "kind": "rom",
-        "name": "Amiga RBCP Reference Bootloader",
-        "description": "An Amiga Kickstart bootloader reference "
-                       "implementation. 256KB and 512KB images.",
-        "machine": "amiga",
-        "source": REPO + "reference/host/68k/amiga-boot",
-        "files": {
-            "amiga_boot_256k.bin": {"variant": "256k"},
-            "amiga_boot_512k.bin": {"variant": "512k"},
-        },
-    },
-    "c64-rbcp-term": {
-        "kind": "rom",
-        "name": "C64 RBCP Terminal",
-        "description": "Talks to a device over an RBCP pipe (USB) from a Commodore "
-                       "64. Kernal, BASIC and combined 16KB images.",
-        "machine": "c64",
-        "source": REPO + "reference/host/6502/c64-rbcp-term",
-        "files": {
-            "c64_term_kernal.bin": {"variant": "kernal"},
-            "c64_term_basic.bin": {"variant": "basic"},
-            "c64_term_combined.bin": {"variant": "combined"},
-        },
-    },
-    "vic20-rbcp-term": {
-        "kind": "rom",
-        "name": "VIC-20 RBCP Terminal",
-        "description": "Talks to a device over an RBCP pipe (USB) from a Commodore "
-                       "VIC-20. PAL and NTSC images.",
-        "machine": "vic20",
-        "source": REPO + "reference/host/6502/vic20-rbcp-term",
-        "files": {
-            "vic20_term_pal.bin": {"variant": "pal"},
-            "vic20_term_ntsc.bin": {"variant": "ntsc"},
-        },
-    },
-    "apple2-rbcp-term": {
-        "kind": "rom",
-        "name": "Apple II RBCP Terminal",
-        "description": "Talks to a device over an RBCP pipe (USB) from an Apple "
-                       "IIe.",
-        "machine": "apple2",
-        "source": REPO + "reference/host/6502/apple2-rbcp-term",
-        "files": {"apple2_term.bin": {}},
-    },
-    "amiga-rbcp-term": {
-        "kind": "rom",
-        "name": "Amiga RBCP Terminal",
-        "description": "Talks to a device over an RBCP pipe (USB) from an Amiga. "
-                       "256KB and 512KB images.",
-        "machine": "amiga",
-        "source": REPO + "reference/host/68k/amiga-rbcp-term",
-        "files": {
-            "amiga_term_256k.bin": {"variant": "256k"},
-            "amiga_term_512k.bin": {"variant": "512k"},
-        },
-    },
-    "c64-aux-io": {
-        "kind": "rom",
-        "name": "C64 RBCP Aux I/O",
-        "description": "Drives and reads a device's auxiliary (GPIO) pins from a "
-                       "Commodore 64. Kernal, BASIC and combined 16KB images.",
-        "machine": "c64",
-        "source": REPO + "reference/host/6502/c64-aux-io",
-        "files": {
-            "c64_auxio_kernal.bin": {"variant": "kernal"},
-            "c64_auxio_basic.bin": {"variant": "basic"},
-            "c64_auxio_combined.bin": {"variant": "combined"},
-        },
-    },
-    "vic20-aux-io": {
-        "kind": "rom",
-        "name": "VIC-20 RBCP Aux I/O",
-        "description": "Drives and reads a device's auxiliary (GPIO) pins from a "
-                       "Commodore VIC-20. PAL and NTSC images.",
-        "machine": "vic20",
-        "source": REPO + "reference/host/6502/vic20-aux-io",
-        "files": {
-            "vic20_auxio_pal.bin": {"variant": "pal"},
-            "vic20_auxio_ntsc.bin": {"variant": "ntsc"},
-        },
-    },
-    "apple2-aux-io": {
-        "kind": "rom",
-        "name": "Apple II RBCP Aux I/O",
-        "description": "Drives and reads a device's auxiliary (GPIO) pins from an "
-                       "Apple IIe.",
-        "machine": "apple2",
-        "source": REPO + "reference/host/6502/apple2-aux-io",
-        "files": {"apple2_auxio.bin": {}},
-    },
-    "amiga-aux-io": {
-        "kind": "rom",
-        "name": "Amiga RBCP Aux I/O",
-        "description": "Drives and reads a device's auxiliary (GPIO) pins from an "
-                       "Amiga. 256KB and 512KB images.",
-        "machine": "amiga",
-        "source": REPO + "reference/host/68k/amiga-aux-io",
-        "files": {
-            "amiga_auxio_256k.bin": {"variant": "256k"},
-            "amiga_auxio_512k.bin": {"variant": "512k"},
-        },
-    },
-    "c64-rbcp-stress": {
-        "kind": "rom",
-        "name": "C64 RBCP Reliability Meter",
-        "description": "Measures how reliably a Commodore 64 and a device "
-                       "communicate over RBCP. Kernal, BASIC and combined "
-                       "16KB images.",
-        "machine": "c64",
-        "source": REPO + "reference/host/6502/c64-rbcp-stress",
-        "files": {
-            "c64_meter_kernal.bin": {"variant": "kernal"},
-            "c64_meter_basic.bin": {"variant": "basic"},
-            "c64_meter_combined.bin": {"variant": "combined"},
-        },
-    },
-    "vic20-rbcp-stress": {
-        "kind": "rom",
-        "name": "VIC-20 RBCP Reliability Meter",
-        "description": "Measures how reliably a Commodore VIC-20 and a device "
-                       "communicate over RBCP. PAL and NTSC images.",
-        "machine": "vic20",
-        "source": REPO + "reference/host/6502/vic20-rbcp-stress",
-        "files": {
-            "vic20_meter_pal.bin": {"variant": "pal"},
-            "vic20_meter_ntsc.bin": {"variant": "ntsc"},
-        },
-    },
-    "apple2-rbcp-stress": {
-        "kind": "rom",
-        "name": "Apple II RBCP Reliability Meter",
-        "description": "Measures how reliably an Apple IIe and a device communicate "
-                       "over RBCP.",
-        "machine": "apple2",
-        "source": REPO + "reference/host/6502/apple2-rbcp-stress",
-        "files": {"apple2_meter.bin": {}},
-    },
-    "amiga-rbcp-stress": {
-        "kind": "rom",
-        "name": "Amiga RBCP Reliability Meter",
-        "description": "Measures how reliably an Amiga and a device "
-                       "communicate over RBCP. 256KB and 512KB images.",
-        "machine": "amiga",
-        "source": REPO + "reference/host/68k/amiga-rbcp-stress",
-        "files": {
-            "amiga_meter_256k.bin": {"variant": "256k"},
-            "amiga_meter_512k.bin": {"variant": "512k"},
-        },
-    },
-    "c64-pipe-test": {
-        "kind": "rom",
-        "name": "C64 RBCP Pipe Throughput Test",
-        "description": "Measures how many bytes a Commodore 64 can push "
-                       "through an RBCP pipe (USB). Kernal, BASIC and combined "
-                       "16KB images.",
-        "machine": "c64",
-        "source": REPO + "reference/host/6502/c64-pipe-test",
-        "files": {
-            "c64_pipe_kernal.bin": {"variant": "kernal"},
-            "c64_pipe_basic.bin": {"variant": "basic"},
-            "c64_pipe_combined.bin": {"variant": "combined"},
-        },
-    },
-    "vic20-pipe-test": {
-        "kind": "rom",
-        "name": "VIC-20 RBCP Pipe Throughput Test",
-        "description": "Measures how many bytes a Commodore VIC-20 can push "
-                       "through an RBCP pipe (USB). Needs the 3KB RAM expansion. "
-                       "PAL and NTSC images.",
-        "machine": "vic20",
-        "source": REPO + "reference/host/6502/vic20-pipe-test",
-        "files": {
-            "vic20_pipe_pal.bin": {"variant": "pal"},
-            "vic20_pipe_ntsc.bin": {"variant": "ntsc"},
-        },
-    },
-    "apple2-pipe-test": {
-        "kind": "rom",
-        "name": "Apple II RBCP Pipe Throughput Test",
-        "description": "Measures how many bytes an Apple IIe can push through "
-                       "an RBCP pipe (USB). 50Hz and 60Hz images.",
-        "machine": "apple2",
-        "source": REPO + "reference/host/6502/apple2-pipe-test",
-        "files": {
-            "apple2_pipe_pal.bin": {"variant": "pal"},
-            "apple2_pipe_ntsc.bin": {"variant": "ntsc"},
-        },
-    },
-    "amiga-pipe-test": {
-        "kind": "rom",
-        "name": "Amiga RBCP Pipe Throughput Test",
-        "description": "Measures how many bytes an Amiga can push through an "
-                       "RBCP pipe (USB). 256KB and 512KB images.",
-        "machine": "amiga",
-        "source": REPO + "reference/host/68k/amiga-pipe-test",
-        "files": {
-            "amiga_pipe_256k.bin": {"variant": "256k"},
-            "amiga_pipe_512k.bin": {"variant": "512k"},
-        },
-    },
-    "c64-led-test": {
-        "kind": "rom",
-        "name": "C64 RBCP LED Tester",
-        "description": "Drives a device's LEDs from a Commodore 64. Kernal, "
-                       "BASIC and combined 16KB images.",
-        "machine": "c64",
-        "source": REPO + "reference/host/6502/c64-led-test",
-        "files": {
-            "c64_led_kernal.bin": {"variant": "kernal"},
-            "c64_led_basic.bin": {"variant": "basic"},
-            "c64_led_combined.bin": {"variant": "combined"},
-        },
-    },
-    "amiga-led-test": {
-        "kind": "rom",
-        "name": "Amiga RBCP LED Tester",
-        "description": "Drives a device's LEDs from an Amiga. 256KB and "
-                       "512KB images.",
-        "machine": "amiga",
-        "source": REPO + "reference/host/68k/amiga-led-test",
-        "files": {
-            "amiga_led_test_256k.bin": {"variant": "256k"},
-            "amiga_led_test_512k.bin": {"variant": "512k"},
-        },
-    },
-    "romsel": {
-        "kind": "retro",
-        "name": "ROMSEL",
-        "description": "Picks which image a One ROM serves from the BIOS "
-                       "socket of an 8088 machine, and resets into it. "
-                       "Runs from DOS.",
-        "machine": "ibm-pc",
-        "os": "dos",
-        "source": REPO + "reference/host/x86/romsel",
-        "files": {"romsel.exe": {}},
-    },
-}
-
-# This repository's root.
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # APP_VERSION or CFG_VERSION as ca65, vasm and C define it.
 VERSION_FORMS = (
@@ -398,12 +101,9 @@ def version_key(version):
 
 
 def order(manifest, kind):
-    """Newest version first, and applications in the order APPS lists them."""
-    entries = entries_of(manifest, kind)
-    for e in entries:
+    """Sorts each application's versions newest first."""
+    for e in entries_of(manifest, kind):
         e["versions"].sort(key=lambda v: version_key(v["version"]))
-    ids = list(APPS)
-    entries.sort(key=lambda e: ids.index(e["id"]) if e["id"] in ids else len(ids))
 
 
 def find(entries, field, value):
@@ -416,9 +116,9 @@ def find(entries, field, value):
 def source_version(app_id, app):
     """The version defined in the application's directory, as vX.Y.Z, or None
     when its source isn't in this repository."""
-    if not app["source"].startswith(REPO):
+    if "source" in app:
         return None
-    top = os.path.join(ROOT, app["source"][len(REPO):])
+    top = os.path.join(apps.ROOT, app["dir"])
     found = []
     for d, dirs, files in os.walk(top):
         dirs[:] = [x for x in dirs if x != "build"]
@@ -430,18 +130,21 @@ def source_version(app_id, app):
                 text = f.read()
             for form in VERSION_FORMS:
                 for m in re.finditer(form, text, re.M):
-                    found.append((os.path.relpath(path, ROOT), m.group(1)))
+                    found.append((os.path.relpath(path, apps.ROOT), m.group(1)))
     if len(found) != 1:
         die("%s: %d version definitions in %s, not one: %s"
-            % (app_id, len(found), os.path.relpath(top, ROOT),
+            % (app_id, len(found), os.path.relpath(top, apps.ROOT),
                ", ".join(p for p, _ in found)))
     return "v" + found[0][1]
 
 
 def publish(images, app_id, version, binaries):
-    if app_id not in APPS:
-        die("no application called %s, add one to APPS in this script" % app_id)
-    app = APPS[app_id]
+    app = apps.load().get(app_id)
+    if not app:
+        die("there isn't an app.json in a directory called %s" % app_id)
+    if app["kind"] not in KINDS:
+        die("%s: kind %s isn't one of %s"
+            % (app_id, app["kind"], ", ".join(KINDS)))
 
     from_source = source_version(app_id, app)
     if from_source and version:
@@ -500,12 +203,18 @@ def publish(images, app_id, version, binaries):
 
     if not entry:
         entry = {"id": app_id}
-        for field in ("name", "description", "machine", "os", "source"):
-            if field in app:
-                entry[field] = app[field]
-        entry["latest"] = version
-        entry["versions"] = []
         entries.append(entry)
+
+    # Copied at every publish so a change to app.json reaches roms.json or
+    # retro-apps.json.
+    fields = dict(app, source=app.get("source", REPO + app["dir"]))
+    for field in ("name", "description", "machine", "os", "source"):
+        if field in fields:
+            entry[field] = fields[field]
+        else:
+            entry.pop(field, None)
+    entry.setdefault("latest", version)
+    entry.setdefault("versions", [])
 
     was = find(entry["versions"], "version", version)
     if was:

@@ -1,0 +1,13 @@
+{
+    "kind": "rom",
+    "name": "C64 RBCP Pipe Throughput Test",
+    "description": "Measures how many bytes a Commodore 64 can push through an RBCP pipe (USB). Kernal, BASIC and combined 16KB images.",
+    "machine": "c64",
+    "zip": "c64",
+    "build": "make",
+    "files": {
+        "c64_pipe_kernal.bin": {"variant": "kernal"},
+        "c64_pipe_basic.bin": {"variant": "basic"},
+        "c64_pipe_combined.bin": {"variant": "combined"}
+    }
+}

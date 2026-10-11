@@ -11,6 +11,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  check-apps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check every application is built and tested
+        run: python3 tools/apps.py check
+
   build-c64-boot:
     runs-on: ubuntu-latest
     steps:

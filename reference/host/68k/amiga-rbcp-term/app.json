@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Amiga RBCP Terminal",
+    "description": "Talks to a device over an RBCP pipe (USB) from an Amiga. 256KB and 512KB images.",
+    "machine": "amiga",
+    "zip": "amiga",
+    "build": "make images",
+    "files": {
+        "amiga_term_256k.bin": {"variant": "256k"},
+        "amiga_term_512k.bin": {"variant": "512k"}
+    }
+}

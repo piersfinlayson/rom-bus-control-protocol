@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Apple II RBCP Pipe Throughput Test",
+    "description": "Measures how many bytes an Apple IIe can push through an RBCP pipe (USB). 50Hz and 60Hz images.",
+    "machine": "apple2",
+    "zip": "apple2",
+    "build": "make",
+    "files": {
+        "apple2_pipe_pal.bin": {"variant": "pal"},
+        "apple2_pipe_ntsc.bin": {"variant": "ntsc"}
+    }
+}

@@ -1,0 +1,11 @@
+{
+    "kind": "rom",
+    "name": "Apple II RBCP Reliability Meter",
+    "description": "Measures how reliably an Apple IIe and a device communicate over RBCP.",
+    "machine": "apple2",
+    "zip": "apple2",
+    "build": "make",
+    "files": {
+        "apple2_meter.bin": {}
+    }
+}

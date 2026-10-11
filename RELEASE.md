@@ -18,8 +18,7 @@ its own version, never at the tag.
    release, as in **An application release**.
 3. Tag and push. `release.yml` builds the ROM images and `romsel.exe` and
    attaches one zip per platform to a GitHub release, with the specification.
-   `tools/release_assets.py` lists the files in each zip and stops the release
-   if one is missing.
+   The release fails if a binary listed in an `app.json` wasn't built.
 
    ```
    git tag v0.1.2
@@ -67,5 +66,21 @@ at an RBCP release.
 
 4. Commit and push `one-rom-images`.
 
-Publishing a new application means adding an entry to `APPS` in
-`tools/publish.py`.
+## app.json
+
+Every application that is published or released has an `app.json` in its
+directory. The directory's name is the application's id.
+
+| Field | Contents |
+| --- | --- |
+| `kind` | `rom` for a ROM image or `retro` for a program run from disk |
+| `name` | Application name |
+| `description` | Short description |
+| `machine` | Machine it runs on, for example `c64` |
+| `os` | Operating system of a `retro` application |
+| `source` | URL of source that isn't in this repository |
+| `zip` | Release zip name, for example `c64` for `c64.zip`. An application without one isn't released |
+| `build` | Build command. It runs in the application's directory and is required with `zip` |
+| `files` | Each binary's file name and optional `variant` |
+
+A change to `app.json` takes effect at the application's next publish.

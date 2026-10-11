@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Amiga RBCP Reliability Meter",
+    "description": "Measures how reliably an Amiga and a device communicate over RBCP. 256KB and 512KB images.",
+    "machine": "amiga",
+    "zip": "amiga",
+    "build": "make images",
+    "files": {
+        "amiga_meter_256k.bin": {"variant": "256k"},
+        "amiga_meter_512k.bin": {"variant": "512k"}
+    }
+}

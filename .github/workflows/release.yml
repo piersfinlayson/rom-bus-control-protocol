@@ -43,104 +43,15 @@ jobs:
           make -C vasm CPU=m68k SYNTAX=mot
           echo "$PWD/vasm" >> "$GITHUB_PATH"
 
-      - name: Build c64-boot
-        working-directory: reference/host/6502/c64-boot
-        run: make
-
-      - name: Build vic20-boot
-        working-directory: reference/host/6502/vic20-boot
-        run: make
-
-      - name: Build apple2-boot
-        working-directory: reference/host/6502/apple2-boot
-        run: make
-
-      - name: Build c64-rbcp-stress
-        working-directory: reference/host/6502/c64-rbcp-stress
-        run: make
-
-      - name: Build vic20-rbcp-stress
-        working-directory: reference/host/6502/vic20-rbcp-stress
-        run: make
-
-      - name: Build apple2-rbcp-stress
-        working-directory: reference/host/6502/apple2-rbcp-stress
-        run: make
-
-      - name: Build c64-aux-io
-        working-directory: reference/host/6502/c64-aux-io
-        run: make
-
-      - name: Build vic20-aux-io
-        working-directory: reference/host/6502/vic20-aux-io
-        run: make
-
-      - name: Build apple2-aux-io
-        working-directory: reference/host/6502/apple2-aux-io
-        run: make
-
-      - name: Build c64-rbcp-term
-        working-directory: reference/host/6502/c64-rbcp-term
-        run: make
-
-      - name: Build vic20-rbcp-term
-        working-directory: reference/host/6502/vic20-rbcp-term
-        run: make
-
-      - name: Build apple2-rbcp-term
-        working-directory: reference/host/6502/apple2-rbcp-term
-        run: make
-
-      - name: Build amiga-boot
-        working-directory: reference/host/68k/amiga-boot
-        run: make images
-
-      - name: Build amiga-rbcp-stress
-        working-directory: reference/host/68k/amiga-rbcp-stress
-        run: make images
-
-      - name: Build amiga-pipe-test
-        working-directory: reference/host/68k/amiga-pipe-test
-        run: make images
-
-      - name: Build amiga-rbcp-term
-        working-directory: reference/host/68k/amiga-rbcp-term
-        run: make images
-
-      - name: Build amiga-aux-io
-        working-directory: reference/host/68k/amiga-aux-io
-        run: make images
-
-      - name: Build amiga-led-test
-        working-directory: reference/host/68k/amiga-led-test
-        run: make images
-
-      - name: Build c64-pipe-test
-        working-directory: reference/host/6502/c64-pipe-test
-        run: make
-
-      - name: Build vic20-pipe-test
-        working-directory: reference/host/6502/vic20-pipe-test
-        run: make
-
-      - name: Build apple2-pipe-test
-        working-directory: reference/host/6502/apple2-pipe-test
-        run: make
-
-      - name: Build c64-led-test
-        working-directory: reference/host/6502/c64-led-test
-        run: make
-
-      - name: Build romsel
-        working-directory: reference/host/x86/romsel
-        run: wmake
+      # The build commands are in each application's app.json.
+      - name: Build the applications
+        run: python3 tools/release_assets.py build
 
       - name: Extract version
         id: version
         run: echo "version=${GITHUB_REF_NAME#spec/}" >> $GITHUB_OUTPUT
 
-      # tools/release_assets.py holds the file list and stops if a file the
-      # steps above should have built is missing.
+      # Fails if a binary listed in an app.json wasn't built.
       - name: Gather the artefacts and write the release body
         env:
           VERSION: ${{ steps.version.outputs.version }}

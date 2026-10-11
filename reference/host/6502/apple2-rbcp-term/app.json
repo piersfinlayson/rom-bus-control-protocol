@@ -1,0 +1,11 @@
+{
+    "kind": "rom",
+    "name": "Apple II RBCP Terminal",
+    "description": "Talks to a device over an RBCP pipe (USB) from an Apple IIe.",
+    "machine": "apple2",
+    "zip": "apple2",
+    "build": "make",
+    "files": {
+        "apple2_term.bin": {}
+    }
+}

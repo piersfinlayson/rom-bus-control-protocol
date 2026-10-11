@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "VIC-20 RBCP Reference Bootloader",
+    "description": "A VIC-20 kernal bootloader reference implementation",
+    "machine": "vic20",
+    "zip": "vic20",
+    "build": "make",
+    "files": {
+        "vic20_boot_pal.bin": {"variant": "pal"},
+        "vic20_boot_ntsc.bin": {"variant": "ntsc"}
+    }
+}

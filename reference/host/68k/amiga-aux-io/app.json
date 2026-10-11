@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Amiga RBCP Aux I/O",
+    "description": "Drives and reads a device's auxiliary (GPIO) pins from an Amiga. 256KB and 512KB images.",
+    "machine": "amiga",
+    "zip": "amiga",
+    "build": "make images",
+    "files": {
+        "amiga_auxio_256k.bin": {"variant": "256k"},
+        "amiga_auxio_512k.bin": {"variant": "512k"}
+    }
+}

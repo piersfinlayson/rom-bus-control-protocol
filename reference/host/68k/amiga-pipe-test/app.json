@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Amiga RBCP Pipe Throughput Test",
+    "description": "Measures how many bytes an Amiga can push through an RBCP pipe (USB). 256KB and 512KB images.",
+    "machine": "amiga",
+    "zip": "amiga",
+    "build": "make images",
+    "files": {
+        "amiga_pipe_256k.bin": {"variant": "256k"},
+        "amiga_pipe_512k.bin": {"variant": "512k"}
+    }
+}

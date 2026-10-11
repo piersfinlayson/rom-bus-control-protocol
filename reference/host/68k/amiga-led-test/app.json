@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "Amiga RBCP LED Tester",
+    "description": "Drives a device's LEDs from an Amiga. 256KB and 512KB images.",
+    "machine": "amiga",
+    "zip": "amiga",
+    "build": "make images",
+    "files": {
+        "amiga_led_test_256k.bin": {"variant": "256k"},
+        "amiga_led_test_512k.bin": {"variant": "512k"}
+    }
+}

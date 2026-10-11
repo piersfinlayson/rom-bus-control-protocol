@@ -1,0 +1,11 @@
+{
+    "kind": "rom",
+    "name": "Apple II RBCP Aux I/O",
+    "description": "Drives and reads a device's auxiliary (GPIO) pins from an Apple IIe.",
+    "machine": "apple2",
+    "zip": "apple2",
+    "build": "make",
+    "files": {
+        "apple2_auxio.bin": {}
+    }
+}

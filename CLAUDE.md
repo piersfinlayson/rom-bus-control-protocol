@@ -31,9 +31,10 @@ README, and nowhere else.
 
 Adding one under `reference/host/` means all of:
 
-- a job in `.github/workflows/build.yml`, plus a build step in `release.yml`
-  and its files in `tools/release_assets.py` when the binaries are a
-  deliverable
+- a job in `.github/workflows/build.yml`, plus a test leg when it has a
+  `test/run.sh`
+- an `app.json` in its directory when the binaries are a deliverable — see
+  `RELEASE.md`
 - an entry in `README.md`, in `reference/host/README.md`, and in
   `reference/host/<arch>/README.md` — all three
 - its own README, covering what it does, what it needs, how to build it and

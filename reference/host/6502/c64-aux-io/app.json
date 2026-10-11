@@ -1,0 +1,13 @@
+{
+    "kind": "rom",
+    "name": "C64 RBCP Aux I/O",
+    "description": "Drives and reads a device's auxiliary (GPIO) pins from a Commodore 64. Kernal, BASIC and combined 16KB images.",
+    "machine": "c64",
+    "zip": "c64",
+    "build": "make",
+    "files": {
+        "c64_auxio_kernal.bin": {"variant": "kernal"},
+        "c64_auxio_basic.bin": {"variant": "basic"},
+        "c64_auxio_combined.bin": {"variant": "combined"}
+    }
+}

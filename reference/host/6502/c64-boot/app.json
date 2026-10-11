@@ -1,0 +1,12 @@
+{
+    "kind": "rom",
+    "name": "C64 RBCP Reference Bootloader",
+    "description": "A C64 kernal bootloader reference implementation. Kernal and combined 16KB images.",
+    "machine": "c64",
+    "zip": "c64",
+    "build": "make",
+    "files": {
+        "c64_boot.bin": {},
+        "c64_boot_combined.bin": {"variant": "combined"}
+    }
+}
