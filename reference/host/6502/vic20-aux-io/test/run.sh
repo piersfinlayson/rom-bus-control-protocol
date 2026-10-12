@@ -25,7 +25,7 @@ pal|ntsc) ;;
 *) echo "RBCP_TARGET must be pal or ntsc" >&2; exit 1 ;;
 esac
 
-image="${2:-$here/../build/vic20_auxio_$RBCP_TARGET.bin}"
+image="${2:-$here/../build/vic20_auxio.bin}"
 
 exec "$here/../../c64-boot/test/cbm_run.sh" "vic20-$RBCP_TARGET" "$image" \
      "$here/../build" "$1"

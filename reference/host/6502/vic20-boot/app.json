@@ -6,7 +6,6 @@
     "zip": "vic20",
     "build": "make",
     "files": {
-        "vic20_boot_pal.bin": {"variant": "pal"},
-        "vic20_boot_ntsc.bin": {"variant": "ntsc"}
+        "vic20_boot.bin": {}
     }
 }

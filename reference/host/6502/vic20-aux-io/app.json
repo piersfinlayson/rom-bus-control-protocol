@@ -1,12 +1,11 @@
 {
     "kind": "rom",
     "name": "VIC-20 RBCP Aux I/O",
-    "description": "Drives and reads a device's auxiliary (GPIO) pins from a Commodore VIC-20. PAL and NTSC images.",
+    "description": "Drives and reads a device's auxiliary (GPIO) pins from a Commodore VIC-20. PAL and NTSC.",
     "machine": "vic20",
     "zip": "vic20",
     "build": "make",
     "files": {
-        "vic20_auxio_pal.bin": {"variant": "pal"},
-        "vic20_auxio_ntsc.bin": {"variant": "ntsc"}
+        "vic20_auxio.bin": {}
     }
 }

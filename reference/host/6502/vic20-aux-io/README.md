@@ -1,6 +1,6 @@
 # VIC-20 RBCP Auxiliary I/O Tester
 
-A ROM image for a Commodore VIC-20 that drives and reads a device's auxiliary I/O pins, showing them on screen and allowing them to be manipulated. It requires a 3K expansion.
+A ROM image for a Commodore VIC-20 that drives and reads a device's auxiliary I/O pins, showing them on screen and allowing them to be manipulated. It requires a 3K expansion and runs on PAL and NTSC machines.
 
 The device requires auxiliary pins for this tester to operate.
 
@@ -66,8 +66,7 @@ To use the program's RESET (`R`) option, wire a pin from the device to the VIC-2
 
 | Image | Size | Socket | Command page | Back channel |
 | --- | --- | --- | --- | --- |
-| `vic20_auxio_pal.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
-| `vic20_auxio_ntsc.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
+| `vic20_auxio.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
 
 ## Dependencies
 
@@ -84,8 +83,8 @@ make
 Under VICE with no device fitted the program draws the screen and stops at `NO DEVICE`:
 
 ```
-xvic -default -memory 3k -kernal build/vic20_auxio_pal.bin
-xvic -default -ntsc -memory 3k -kernal build/vic20_auxio_ntsc.bin
+xvic -default -memory 3k -kernal build/vic20_auxio.bin
+xvic -default -ntsc -memory 3k -kernal build/vic20_auxio.bin
 ```
 
 Anything past the screen needs a One ROM running the host-control plugin, with something attached to the pins.
@@ -94,4 +93,4 @@ Anything past the screen needs a One ROM running the host-control plugin, with s
 make demo
 ```
 
-builds `build/vic20_auxio_demo.bin`, a PAL image that answers its own questions. Run it under VICE as above and every screen is reachable with no device fitted. `BOARD` picks which imaginary board it describes.
+builds `build/vic20_auxio_demo.bin`, an image that answers its own questions. Run it under VICE as above and every screen is reachable with no device fitted. `BOARD` picks which imaginary board it describes.

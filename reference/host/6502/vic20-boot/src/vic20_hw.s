@@ -20,13 +20,16 @@
 ; BOOT segment — runs from ROM, called before relocation
 ; ---------------------------------------------------------------------------
 
+.import vic20_tv_init
+
 .segment "BOOT"
 
 ; vic20_hw_init
 ; One-time hardware initialisation at reset entry.  Runs from ROM.
 ; Must not call any subroutine in the CODE segment (not in RAM yet).
-; Initialises all VIC registers then configures VIA2 for keyboard scanning.
-; Clobbers: A
+; Initialises all VIC registers, centering the screen for the TV standard
+; detected, then configures VIA2 for keyboard scanning.
+; Clobbers: A, X, Y
 .export vic20_hw_init
 vic20_hw_init:
     ; Pre-clear screen and colour RAM before configuring the VIC.  The VIC
@@ -58,11 +61,9 @@ vic20_hw_init:
     inx
     cpx #250
     bne @col_tail
-    
-    lda #VIC_H_CENTER_VAL
-    sta VIC_H_CENTER
-    lda #VIC_V_CENTER_VAL
-    sta VIC_V_CENTER
+
+    jsr vic20_tv_init
+
     lda #VIC_COL_COUNT_VAL
     sta VIC_COL_COUNT
     lda #VIC_ROW_COUNT_VAL

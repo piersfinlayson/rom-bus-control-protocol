@@ -11,7 +11,7 @@
 ; protocol's version or the device's.  See RELEASE.md for when it changes.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.1.1"
+.define APP_VERSION "0.2.0"
 
 ; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)
@@ -76,9 +76,10 @@ VIA_IER_NONE    = $7F
 ;
 ; PAL is 1108405 Hz and 1108405 = 31 * 35755, so 31 periods of 35755 cycles is
 ; a second to the cycle.  NTSC is 1022727 Hz, which is 3 * 340909 with 340909
-; prime, so no exact split exists: 28 periods of 36526 is 1022728 cycles, one
-; cycle long, 0.98 parts per million.  At the rates being measured that is far
-; under a single byte.
+; prime, so no exact split exists.  The shared pipe code compares against
+; PLAT_TICK_HZ as a constant, so NTSC counts 31 periods as well: 31 periods of
+; 32991 is 1022721 cycles, six cycles short, 5.9 parts per million.  At the
+; rates being measured that is far under a single byte.
 ;
 ; A 6522 timer 1 period is the latch plus two cycles, so the latch is the
 ; period minus two.
@@ -91,19 +92,9 @@ VIA_IER_NONE    = $7F
 ; more often than that.
 ; ---------------------------------------------------------------------------
 
-.if .defined(PAL)
 PLAT_TICK_HZ        = 31
-T1_LATCH            = 35755 - 2
-VIC_H_CENTER_VAL    = $0C
-VIC_V_CENTER_VAL    = $26
-.elseif .defined(NTSC)
-PLAT_TICK_HZ        = 28
-T1_LATCH            = 36526 - 2
-VIC_H_CENTER_VAL    = $05
-VIC_V_CENTER_VAL    = $19
-.else
-.error "Define PAL or NTSC (pass -DPAL=1 or -DNTSC=1 to ca65)"
-.endif
+T1_LATCH_PAL        = 35755 - 2
+T1_LATCH_NTSC       = 32991 - 2
 
 ; Bit 6 of the interrupt flag register is timer 1, which bit tests into V.
 .macro PLAT_CLOCK_TICK

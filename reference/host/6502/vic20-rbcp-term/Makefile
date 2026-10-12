@@ -1,36 +1,32 @@
 # Makefile — VIC-20 RBCP terminal
 # Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 #
-# Two images from one set of sources, PAL and NTSC, which differ in where the
-# picture sits and in nothing else.
+# One image runs on PAL and NTSC.
 #
-# make selftest builds a third image, PAL, which types a known script by
-# itself.  It is how the terminal is tested on a machine with nobody at the
-# keyboard.
+# make selftest builds a second image, which types a known script by itself.
+# It is how the terminal is tested on a machine with nobody at the keyboard.
 
 AS       = ca65
 LD       = ld65
 ASFLAGS  = --cpu 6502 -I . -I src -I ../common -I ../term
 
 BUILD    = build
-BUILD_P  = $(BUILD)/pal
-BUILD_N  = $(BUILD)/ntsc
+BUILD_I  = $(BUILD)/image
 BUILD_S  = $(BUILD)/selftest
 
-TARGET_P = $(BUILD)/vic20_term_pal.bin
-TARGET_N = $(BUILD)/vic20_term_ntsc.bin
+TARGET_I = $(BUILD)/vic20_term.bin
 TARGET_S = $(BUILD)/vic20_term_selftest.bin
 
 # The RBCP library is an ar65 archive, so the linker takes only the command
 # modules this application refers to.  One archive per image, since each is
-# assembled against a different picture.
+# assembled with its own flags.
 RBCP_DIR  = ../rbcp
 RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
 
 # What every machine's terminal shares, and what this one adds.
 TERM_DIR  = ../term
 TERM_SRCS = $(TERM_DIR)/term.s $(TERM_DIR)/session.s $(TERM_DIR)/display.s
-COMMON_SRCS = ../common/rbcp_recover.s
+COMMON_SRCS = ../common/rbcp_recover.s ../common/vic20_tv.s
 APP_SRCS    = src/plat.s
 
 DEPS = src/plat_defs.s ../common/rbcp_stage.s $(TERM_DIR)/term_defs.s \
@@ -38,7 +34,7 @@ DEPS = src/plat_defs.s ../common/rbcp_stage.s $(TERM_DIR)/term_defs.s \
 
 .PHONY: all selftest clean test test-selftest
 
-all: $(TARGET_P) $(TARGET_N)
+all: $(TARGET_I)
 
 selftest: $(TARGET_S)
 
@@ -82,9 +78,8 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P),))
-$(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N),))
-$(eval $(call IMAGE_RULES,$(BUILD_S),-D PAL=1 -D SELFTEST=1,$(TARGET_S),$(BUILD_S)/term/selftest.o))
+$(eval $(call IMAGE_RULES,$(BUILD_I),,$(TARGET_I),))
+$(eval $(call IMAGE_RULES,$(BUILD_S),-D SELFTEST=1,$(TARGET_S),$(BUILD_S)/term/selftest.o))
 
 # ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
 # RBCP_SEND is the text from the far end of the pipe.

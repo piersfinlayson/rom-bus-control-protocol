@@ -47,8 +47,7 @@ Lines that have been sent scroll up, so the newest is always directly above the 
 
 | Image | Size | Socket | Command page | Back channel |
 | --- | --- | --- | --- | --- |
-| `vic20_term_pal.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
-| `vic20_term_ntsc.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
+| `vic20_term.bin` | 8KB, 2364 | kernal | $E000 | $E100, 512 bytes |
 
 ## Dependencies
 
@@ -65,8 +64,8 @@ make
 Under VICE with no device fitted it draws its screen and stops at `NO DEVICE`:
 
 ```
-xvic -default -kernal build/vic20_term_pal.bin
-xvic -default -ntsc -kernal build/vic20_term_ntsc.bin
+xvic -default -kernal build/vic20_term.bin
+xvic -default -ntsc -kernal build/vic20_term.bin
 ```
 
 Anything past the screen needs a One ROM running the host-control plugin, and a terminal on the machine its USB is plugged into.
@@ -75,4 +74,4 @@ Anything past the screen needs a One ROM running the host-control plugin, and a 
 make selftest
 ```
 
-builds `build/vic20_term_selftest.bin`, a PAL image that types a script of its own. Program a device with it, reset the machine, and read what arrives on the USB side.
+builds `build/vic20_term_selftest.bin`, an image that types a script of its own. Program a device with it, reset the machine, and read what arrives on the USB side.

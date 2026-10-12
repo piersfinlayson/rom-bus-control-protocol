@@ -1,12 +1,11 @@
 {
     "kind": "rom",
     "name": "VIC-20 RBCP Pipe Throughput Test",
-    "description": "Measures how many bytes a Commodore VIC-20 can push through an RBCP pipe (USB). Needs the 3KB RAM expansion. PAL and NTSC images.",
+    "description": "Measures how many bytes a Commodore VIC-20 can push through an RBCP pipe (USB). Needs the 3KB RAM expansion. PAL and NTSC.",
     "machine": "vic20",
     "zip": "vic20",
     "build": "make",
     "files": {
-        "vic20_pipe_pal.bin": {"variant": "pal"},
-        "vic20_pipe_ntsc.bin": {"variant": "ntsc"}
+        "vic20_pipe.bin": {}
     }
 }

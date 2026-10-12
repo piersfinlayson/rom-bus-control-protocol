@@ -13,6 +13,7 @@
     .include "stress_defs.s"
 
 .import stress_run
+.import vic20_tv_init
 
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__
 .import __RODATA_SIZE__
@@ -75,10 +76,7 @@ boot_entry:
     cpx #250
     bne @col_tail
 
-    lda #VIC_H_CENTER_VAL
-    sta VIC_H_CENTER
-    lda #VIC_V_CENTER_VAL
-    sta VIC_V_CENTER
+    jsr vic20_tv_init
     lda #VIC_COL_COUNT_VAL
     sta VIC_COL_COUNT
     lda #VIC_ROW_COUNT_VAL

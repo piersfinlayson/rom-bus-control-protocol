@@ -43,6 +43,8 @@ MENU_PROMPT_ROW     = 5
 MENU_ENTRY_ROW0     = 7
 MENU_FOOTER_ROW     = 20
 MENU_DEVICE_ROW     = 22
+MENU_NAME_COL       = 3
+MENU_NAME_MAX       = SCREEN_COLS - MENU_NAME_COL
 MAX_DISPLAY         = 13
 
 ; ---------------------------------------------------------------------------
@@ -873,11 +875,16 @@ draw_menu:
     inc ZP_PTR_HI
 
 @no_carry:
+    ; A longer name would run onto the next row.
+    ldy #MENU_NAME_MAX
+    lda #0
+    sta (ZP_PTR_LO), y
+
     lda ZP_TMP2
     clc
     adc #MENU_ENTRY_ROW0
     sta ZP_TMP0
-    lda #3
+    lda #MENU_NAME_COL
     sta ZP_TMP1
 
     jsr vic20_print_at      ; does not clobber ZP_TMP2+

@@ -1,112 +1,67 @@
 # Makefile — VIC-20 RBCP Kernal Bootloader
 # Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 
-AS           = ca65
-LD           = ld65
-ASFLAGS_BASE = --cpu 6502 -I . -I ../common -D PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
-LDFLAGS      = -C vic20_boot.cfg
+AS      = ca65
+LD      = ld65
+ASFLAGS = --cpu 6502 -I . -I ../common -D PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
+LDFLAGS = -C vic20_boot.cfg
 
-BUILD       = build
-BUILD_PAL   = $(BUILD)/pal
-BUILD_NTSC  = $(BUILD)/ntsc
-TARGET_PAL  = $(BUILD)/vic20_boot_pal.bin
-TARGET_NTSC = $(BUILD)/vic20_boot_ntsc.bin
+BUILD = build
+IMAGE = $(BUILD)/vic20_boot.bin
 
 # The RBCP library is an ar65 archive, so the linker takes only the command
-# modules this bootloader refers to.  One archive per variant, since the two
-# are assembled with different flags.
+# modules this bootloader refers to.
 RBCP_DIR  = ../rbcp
 RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
-RBCP_OBJS_PAL  = $(patsubst $(RBCP_DIR)/%.s,$(BUILD_PAL)/rbcp/%.o,$(RBCP_SRCS))
-RBCP_OBJS_NTSC = $(patsubst $(RBCP_DIR)/%.s,$(BUILD_NTSC)/rbcp/%.o,$(RBCP_SRCS))
-RBCP_LIB_PAL   = $(BUILD_PAL)/rbcp.lib
-RBCP_LIB_NTSC  = $(BUILD_NTSC)/rbcp.lib
+RBCP_OBJS = $(patsubst $(RBCP_DIR)/%.s,$(BUILD)/rbcp/%.o,$(RBCP_SRCS))
+RBCP_LIB  = $(BUILD)/rbcp.lib
 
-FLAGS_PAL           = $(BUILD_PAL)/.flags
-FLAGS_NTSC          = $(BUILD_NTSC)/.flags
-FLAGS_PAL_CURRENT   = VARIANT=PAL PAUSE=$(if $(PAUSE_BEFORE_RESET),1,0)
-FLAGS_NTSC_CURRENT  = VARIANT=NTSC PAUSE=$(if $(PAUSE_BEFORE_RESET),1,0)
+FLAGS_FILE    = $(BUILD)/.flags
+CURRENT_FLAGS = PAUSE_BEFORE_RESET=$(if $(PAUSE_BEFORE_RESET),1,0)
 
-OBJS_PAL  = $(BUILD_PAL)/vic20_boot.o \
-            $(BUILD_PAL)/vic20_hw.o \
-            $(BUILD_PAL)/vectors.o
-
-OBJS_NTSC = $(BUILD_NTSC)/vic20_boot.o \
-            $(BUILD_NTSC)/vic20_hw.o \
-            $(BUILD_NTSC)/vectors.o
+OBJS = $(BUILD)/vic20_boot.o \
+       $(BUILD)/vic20_hw.o \
+       $(BUILD)/vic20_tv.o \
+       $(BUILD)/vectors.o
 
 .PHONY: all clean test
 
-all: $(TARGET_PAL) $(TARGET_NTSC)
+all: $(IMAGE)
 
-$(BUILD_PAL) $(BUILD_NTSC):
-	mkdir -p $@
-
-# Flags files — always evaluated but only updated when content changes,
-# preventing spurious rebuilds.  Variant name is embedded so PAL and NTSC
-# flags files are never identical even when PAUSE_BEFORE_RESET is the same.
-
-$(FLAGS_PAL): FORCE | $(BUILD_PAL)
-	@echo "$(FLAGS_PAL_CURRENT)" | cmp -s - $@ || echo "$(FLAGS_PAL_CURRENT)" > $@
-
-$(FLAGS_NTSC): FORCE | $(BUILD_NTSC)
-	@echo "$(FLAGS_NTSC_CURRENT)" | cmp -s - $@ || echo "$(FLAGS_NTSC_CURRENT)" > $@
+# The flags file is always evaluated but only updated when its content
+# changes, preventing spurious rebuilds.
+$(FLAGS_FILE): FORCE
+	@mkdir -p $(BUILD)
+	@echo "$(CURRENT_FLAGS)" | cmp -s - $@ || echo "$(CURRENT_FLAGS)" > $@
 
 FORCE:
 
-# ---------------------------------------------------------------------------
-# PAL objects
-# ---------------------------------------------------------------------------
-
-$(BUILD_PAL)/rbcp/%.o: $(RBCP_DIR)/%.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s $(FLAGS_PAL)
+$(BUILD)/rbcp/%.o: $(RBCP_DIR)/%.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
-	$(AS) $(ASFLAGS_BASE) -DPAL=1 $< -o $@
+	$(AS) $(ASFLAGS) $< -o $@
 
-$(RBCP_LIB_PAL): $(RBCP_OBJS_PAL)
+$(RBCP_LIB): $(RBCP_OBJS)
 	@rm -f $@
-	ar65 a $@ $(RBCP_OBJS_PAL)
+	ar65 a $@ $(RBCP_OBJS)
 
-$(BUILD_PAL)/vic20_hw.o: src/vic20_hw.s src/vic20_defs.s $(FLAGS_PAL)
-	$(AS) $(ASFLAGS_BASE) -DPAL=1 src/vic20_hw.s -o $@
+$(BUILD)/vic20_hw.o: src/vic20_hw.s src/vic20_defs.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) src/vic20_hw.s -o $@
 
-$(BUILD_PAL)/vic20_boot.o: src/vic20_boot.s ../rbcp/rbcp_defs.s src/vic20_defs.s $(FLAGS_PAL)
-	$(AS) $(ASFLAGS_BASE) -DPAL=1 src/vic20_boot.s -o $@
+$(BUILD)/vic20_boot.o: src/vic20_boot.s ../rbcp/rbcp_defs.s src/vic20_defs.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) src/vic20_boot.s -o $@
 
-$(BUILD_PAL)/vectors.o: ../common/vectors.s $(FLAGS_PAL)
-	$(AS) $(ASFLAGS_BASE) -DPAL=1 ../common/vectors.s -o $@
+$(BUILD)/vic20_tv.o: ../common/vic20_tv.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) ../common/vic20_tv.s -o $@
 
-$(TARGET_PAL): $(OBJS_PAL) $(RBCP_LIB_PAL) vic20_boot.cfg $(FLAGS_PAL)
-	$(LD) $(LDFLAGS) $(OBJS_PAL) $(RBCP_LIB_PAL) -o $@
+$(BUILD)/vectors.o: ../common/vectors.s $(FLAGS_FILE)
+	$(AS) $(ASFLAGS) ../common/vectors.s -o $@
+
+$(IMAGE): $(OBJS) $(RBCP_LIB) vic20_boot.cfg $(FLAGS_FILE)
+	$(LD) $(LDFLAGS) $(OBJS) $(RBCP_LIB) -o $@
 	@echo "Output: $@ ($$(wc -c < $@) bytes)"
-
-# ---------------------------------------------------------------------------
-# NTSC objects
-# ---------------------------------------------------------------------------
-
-$(BUILD_NTSC)/rbcp/%.o: $(RBCP_DIR)/%.s $(RBCP_DIR)/rbcp_defs.s rbcp_config.s $(FLAGS_NTSC)
-	@mkdir -p $(dir $@)
-	$(AS) $(ASFLAGS_BASE) -DNTSC=1 $< -o $@
-
-$(RBCP_LIB_NTSC): $(RBCP_OBJS_NTSC)
-	@rm -f $@
-	ar65 a $@ $(RBCP_OBJS_NTSC)
-
-$(BUILD_NTSC)/vic20_hw.o: src/vic20_hw.s src/vic20_defs.s $(FLAGS_NTSC)
-	$(AS) $(ASFLAGS_BASE) -DNTSC=1 src/vic20_hw.s -o $@
-
-$(BUILD_NTSC)/vic20_boot.o: src/vic20_boot.s ../rbcp/rbcp_defs.s src/vic20_defs.s $(FLAGS_NTSC)
-	$(AS) $(ASFLAGS_BASE) -DNTSC=1 src/vic20_boot.s -o $@
-
-$(BUILD_NTSC)/vectors.o: ../common/vectors.s $(FLAGS_NTSC)
-	$(AS) $(ASFLAGS_BASE) -DNTSC=1 ../common/vectors.s -o $@
-
-$(TARGET_NTSC): $(OBJS_NTSC) $(RBCP_LIB_NTSC) vic20_boot.cfg $(FLAGS_NTSC)
-	$(LD) $(LDFLAGS) $(OBJS_NTSC) $(RBCP_LIB_NTSC) -o $@
-	@echo "Output: $@ ($$(wc -c < $@) bytes)"
-
-# ---------------------------------------------------------------------------
 
 # ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
+# TARGET is the machine MAME emulates.
 test: all
 	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=pal|ntsc]" >&2; exit 1; }
 	@RBCP_TARGET=$(if $(TARGET),$(TARGET),pal) test/run.sh "$(ROMS)"

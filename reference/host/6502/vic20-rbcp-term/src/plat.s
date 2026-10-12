@@ -14,6 +14,7 @@
     .include "term_defs.s"
 
 .import term_run
+.import vic20_tv_init
 
 ; Linker-generated symbols for the segments that run from RAM.
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__
@@ -88,10 +89,7 @@ boot_entry:
     inx
     bne @col
 
-    lda #VIC_H_CENTER_VAL
-    sta VIC_H_CENTER
-    lda #VIC_V_CENTER_VAL
-    sta VIC_V_CENTER
+    jsr vic20_tv_init
     lda #VIC_COL_COUNT_VAL
     sta VIC_COL_COUNT
     lda #VIC_ROW_COUNT_VAL

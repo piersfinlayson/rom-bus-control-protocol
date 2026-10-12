@@ -1,10 +1,9 @@
 # Makefile — VIC-20 auxiliary I/O tester
 # Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 #
-# Two images from one set of sources, PAL and NTSC, which differ in where the
-# picture sits and in nothing else.
+# One image runs on PAL and NTSC.
 #
-# make demo builds a third image, PAL, which answers its own questions, so that
+# make demo builds a second image, which answers its own questions, so that
 # every screen can be looked at under an emulator with no device fitted.
 # BOARD picks which imaginary board it describes.
 
@@ -13,12 +12,10 @@ LD       = ld65
 ASFLAGS  = --cpu 6502 -I . -I src -I ../aux-io
 
 BUILD    = build
-BUILD_P  = $(BUILD)/pal
-BUILD_N  = $(BUILD)/ntsc
+BUILD_I  = $(BUILD)/image
 BUILD_D  = $(BUILD)/demo
 
-TARGET_P = $(BUILD)/vic20_auxio_pal.bin
-TARGET_N = $(BUILD)/vic20_auxio_ntsc.bin
+TARGET_I = $(BUILD)/vic20_auxio.bin
 TARGET_D = $(BUILD)/vic20_auxio_demo.bin
 
 # BOARD only reaches the sources through the command line, so make cannot see
@@ -30,13 +27,14 @@ $(shell [ "`cat $(BUILD_D)/.flags 2>/dev/null`" = "$(BOARD)" ] || \
 
 # The RBCP library is an ar65 archive, so the linker takes only the command
 # modules this application refers to.  One archive per image, since each is
-# assembled against a different picture.
+# assembled with its own flags.
 RBCP_DIR  = ../rbcp
 RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
 
 # What every machine's tester shares, and what this one adds.
 AUX_DIR   = ../aux-io
 AUX_SRCS  = $(AUX_DIR)/auxio.s $(AUX_DIR)/display.s $(AUX_DIR)/pins.s
+COMMON_SRCS = ../common/vic20_tv.s
 APP_SRCS  = src/plat.s
 
 DEV_SRCS  = $(AUX_DIR)/pins_dev.s $(AUX_DIR)/session.s
@@ -47,7 +45,7 @@ DEPS = src/plat_defs.s $(AUX_DIR)/auxio_defs.s $(RBCP_DIR)/rbcp_defs.s \
 
 .PHONY: all demo clean test
 
-all: $(TARGET_P) $(TARGET_N)
+all: $(TARGET_I)
 demo: $(TARGET_D)
 
 # ---------------------------------------------------------------------------
@@ -71,12 +69,17 @@ $(1)/aux/%.o: $$(AUX_DIR)/%.s $$(DEPS)
 	@mkdir -p $$(dir $$@)
 	$$(AS) $$(ASFLAGS) $(2) $$< -o $$@
 
+$(1)/common/%.o: ../common/%.s $$(DEPS)
+	@mkdir -p $$(dir $$@)
+	$$(AS) $$(ASFLAGS) $(2) $$< -o $$@
+
 $(1)/app/%.o: src/%.s $$(DEPS)
 	@mkdir -p $$(dir $$@)
 	$$(AS) $$(ASFLAGS) $(2) $$< -o $$@
 
 $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
       $$(patsubst $$(AUX_DIR)/%.s,$(1)/aux/%.o,$$(AUX_SRCS) $(4)) \
+      $$(patsubst ../common/%.s,$(1)/common/%.o,$$(COMMON_SRCS)) \
       $(1)/rbcp.lib vic20_auxio.cfg
 	@mkdir -p $$(dir $$@)
 	$$(LD) -C vic20_auxio.cfg $$(filter %.o,$$^) $(1)/rbcp.lib -o $$@ -m $(1)/map.txt
@@ -84,9 +87,8 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P),$(DEV_SRCS)))
-$(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N),$(DEV_SRCS)))
-$(eval $(call IMAGE_RULES,$(BUILD_D),-D PAL=1 -D BOARD=$(BOARD),$(TARGET_D),$(FAKE_SRCS)))
+$(eval $(call IMAGE_RULES,$(BUILD_I),,$(TARGET_I),$(DEV_SRCS)))
+$(eval $(call IMAGE_RULES,$(BUILD_D),-D BOARD=$(BOARD),$(TARGET_D),$(FAKE_SRCS)))
 
 # ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
 test: all

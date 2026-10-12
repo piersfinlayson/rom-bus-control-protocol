@@ -19,7 +19,7 @@ Every application has a `test/run.sh` that runs it under MAME against an enumlat
 - [6502 RBCP Host Routines](rbcp/README.md): Generic 6502 assembly routines for communicating with an RBCP device. These can be used as building blocks for implementing an RBCP host on any 6502-based system.
 - `common/`: Routines every program here shares. `c64_hw.s` is the screen and the hardware setup, `c64_menu.s` draws the bootloader's menu and scans for a choice, and `c64_keys.s` scans the matrix from a table the application owns. `rbcp_session_fake.s` stands in for a device in the demo builds. `rbcp_stage.s` identifies the three ways the library reports a command failing, and `rbcp_recover.s` is the reset and re-entry that puts a device which has stopped answering back together. Those last two are not the C64's, and the VIC-20 and Apple IIe meters use them too.
 - [C64 Kernal Bootloader](c64-boot/README.md): A complete example of an RBCP host implementation on a real 6502-based system, specifically the Commodore 64. This bootloader can be used to load and execute code from an RBCP device on a C64.
-- [VIC-20 Kernal Bootloader](vic20-boot/README.md): The same for a VIC-20, built for PAL and for NTSC.
+- [VIC-20 Kernal Bootloader](vic20-boot/README.md): The same for a VIC-20.
 - [Apple II Bootloader](apple2-boot/README.md): The same for an Apple II, in a 2KB F8 ROM on a II or II+ and an 8KB EF ROM on a IIe.
 - [C64 LED Tester](c64-led-test/README.md): Drives a device's LEDs from a C64, showing on screen what each one should be doing.
 - [C64 Pipe Throughput Test](c64-pipe-test/README.md): A ROM that measures how many bytes a C64 can push through an RBCP pipe, in an 8KB image for each of the two C64 ROM sockets and a 16KB image spanning both.

@@ -21,4 +21,4 @@ pal|ntsc) ;;
 esac
 
 exec "$here/../../c64-boot/test/cbm_run.sh" "vic20-$RBCP_TARGET" \
-     "$here/../build/vic20_boot_$RBCP_TARGET.bin" "$here/../build" "$1"
+     "$here/../build/vic20_boot.bin" "$here/../build" "$1"

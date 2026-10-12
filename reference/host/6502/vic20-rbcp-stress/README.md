@@ -10,7 +10,7 @@ This build runs at $0400-$1DFF and needs the 3KB block at $0400-$0FFF fitted. A 
 
 ## The socket
 
-An 8KB 2364 in the kernal socket, $E000-$FFFF, with the command page at $E000 and a 64 byte back-channel region at $E100. Two images, PAL and NTSC, differing only in where the picture sits.
+An 8KB 2364 in the kernal socket, $E000-$FFFF, with the command page at $E000 and a 64 byte back-channel region at $E100. One image runs on PAL and NTSC machines.
 
 ## The screen
 
@@ -52,14 +52,14 @@ Needs cc65.
 make
 ```
 
-`build/vic20_meter_pal.bin` and `build/vic20_meter_ntsc.bin` are the two images.
+`build/vic20_meter.bin` is the image.
 
 ## Testing
 
 Every figure this program reports comes from a device, so there is no demo build. Under VICE with no device fitted it draws its screen and stops at `NO DEVICE`:
 
 ```
-xvic -default -memory 3k -kernal build/vic20_meter_pal.bin
+xvic -default -memory 3k -kernal build/vic20_meter.bin
 ```
 
 That covers the screen and the refusal path. The rest needs a One ROM in the kernal socket running the host-control plugin.

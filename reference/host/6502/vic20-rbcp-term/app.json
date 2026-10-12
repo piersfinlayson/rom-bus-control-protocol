@@ -1,12 +1,11 @@
 {
     "kind": "rom",
     "name": "VIC-20 RBCP Terminal",
-    "description": "Talks to a device over an RBCP pipe (USB) from a Commodore VIC-20. PAL and NTSC images.",
+    "description": "Talks to a device over an RBCP pipe (USB) from a Commodore VIC-20. PAL and NTSC.",
     "machine": "vic20",
     "zip": "vic20",
     "build": "make",
     "files": {
-        "vic20_term_pal.bin": {"variant": "pal"},
-        "vic20_term_ntsc.bin": {"variant": "ntsc"}
+        "vic20_term.bin": {}
     }
 }

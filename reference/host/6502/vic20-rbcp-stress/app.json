@@ -1,12 +1,11 @@
 {
     "kind": "rom",
     "name": "VIC-20 RBCP Reliability Meter",
-    "description": "Measures how reliably a Commodore VIC-20 and a device communicate over RBCP. PAL and NTSC images.",
+    "description": "Measures how reliably a Commodore VIC-20 and a device communicate over RBCP. PAL and NTSC.",
     "machine": "vic20",
     "zip": "vic20",
     "build": "make",
     "files": {
-        "vic20_meter_pal.bin": {"variant": "pal"},
-        "vic20_meter_ntsc.bin": {"variant": "ntsc"}
+        "vic20_meter.bin": {}
     }
 }

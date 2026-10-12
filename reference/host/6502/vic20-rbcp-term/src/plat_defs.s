@@ -11,7 +11,7 @@
 ; protocol's version or the device's.  See RELEASE.md for when it changes.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.1.1"
+.define APP_VERSION "0.2.0"
 
 ; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)
@@ -60,23 +60,6 @@ VIA2_DDRA_VAL   = $00
 
 ; Writing this to an IER clears every enable it has.
 VIA_IER_NONE    = $7F
-
-; ---------------------------------------------------------------------------
-; The picture
-;
-; PAL and NTSC put the picture in different places, and nothing else in this
-; program differs between the two.
-; ---------------------------------------------------------------------------
-
-.if .defined(PAL)
-VIC_H_CENTER_VAL    = $0C
-VIC_V_CENTER_VAL    = $26
-.elseif .defined(NTSC)
-VIC_H_CENTER_VAL    = $05
-VIC_V_CENTER_VAL    = $19
-.else
-.error "Define PAL or NTSC (pass -DPAL=1 or -DNTSC=1 to ca65)"
-.endif
 
 ; The VIC-I and the 6502 take alternate halves of every cycle, so fetching a
 ; row of characters costs the processor nothing and takes the bus off nobody.

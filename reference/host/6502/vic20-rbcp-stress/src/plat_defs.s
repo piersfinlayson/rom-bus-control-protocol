@@ -11,7 +11,7 @@
 ; protocol's version or the device's.  See RELEASE.md for when it changes.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.1.1"
+.define APP_VERSION "0.2.0"
 
 ; ---------------------------------------------------------------------------
 ; What a VIC-20 varies: nothing
@@ -46,17 +46,6 @@ VIC_OSC3        = $900C
 VIC_NOISE       = $900D
 VIC_AUX_VOL     = $900E
 VIC_COLOUR      = $900F
-
-; PAL and NTSC put the picture in different places.  Pass -DPAL=1 or -DNTSC=1.
-.if .defined(PAL)
-VIC_H_CENTER_VAL    = $0C
-VIC_V_CENTER_VAL    = $26
-.elseif .defined(NTSC)
-VIC_H_CENTER_VAL    = $05
-VIC_V_CENTER_VAL    = $19
-.else
-.error "Define PAL or NTSC (pass -DPAL=1 or -DNTSC=1 to ca65)"
-.endif
 
 VIC_COL_COUNT_VAL   = $96   ; 22 columns, VA9 set, so the screen is at $1E00
 VIC_ROW_COUNT_VAL   = $2E   ; 23 rows, 8 pixel characters

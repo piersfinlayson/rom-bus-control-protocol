@@ -14,6 +14,7 @@
     .include "pipe_defs.s"
 
 .import pipe_run
+.import vic20_tv_init
 
 ; Linker-generated symbols for the segments that run from RAM.
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__
@@ -25,6 +26,7 @@
 
 .export plat_abort_flag
 plat_abort_flag: .res 1         ; nothing here raises it, so RETURN stops a run
+plat_pal:        .res 1         ; bit 7 set on a PAL machine
 
 ; ===========================================================================
 ; FILL segment — the command page, then the back channel
@@ -92,10 +94,8 @@ boot_entry:
     inx
     bne @col
 
-    lda #VIC_H_CENTER_VAL
-    sta VIC_H_CENTER
-    lda #VIC_V_CENTER_VAL
-    sta VIC_V_CENTER
+    jsr vic20_tv_init
+    ror plat_pal
     lda #VIC_COL_COUNT_VAL
     sta VIC_COL_COUNT
     lda #VIC_ROW_COUNT_VAL
@@ -368,7 +368,7 @@ plat_key_wait_none:
 
 ; ---------------------------------------------------------------------------
 ; plat_clock_start — VIA1 timer 1, free-running on the latch plat_defs.s works
-; out for the video standard this image is built for.
+; out for the video standard found at reset.
 ;
 ; VIA1 rather than VIA2, which carries the keyboard matrix and the kernal's
 ; jiffy timer.  VIA1's interrupt enables were cleared at entry, so a timeout
@@ -386,9 +386,17 @@ plat_clock_start:
     sta ZP_TICK
     lda #VIA1_ACR_T1FREE
     sta VIA1_ACR
-    lda #<T1_LATCH
+    bit plat_pal
+    bmi @pal
+    lda #<T1_LATCH_NTSC
     sta VIA1_T1LL
-    lda #>T1_LATCH
+    lda #>T1_LATCH_NTSC
+    sta VIA1_T1CH
+    rts
+@pal:
+    lda #<T1_LATCH_PAL
+    sta VIA1_T1LL
+    lda #>T1_LATCH_PAL
     sta VIA1_T1CH
     rts
 

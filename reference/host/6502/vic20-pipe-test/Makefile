@@ -1,8 +1,7 @@
 # Makefile — VIC-20 RBCP pipe throughput test
 # Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 #
-# Two images from one set of sources, PAL and NTSC, which differ in where the
-# picture sits and in the timer latch that makes a window exactly a second.
+# One image runs on PAL and NTSC.
 #
 # There is no demo build.  Every figure this program reports comes from a
 # device, and a build that made the answers up would report nothing worth
@@ -13,15 +12,12 @@ LD       = ld65
 ASFLAGS  = --cpu 6502 -I . -I src -I ../common -I ../pipe
 
 BUILD    = build
-BUILD_P  = $(BUILD)/pal
-BUILD_N  = $(BUILD)/ntsc
+BUILD_I  = $(BUILD)/image
 
-TARGET_P = $(BUILD)/vic20_pipe_pal.bin
-TARGET_N = $(BUILD)/vic20_pipe_ntsc.bin
+TARGET_I = $(BUILD)/vic20_pipe.bin
 
 # The RBCP library is an ar65 archive, so the linker takes only the command
-# modules this application refers to.  One archive per image, since each is
-# assembled against a different timer latch.
+# modules this application refers to.
 RBCP_DIR  = ../rbcp
 RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
 
@@ -30,7 +26,7 @@ PIPE_DIR  = ../pipe
 PIPE_SRCS = $(PIPE_DIR)/pipe.s $(PIPE_DIR)/session.s $(PIPE_DIR)/display.s \
             $(PIPE_DIR)/timing.s $(PIPE_DIR)/line.s $(PIPE_DIR)/send_lib.s \
             $(PIPE_DIR)/send_tuned.s $(PIPE_DIR)/fault.s
-COMMON_SRCS = ../common/rbcp_recover.s
+COMMON_SRCS = ../common/rbcp_recover.s ../common/vic20_tv.s
 APP_SRCS    = src/plat.s
 
 DEPS = src/plat_defs.s ../common/rbcp_stage.s $(PIPE_DIR)/pipe_defs.s \
@@ -38,7 +34,7 @@ DEPS = src/plat_defs.s ../common/rbcp_stage.s $(PIPE_DIR)/pipe_defs.s \
 
 .PHONY: all clean test
 
-all: $(TARGET_P) $(TARGET_N)
+all: $(TARGET_I)
 
 # ---------------------------------------------------------------------------
 # One rule set per image.  The name has to differ from any variable this
@@ -81,12 +77,10 @@ $(3): $$(patsubst src/%.s,$(1)/app/%.o,$$(APP_SRCS)) \
 
 endef
 
-$(eval $(call IMAGE_RULES,$(BUILD_P),-D PAL=1,$(TARGET_P)))
-$(eval $(call IMAGE_RULES,$(BUILD_N),-D NTSC=1,$(TARGET_N)))
+$(eval $(call IMAGE_RULES,$(BUILD_I),,$(TARGET_I)))
 
 # ROMS is the directory of VIC-20 ROM files, which aren't in this repository.
-# Rates are timed in CPU cycles and the PAL and NTSC clocks differ, so TARGET
-# selects the machine as well as the build.
+# TARGET is the machine MAME emulates.
 test: all
 	@[ -n "$(ROMS)" ] || { echo "usage: make test ROMS=<rom-dir> [TARGET=pal|ntsc]" >&2; exit 1; }
 	@RBCP_TARGET=$(if $(TARGET),$(TARGET),pal) test/run.sh "$(ROMS)"

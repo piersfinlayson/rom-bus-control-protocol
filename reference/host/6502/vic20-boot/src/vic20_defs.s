@@ -10,7 +10,7 @@
 ; not the device's.  RELEASE.md says when it changes and how it is published.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.1.1"
+.define APP_VERSION "0.2.0"
 
 ; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)
@@ -32,18 +32,6 @@ VIC_OSC3        = $900C
 VIC_NOISE       = $900D
 VIC_AUX_VOL     = $900E     ; bits 0-3: volume; bits 4-7: auxiliary colour
 VIC_COLOUR      = $900F     ; bits 0-2: border colour; bit 3: reverse; bits 4-7: background
-
-; PAL/NTSC-dependent centering values.
-; Pass -DPAL=1 or -DNTSC=1 to ca65.
-.if .defined(PAL)
-VIC_H_CENTER_VAL    = $0C
-VIC_V_CENTER_VAL    = $26
-.elseif .defined(NTSC)
-VIC_H_CENTER_VAL    = $05
-VIC_V_CENTER_VAL    = $19
-.else
-.error "Define PAL or NTSC (pass -DPAL=1 or -DNTSC=1 to ca65)"
-.endif
 
 ; Fixed VIC register values (same for PAL and NTSC).
 ; Screen at $1E00: $9005 bits 4-7 = $F -> base $1C00, VA9=1 -> +$200 = $1E00.

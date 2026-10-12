@@ -67,9 +67,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vic20-boot
-          path: |
-            reference/host/6502/vic20-boot/build/vic20_boot_pal.bin
-            reference/host/6502/vic20-boot/build/vic20_boot_ntsc.bin
+          path: reference/host/6502/vic20-boot/build/vic20_boot.bin
 
   build-apple2-boot:
     runs-on: ubuntu-latest
@@ -155,8 +153,7 @@ jobs:
             reference/host/6502/c64-pipe-test/build/c64_pipe_kernal.bin
             reference/host/6502/c64-pipe-test/build/c64_pipe_basic.bin
             reference/host/6502/c64-pipe-test/build/c64_pipe_combined.bin
-            reference/host/6502/vic20-pipe-test/build/vic20_pipe_pal.bin
-            reference/host/6502/vic20-pipe-test/build/vic20_pipe_ntsc.bin
+            reference/host/6502/vic20-pipe-test/build/vic20_pipe.bin
             reference/host/6502/apple2-pipe-test/build/apple2_pipe_pal.bin
             reference/host/6502/apple2-pipe-test/build/apple2_pipe_ntsc.bin
 
@@ -193,8 +190,7 @@ jobs:
             reference/host/6502/c64-rbcp-stress/build/c64_meter_kernal.bin
             reference/host/6502/c64-rbcp-stress/build/c64_meter_basic.bin
             reference/host/6502/c64-rbcp-stress/build/c64_meter_combined.bin
-            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_pal.bin
-            reference/host/6502/vic20-rbcp-stress/build/vic20_meter_ntsc.bin
+            reference/host/6502/vic20-rbcp-stress/build/vic20_meter.bin
             reference/host/6502/apple2-rbcp-stress/build/apple2_meter.bin
 
   build-rbcp-aux-io:
@@ -245,8 +241,7 @@ jobs:
             reference/host/6502/c64-aux-io/build/c64_auxio_kernal.bin
             reference/host/6502/c64-aux-io/build/c64_auxio_basic.bin
             reference/host/6502/c64-aux-io/build/c64_auxio_combined.bin
-            reference/host/6502/vic20-aux-io/build/vic20_auxio_pal.bin
-            reference/host/6502/vic20-aux-io/build/vic20_auxio_ntsc.bin
+            reference/host/6502/vic20-aux-io/build/vic20_auxio.bin
             reference/host/6502/apple2-aux-io/build/apple2_auxio.bin
 
   build-rbcp-term:
@@ -282,8 +277,7 @@ jobs:
             reference/host/6502/c64-rbcp-term/build/c64_term_kernal.bin
             reference/host/6502/c64-rbcp-term/build/c64_term_basic.bin
             reference/host/6502/c64-rbcp-term/build/c64_term_combined.bin
-            reference/host/6502/vic20-rbcp-term/build/vic20_term_pal.bin
-            reference/host/6502/vic20-rbcp-term/build/vic20_term_ntsc.bin
+            reference/host/6502/vic20-rbcp-term/build/vic20_term.bin
             reference/host/6502/apple2-rbcp-term/build/apple2_term.bin
 
   # Every Amiga application builds the same way and is tested the same way, so
