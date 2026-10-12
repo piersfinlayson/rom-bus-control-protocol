@@ -19,12 +19,6 @@ https://images.onerom.org/roms/host-control/c64-bootloader/latest/c64_bootloader
 
 ## Source Code
 
-The published images are built from a fork, which adds the C64C target:
-
-https://github.com/piersfinlayson/c64-bootloader
-
-Upstream, and where the bootloader comes from:
-
 https://github.com/r107sl/c64-bootloader
 
 ## Usage
@@ -45,14 +39,14 @@ onerom program  --plugin usb --plugin host-control \
 Requires ca65/cc65/ld65.
 
 ```bash
-git clone https://github.com/piersfinlayson/c64-bootloader
+git clone https://github.com/r107sl/c64-bootloader
 cd c64-bootloader
 make
 make TARGET=c64c
 ```
 
 The default target creates `./c64_bootloader.bin`, the 8KB kernal ROM.
-`TARGET=c64c` creates `./c64_bootloader_c64c.bin`, the 16KB image with basic
+`TARGET=c64c` creates `./c64c_bootloader.bin`, the 16KB image with basic
 in the lower half and the kernal in the upper.
 
 ## License
