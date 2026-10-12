@@ -3,7 +3,7 @@
     "name": "C64 Bootloader",
     "description": "A C64 kernal bootloader compatible with cartridges. The c64c image is a combined 16KB kernal and basic ROM.",
     "machine": "c64",
-    "source": "https://github.com/piersfinlayson/c64-bootloader",
+    "source": "https://github.com/r107sl/c64-bootloader",
     "files": {
         "c64_bootloader.bin": {},
         "c64_bootloader_c64c.bin": {"variant": "c64c"}
