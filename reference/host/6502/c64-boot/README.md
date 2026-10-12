@@ -40,6 +40,9 @@ One ROM's stock configs contain:
 | --- | --- |
 | [`c64-bootloader-longboard.json`](https://images.onerom.org/configs/c64-bootloader-longboard.json) | C64 Bootloader (longboard) |
 | [`28-c64-bootloader-shortboard.json`](https://images.onerom.org/configs/28-c64-bootloader-shortboard.json) | C64 Bootloader (shortboard) |
+| [`set-c64-bootloader.json`](https://images.onerom.org/configs/set-c64-bootloader.json) | C64 Bootloader (multi-ROM) |
+
+The multi-ROM config also contains the stock BASIC and character ROMs. It requires fire-24-c or later. Connect the BASIC ROM socket's CS pin (20) to X1 and the character ROM socket's CS1 pin (20) to X2.
 
 To add an image of your own, copy a slot in a downloaded config updating `label` and `file`. If using a relative `file` path with the CLI, it must start from the directory `onerom` runs in.
 
