@@ -17,7 +17,8 @@
 .import rbcp_reset
 .import rbcp_cmd_enter_cmd_resp
 .import rbcp_cmd_get_ram_slot_info_all
-.import rbcp_cmd_get_flash_slot_info_all
+.import rbcp_cmd_get_flash_slot_count
+.import rbcp_cmd_get_flash_slot_info
 .import rbcp_cmd_load_slot
 .import rbcp_cmd_switch_and_exit
 .import rbcp_cmd_get_device_type, rbcp_cmd_get_device_version
@@ -40,12 +41,18 @@ RESET_VECTOR        = $FFFC
 MENU_HEADER_ROW     = 1
 MENU_COPYRIGHT_ROW  = 3
 MENU_PROMPT_ROW     = 5
+MENU_ABOVE_ROW      = 6
 MENU_ENTRY_ROW0     = 7
-MENU_FOOTER_ROW     = 20
+MENU_BELOW_ROW      = 20
+MENU_FOOTER_ROW     = 21
 MENU_DEVICE_ROW     = 22
 MENU_NAME_COL       = 3
 MENU_NAME_MAX       = SCREEN_COLS - MENU_NAME_COL
-MAX_DISPLAY         = 13
+MENU_MORE_COL       = (SCREEN_COLS - 2) / 2
+MAX_DISPLAY         = MENU_BELOW_ROW - MENU_ENTRY_ROW0
+
+MORE_ABOVE          = SCREEN_BASE + MENU_ABOVE_ROW * SCREEN_COLS + MENU_MORE_COL
+MORE_BELOW          = SCREEN_BASE + MENU_BELOW_ROW * SCREEN_COLS + MENU_MORE_COL
 
 ; ---------------------------------------------------------------------------
 ; BSS — RAM-resident variables
@@ -53,9 +60,7 @@ MAX_DISPLAY         = 13
 
 .bss
 
-; Slot name buffer: 13 entries * 32 bytes = 416 bytes.
-; Entry 0 = flash slot 1, entry N = flash slot N+1.
-slot_name_buf:      .res MAX_DISPLAY * 32
+name_buf:           .res MENU_NAME_MAX + 1
 status_line_buf:    .res 32
 device_type_buf:    .res 24
 device_version_buf: .res 24
@@ -65,9 +70,10 @@ var_total_ram:  .res 1
 var_active_ram: .res 1
 var_target_ram: .res 1
 var_total_flash:.res 1
-var_whole_flash:.res 1
-var_num_display:.res 1
-var_selection:  .res 1
+var_num_entries:.res 1      ; every flash slot but 0
+var_num_rows:   .res 1      ; entries on screen at once
+var_top:        .res 1      ; entry on the first row
+var_selection:  .res 1      ; entry, not row
 var_cbm_held:   .res 1      ; $00 = C= held; non-zero = not held
 var_nv_present: .res 1      ; 0 = absent or not writable, 1 = writable
 var_boot_flash: .res 1      ; resolved flash slot to boot
@@ -210,16 +216,15 @@ boot_ram_entry:
     eor #1
     sta var_target_ram
 
-    ; Flash slot info — needed by both paths and for NV validation
+    ; Flash slot count — needed by both paths and for NV validation.  A
+    ; failure leaves it zero, which stops the menu path and sends auto-boot
+    ; to slot 1.
     lda #0
     sta var_total_flash
-    sta var_whole_flash
-    jsr rbcp_cmd_get_flash_slot_info_all
-    bcs @flash_info_done        ; on failure totals stay zero; menu path catches this, auto-boot falls back to slot 1
+    jsr rbcp_cmd_get_flash_slot_count
+    bcs @flash_info_done
     lda RBCP_DATA_ADDR + 0
     sta var_total_flash
-    lda RBCP_DATA_ADDR + 1
-    sta var_whole_flash
 @flash_info_done:
 
     ; NV query — resolve boot slot; failures fall through to default
@@ -348,96 +353,34 @@ path_menu:
     bcs @ok_flashcount
     jmp err_no_kernals
 @ok_flashcount:
-
-    lda var_whole_flash
-    bne @ok_whole
-    jmp err_no_kernals
-@ok_whole:
     sec
-    sbc #1                  ; subtract slot 0 (bootloader record)
-    bne @ok_after_sub
-    jmp err_no_kernals
-@ok_after_sub:
+    sbc #1                  ; subtract slot 0, the bootloader
+    sta var_num_entries
     cmp #MAX_DISPLAY + 1
-    bcc @disp_ok
+    bcc @rows_ok
     lda #MAX_DISPLAY
-@disp_ok:
-    sta var_num_display
-
-    ; ------------------------------------------------------------------
-    ; Copy slot name records from data section to RAM buffer.
-    ;
-    ; Data section layout (at RBCP_DATA_ADDR):
-    ;   +0  total_count   (1 byte)
-    ;   +1  whole_count   (1 byte)
-    ;   +2  partial_flag  (1 byte)
-    ;   +3  reserved      (1 byte)
-    ;   +4  record 0      (32 bytes, flash slot 0 = bootloader, not shown)
-    ;   +36 record 1      (32 bytes, flash slot 1 = first display entry)
-    ;   ...
-    ;
-    ; Source: RBCP_DATA_ADDR + 36 (skip preamble + slot 0 record)
-    ; Dest:   slot_name_buf
-    ; Count:  var_num_display * 32
-    ;
-    ; Multiply by 32: n*32 = n<<5.
-    ; lo byte = (n<<5) & $FF, hi byte = n>>3.
-    ; ------------------------------------------------------------------
-
-    lda var_num_display
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a                   ; lo byte of n*32
-    sta ZP_TMP3
-    lda var_num_display
-    lsr a
-    lsr a
-    lsr a                   ; hi byte of n*32 (= n/8)
-    sta ZP_TMP4
-
-    lda #<(RBCP_DATA_ADDR + 36)
-    sta ZP_PTR_LO
-    lda #>(RBCP_DATA_ADDR + 36)
-    sta ZP_PTR_HI
-    lda #<slot_name_buf
-    sta ZP_TMP0
-    lda #>slot_name_buf
-    sta ZP_TMP1
-
-    ldy #0
-@name_copy:
-    lda (ZP_PTR_LO), y
-    sta (ZP_TMP0), y
-    iny
-    bne @name_no_page
-    inc ZP_PTR_HI
-    inc ZP_TMP1
-@name_no_page:
-    lda ZP_TMP3
-    bne @name_dec_lo
-    dec ZP_TMP4
-@name_dec_lo:
-    dec ZP_TMP3
-    lda ZP_TMP3
-    ora ZP_TMP4
-    bne @name_copy
+@rows_ok:
+    sta var_num_rows
 
     lda #VIC_COLOUR_VAL
     sta VIC_COLOUR
 
-jsr draw_menu
+    jsr draw_menu
 
-    ; Highlight the auto-booting slot if configured
-    lda var_boot_flash
+    ; Start on the auto-booting slot, on the last row if it is below the
+    ; first screenful.  var_boot_flash is always a valid kernal slot.
+    ldx var_boot_flash
+    dex
+    stx var_selection
+    lda #0
+    sta var_top
+    txa
     sec
-    sbc #1                  ; convert 1-based flash slot to 0-based index
-    cmp var_num_display     ; out of displayable range?
-    bcc @sel_ok
-    lda #0                  ; fall back to first entry
-@sel_ok:
-    sta var_selection
+    sbc #MAX_DISPLAY - 1
+    bcc @top_ok
+    sta var_top
+@top_ok:
+    jsr draw_list
     jsr highlight_selection
 
     ; ------------------------------------------------------------------
@@ -461,17 +404,30 @@ do_up:
     beq key_loop
     jsr unhighlight_selection
     dec var_selection
+    lda var_selection
+    cmp var_top
+    bcs @shown
+    sta var_top
+    jsr draw_list
+@shown:
     jsr highlight_selection
     jmp key_delay
 
 do_down:
-    lda var_selection
-    clc
-    adc #1
-    cmp var_num_display
+    ldx var_selection
+    inx
+    cpx var_num_entries
     bcs key_loop
     jsr unhighlight_selection
     inc var_selection
+    lda var_selection
+    sec
+    sbc var_top
+    cmp #MAX_DISPLAY
+    bcc @shown
+    inc var_top
+    jsr draw_list
+@shown:
     jsr highlight_selection
     ; fall through
 
@@ -769,8 +725,7 @@ str_sl_dcmd: .byte " DCMD:", 0
 
 ; ===========================================================================
 ; draw_menu
-; Draws header, copyright, prompt, footer, device line, and all slot entries.
-; Relies on vic20_print_at to not clobber ZP_TMP2+.
+; Draws header, copyright, prompt, footer and device line.
 ; ===========================================================================
 
 draw_menu:
@@ -834,65 +789,90 @@ draw_menu:
     sta ZP_TMP1
     lda #MENU_DEVICE_ROW
     sta ZP_TMP0
-    jsr vic20_print_at
+    jmp vic20_print_at      ; tail call
 
-    ; Draw slot names.
-    ; For each entry i: source = slot_name_buf + i*32, row = MENU_ENTRY_ROW0+i.
-    ; Loop counter in ZP_TMP2.
+; ===========================================================================
+; draw_list
+; Draws the entries from var_top, one per row, with a triangle above or below
+; the list where entries are off screen.  Each name is read as its row is
+; drawn because the back channel can't hold every slot's record.  A slot whose
+; GET_FLASH_SLOT_INFO fails is drawn blank.
+; Relies on vic20_print_at to not clobber ZP_TMP2+.
+; Clobbers: A, X, Y, ZP_PTR_LO/HI, ZP_TMP0-2
+; ===========================================================================
 
+draw_list:
     lda #0
-    sta ZP_TMP2             ; i = 0
-
-@entry_loop:
+    sta ZP_TMP2             ; row
+@row_loop:
     lda ZP_TMP2
-    cmp var_num_display
-    beq @entries_done
+    cmp var_num_rows
+    beq @marks
 
-    ; Compute slot_name_buf + i*32
-    asl a
-    asl a
-    asl a
-    asl a
-    asl a
-    sta ZP_TMP3             ; offset lo
-    lda ZP_TMP2
-    lsr a
-    lsr a
-    lsr a
-    sta ZP_TMP4             ; offset hi
+    sec                     ; flash slot = var_top + row + 1
+    adc var_top
+    jsr rbcp_cmd_get_flash_slot_info
 
-    lda #<slot_name_buf
-    clc
-    adc ZP_TMP3
+    ; Spaces pad the name to the end of the row, over the name drawn before.
+    ldy #0
+    bcs @pad
+@copy:
+    lda RBCP_DATA_ADDR + 1, y
+    beq @pad
+    sta name_buf, y
+    iny
+    cpy #MENU_NAME_MAX
+    bne @copy
+@pad:
+    lda #' '
+@pad_loop:
+    cpy #MENU_NAME_MAX
+    beq @print
+    sta name_buf, y
+    iny
+    bne @pad_loop           ; always
+@print:
+    lda #0
+    sta name_buf, y
+
+    lda #<name_buf
     sta ZP_PTR_LO
-    lda #>slot_name_buf
-    adc ZP_TMP4
+    lda #>name_buf
     sta ZP_PTR_HI
-
-    ; Skip byte 0 (ROM type field)
-    inc ZP_PTR_LO
-    bne @no_carry
-    inc ZP_PTR_HI
-
-@no_carry:
-    ; A longer name would run onto the next row.
-    ldy #MENU_NAME_MAX
-    lda #0
-    sta (ZP_PTR_LO), y
-
     lda ZP_TMP2
     clc
     adc #MENU_ENTRY_ROW0
     sta ZP_TMP0
     lda #MENU_NAME_COL
     sta ZP_TMP1
-
-    jsr vic20_print_at      ; does not clobber ZP_TMP2+
+    jsr vic20_print_at
 
     inc ZP_TMP2
-    jmp @entry_loop
+    bne @row_loop           ; always
 
-@entries_done:
+@marks:
+    ldx #CHAR_SPACE
+    ldy #CHAR_SPACE
+    lda var_top
+    beq @put_above
+    ldx #CHAR_TRI_UP_L
+    ldy #CHAR_TRI_UP_R
+@put_above:
+    stx MORE_ABOVE
+    sty MORE_ABOVE + 1
+
+    ldx #CHAR_SPACE
+    ldy #CHAR_SPACE
+    lda var_top
+    clc
+    adc var_num_rows
+    cmp var_num_entries
+    bcs @put_below
+    ldx #CHAR_TRI_DOWN_L
+    ldy #CHAR_TRI_DOWN_R
+@put_below:
+    stx MORE_BELOW
+    sty MORE_BELOW + 1
     rts
 
 ; ===========================================================================
@@ -900,26 +880,29 @@ draw_menu:
 ; ===========================================================================
 
 highlight_selection:
-    lda var_selection
-    clc
-    adc #MENU_ENTRY_ROW0
+    jsr selection_row
     jsr vic20_highlight_row
     jsr set_arrow
     rts
 
 unhighlight_selection:
-    lda var_selection
-    clc
-    adc #MENU_ENTRY_ROW0
+    jsr selection_row
     jsr vic20_unhighlight_row
     jsr clear_arrow
     rts
 
-; set_arrow: write '>' at col 1 of the current selection row
-set_arrow:
+; selection_row: A = the screen row of the selected entry
+selection_row:
     lda var_selection
+    sec
+    sbc var_top
     clc
     adc #MENU_ENTRY_ROW0
+    rts
+
+; set_arrow: write '>' at col 1 of the current selection row
+set_arrow:
+    jsr selection_row
     tax
     lda row_off_lo, x
     clc
@@ -935,9 +918,7 @@ set_arrow:
 
 ; clear_arrow: write space at col 1 of the current selection row
 clear_arrow:
-    lda var_selection
-    clc
-    adc #MENU_ENTRY_ROW0
+    jsr selection_row
     tax
     lda row_off_lo, x
     clc

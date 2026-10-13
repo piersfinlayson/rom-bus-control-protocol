@@ -879,7 +879,7 @@ jobs:
             slow: ''
             markers: |
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
-              GET_FLASH_SLOT_INFO_ALL 5 of 5
+              GET_FLASH_SLOT_COUNT = 5
               SWITCH_AND_EXIT ram slot 1
               **** CBM BASIC V2 ****
           - app: vic20-boot
@@ -893,6 +893,42 @@ jobs:
             slow: ''
             markers: |
               SWITCH_AND_EXIT ram slot 1
+              **** CBM BASIC V2 ****
+          # Both menu legs open scrolled to the stored slot 17.  In the first,
+          # SHIFT held with C= turns every cursor press into up.
+          - app: vic20-boot
+            target: pal
+            leg: 'menu'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up'
+            send: ''
+            image: ''
+            slow: ''
+            hold: 'CBM;Shift (Left)'
+            slots: 20
+            nv: 17
+            markers: |
+              NV_PEEK = 17
+              06*|          ..          |
+              07*| > DEAD TEST KERNAL   |
+              20 |          ..          |
+              21 | UP/DN=MOVE  RET=BOOT |
+          - app: vic20-boot
+            target: pal
+            leg: 'menu-boot'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;Return'
+            send: ''
+            image: ''
+            slow: ''
+            hold: 'CBM'
+            slots: 20
+            nv: 17
+            markers: |
+              NV_POKE_COMMIT_BYTE = 19
+              LOAD_SLOT ram 1 <- flash 19 (SPARE IMAGE 19)
               **** CBM BASIC V2 ****
           - app: vic20-aux-io
             target: pal
@@ -1075,6 +1111,9 @@ jobs:
           RBCP_KEYS: ${{ matrix.keys }}
           RBCP_SEND: ${{ matrix.send }}
           RBCP_SLOW: ${{ matrix.slow }}
+          RBCP_HOLD: ${{ matrix.hold }}
+          RBCP_SLOTS: ${{ matrix.slots }}
+          RBCP_NV: ${{ matrix.nv }}
           IMAGE: ${{ matrix.image }}
           MARKERS: ${{ matrix.markers }}
         run: |

@@ -10,7 +10,7 @@
 ; not the device's.  RELEASE.md says when it changes and how it is published.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.2.0"
+.define APP_VERSION "0.2.1"
 
 ; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)
@@ -75,6 +75,12 @@ SCREEN_ROWS     = 23
 CHAR_SPACE      = $20
 CHAR_GT         = $3E       ; '>' screen code
 CHAR_SPACE_REV  = $A0       ; reversed space
+
+; Each pair draws one triangle across two characters.
+CHAR_TRI_UP_L   = $E9
+CHAR_TRI_UP_R   = $DF
+CHAR_TRI_DOWN_L = $5F
+CHAR_TRI_DOWN_R = $69
 
 ; ---------------------------------------------------------------------------
 ; Colours

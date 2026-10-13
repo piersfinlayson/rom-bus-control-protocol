@@ -15,29 +15,35 @@ if _G.RBCP_GEN > 1 then
   return
 end
 
-local ROM_BASE   = tonumber(os.getenv("RBCP_ROM_BASE") or "0xE000")
-local CMD_PAGE   = tonumber(os.getenv("RBCP_CMD_PAGE") or "0xE0")
+-- CI sets every variable that any leg uses, so an empty one counts as unset.
+local function getenv(name)
+  local v = os.getenv(name)
+  if v ~= "" then return v end
+end
+
+local ROM_BASE   = tonumber(getenv("RBCP_ROM_BASE") or "0xE000")
+local CMD_PAGE   = tonumber(getenv("RBCP_CMD_PAGE") or "0xE0")
 -- The back channel's address and size must match the program's rbcp_config.s.
-local BCH_BASE   = tonumber(os.getenv("RBCP_BCH_BASE") or "0xE100")
-local BCH_SIZE   = tonumber(os.getenv("RBCP_BCH_SIZE") or "512")
-local ROM_SIZE   = tonumber(os.getenv("RBCP_ROM_SIZE") or "0x2000")
+local BCH_BASE   = tonumber(getenv("RBCP_BCH_BASE") or "0xE100")
+local BCH_SIZE   = tonumber(getenv("RBCP_BCH_SIZE") or "512")
+local ROM_SIZE   = tonumber(getenv("RBCP_ROM_SIZE") or "0x2000")
 local COMPLETE   = 0xBB
 local STATUS_OK  = 0xCC
 local KNOCK      = { 0x21, 0x52, 0x42, 0x43, 0x50, 0x21 }
 
-local NV_START   = tonumber(os.getenv("RBCP_NV") or "255")
-local KEYS       = os.getenv("RBCP_KEYS") or ""
-local RUN_FRAMES = tonumber(os.getenv("RBCP_FRAMES") or "600")
-local KEY_AT     = tonumber(os.getenv("RBCP_KEY_AT") or "150")   -- first key frame
-local DEBUG      = os.getenv("RBCP_DEBUG") ~= nil
+local NV_START   = tonumber(getenv("RBCP_NV") or "255")
+local KEYS       = getenv("RBCP_KEYS") or ""
+local RUN_FRAMES = tonumber(getenv("RBCP_FRAMES") or "600")
+local KEY_AT     = tonumber(getenv("RBCP_KEY_AT") or "150")   -- first key frame
+local DEBUG      = getenv("RBCP_DEBUG") ~= nil
 -- "GG:CC" leaves that command unanswered, like a device too slow to reply.
-local DEAF       = os.getenv("RBCP_DEAF")
+local DEAF       = getenv("RBCP_DEAF")
 -- "GG:CC:N" returns that command's previous response byte for N reads after
 -- COMPLETE is set, like a device publishing the two out of order.
-local LATE       = os.getenv("RBCP_LATE_RSP")
-local SWITCH_IMG = os.getenv("RBCP_SWITCH_IMAGE")
+local LATE       = getenv("RBCP_LATE_RSP")
+local SWITCH_IMG = getenv("RBCP_SWITCH_IMAGE")
 -- Set for a device without auxiliary pins, which the spec allows.
-local NO_AUX     = os.getenv("RBCP_NO_AUX") ~= nil
+local NO_AUX     = getenv("RBCP_NO_AUX") ~= nil
 
 -- Slot names are mostly mixed case because a host draws a name as the device
 -- reports it and inverse video handles the two cases differently.
@@ -48,14 +54,14 @@ local slots = {
   [3] = "SD2IEC KERNAL",
   [4] = "Dead Test Kernal",
 }
-for n = 5, tonumber(os.getenv("RBCP_SLOTS") or "5") - 1 do
+for n = 5, tonumber(getenv("RBCP_SLOTS") or "5") - 1 do
   slots[n] = string.format("SPARE IMAGE %d", n)
 end
 
 -- Every slot reports the socket's ROM type because a host lists only slots of
 -- the type it runs from.  A 2364 is type 2 and a C64C's 23128 is type 3.
-local ROM_TYPE = tonumber(os.getenv("RBCP_ROM_TYPE") or "2")
-local total_flash = tonumber(os.getenv("RBCP_SLOTS") or "5")
+local ROM_TYPE = tonumber(getenv("RBCP_ROM_TYPE") or "2")
+local total_flash = tonumber(getenv("RBCP_SLOTS") or "5")
 
 -- Image served after a slot switch.  Without one the run stops there.
 local switch_img = nil
@@ -77,7 +83,7 @@ local late_left, late_val = 0, 0
 
 -- "GG:CC:frames" leaves that command pending for that many frames after the
 -- token moves, like a device that is slow to complete it.
-local SLOW = os.getenv("RBCP_SLOW")
+local SLOW = getenv("RBCP_SLOW")
 local slow_g, slow_c, slow_n
 if SLOW and SLOW ~= "" then
   local g, c, n = SLOW:match("^(%x%x):(%x%x):(%d+)$")
@@ -163,7 +169,7 @@ local function put_data(i, v) bch[8 + i] = v & 0xFF end
 
 -- Text the pipe's far end sends to the machine.  "\n" in RBCP_SEND is a line
 -- feed because that ends a line on a real pipe.
-local rx_text = (os.getenv("RBCP_SEND") or ""):gsub("\\n", "\n")
+local rx_text = (getenv("RBCP_SEND") or ""):gsub("\\n", "\n")
 local rx_at = 1
 
 -- Back channel less the response header and PIPE_READ's own eight bytes.
@@ -266,7 +272,7 @@ local function execute_now()
     log("%02X/%02X ignored", g, c)
     return
   end
-  if os.getenv("RBCP_REFUSE") == string.format("%02X:%02X", g, c) then
+  if getenv("RBCP_REFUSE") == string.format("%02X:%02X", g, c) then
     log("%02X/%02X refused", g, c)
     answer(false)
     return
@@ -290,6 +296,7 @@ local function execute_now()
     log("SWITCH_AND_EXIT ram slot %d", a[1])
   elseif g == 0x01 and c == 0x00 then             -- GET_FLASH_SLOT_COUNT
     put_data(0, total_flash)
+    log("GET_FLASH_SLOT_COUNT = %d", total_flash)
     answer(true)
   elseif g == 0x01 and c == 0x01 then             -- GET_FLASH_SLOT_INFO
     local n = a[1]
@@ -338,7 +345,7 @@ local function execute_now()
     log("NV_PEEK = %d", dev.nv)
     answer(true)
   elseif g == 0x03 and c == 0x06 then             -- NV_POKE_COMMIT_BYTE
-    if os.getenv("RBCP_NV_FAIL") then
+    if getenv("RBCP_NV_FAIL") then
       log("NV_POKE_COMMIT_BYTE = %d, refused", a[1])
       answer(false)
       return
@@ -550,16 +557,16 @@ end
 
 -- Everything below drives the machine rather than the device.
 
-local CPU        = os.getenv("RBCP_CPU") or ":u7"
-local SCREEN     = tonumber(os.getenv("RBCP_SCREEN") or "0x0400")
-local COLS       = tonumber(os.getenv("RBCP_COLS") or "40")
-local ROWS       = tonumber(os.getenv("RBCP_ROWS") or "25")
-local HOLD       = os.getenv("RBCP_HOLD") or ""
-local HOLD_UNTIL = tonumber(os.getenv("RBCP_HOLD_UNTIL") or "0")
+local CPU        = getenv("RBCP_CPU") or ":u7"
+local SCREEN     = tonumber(getenv("RBCP_SCREEN") or "0x0400")
+local COLS       = tonumber(getenv("RBCP_COLS") or "40")
+local ROWS       = tonumber(getenv("RBCP_ROWS") or "25")
+local HOLD       = getenv("RBCP_HOLD") or ""
+local HOLD_UNTIL = tonumber(getenv("RBCP_HOLD_UNTIL") or "0")
 -- In frames.  The bootloaders' scan loops miss a key that isn't preceded by a
 -- clear release.
-local KEY_HOLD   = tonumber(os.getenv("RBCP_KEY_HOLD") or "8")
-local KEY_GAP    = tonumber(os.getenv("RBCP_KEY_GAP") or "30")
+local KEY_HOLD   = tonumber(getenv("RBCP_KEY_HOLD") or "8")
+local KEY_GAP    = tonumber(getenv("RBCP_KEY_GAP") or "30")
 
 local mem = manager.machine.devices[CPU].spaces["program"]
 
@@ -615,7 +622,7 @@ end)
 -- vic1210.cpp in MAME 0.264 and 0.289 masks the address with $BFF where the
 -- cartridge decodes $FFF, so $0C00-$0FFF mirrors $0800-$0BFF.  A program
 -- loaded across both overwrites itself.  These taps keep the two apart.
-if os.getenv("RBCP_EXP") == "3k" then
+if getenv("RBCP_EXP") == "3k" then
   local ram = {}
   vic_3k_w = mem:install_write_tap(0x0800, 0x0FFF, "vic3k",
                                    function(offset, data, mask)
@@ -727,7 +734,7 @@ emu.register_frame_done(function()
   end
   if frames >= RUN_FRAMES then
     pipe_flush()
-    if os.getenv("RBCP_SNAP") then manager.machine.video:snapshot() end
+    if getenv("RBCP_SNAP") then manager.machine.video:snapshot() end
     for r = 0, ROWS - 1 do
       local s, inverse = "", false
       for c = 0, COLS - 1 do

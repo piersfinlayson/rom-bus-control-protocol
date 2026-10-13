@@ -139,8 +139,10 @@ if [ -z "$RBCP_SWITCH_IMAGE" ] && [ -n "$stock" ]; then
     export RBCP_SWITCH_IMAGE
 fi
 
+# In a window MAME stops on the ROM hash warning screen, waiting for a keypress
+# the script cannot send, and -seconds_to_run under 300 skips that screen.
 if [ -n "$RBCP_SNAP" ]; then
-    video="-video soft -window -nomaximize"
+    video="-video soft -window -nomaximize -seconds_to_run 60"
 else
     video="-video none"
 fi

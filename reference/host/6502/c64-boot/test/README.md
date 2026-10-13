@@ -135,7 +135,7 @@ cartridge.
 
 ## Settings
 
-Every setting is an environment variable:
+Every setting is an environment variable. An empty one counts as unset:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
@@ -150,7 +150,7 @@ Every setting is an environment variable:
 | `RBCP_HOLD_UNTIL` | 0 | Frame the held key comes up. |
 | `RBCP_NV` | 255 | The slot the device has stored. 255 stands for never written. |
 | `RBCP_NV_FAIL` | unset | Fail every NV write, which a bootloader carries on through. |
-| `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than fourteen exercises the entries a C64 menu cannot show. On a VIC-20 the number is thirteen. |
+| `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than fourteen exercises the entries a C64 menu cannot show. More than thirteen scrolls the VIC-20 menu. |
 | `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
 | `RBCP_REFUSE` | unset | `GG:CC` — the command the device answers with failed. |
 | `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said it is complete. That is a device publishing its completion before its result. |
@@ -158,7 +158,7 @@ Every setting is an environment variable:
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails. |
 | `RBCP_SEND` | unset | A line the far end of the pipe sends unprompted. `\n` in it is a line feed. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, in place of the one `run.sh` finds for itself. `c64-basic` and `c64-combined` find none. |
-| `RBCP_SNAP` | unset | Save a screenshot at the end of the run. MAME runs in a window when this is set. |
+| `RBCP_SNAP` | unset | Save a screenshot at the end of the run. MAME runs in a window when this is set and stops after 60 seconds of emulated time. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
 | `MAME` | `mame` | The MAME binary to run. |
 
