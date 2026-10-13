@@ -637,6 +637,80 @@ jobs:
               GET_FLASH_SLOT_INFO_ALL 5 of 5
               [pipe] SWITCHING TO SLOT $01
               SWITCH_AND_EXIT ram slot 1
+          # Every menu leg opens scrolled to the stored slot 17.  In each 'menu'
+          # leg, SHIFT held with C= turns every cursor press into up.  The
+          # combined arm has nothing to serve after the switch, so its run ends
+          # there.
+          - app: c64-boot
+            target: kernal
+            leg: 'menu'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up'
+            send: ''
+            image: ''
+            slow: ''
+            hold: 'CBM;Shift (Left)'
+            slots: 20
+            nv: 17
+            markers: |
+              NV_PEEK = 17
+              06*|                   ..                   |
+              07*| > SD2IEC KERNAL                        |
+              21 |                   ..                   |
+              22 |    UP/DOWN TO MOVE, RETURN TO BOOT     |
+          - app: c64-boot
+            target: kernal
+            leg: 'menu-boot'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;Return'
+            send: ''
+            image: ''
+            slow: ''
+            hold: 'CBM'
+            slots: 20
+            nv: 17
+            markers: |
+              NV_POKE_COMMIT_BYTE = 19
+              LOAD_SLOT ram 1 <- flash 19 (SPARE IMAGE 19)
+              [pipe] SWITCHING TO SLOT $13
+              **** COMMODORE 64 BASIC V2 ****
+          - app: c64-boot
+            target: combined
+            leg: 'menu'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up'
+            send: ''
+            image: ''
+            slow: ''
+            hold: 'CBM;Shift (Left)'
+            slots: 20
+            nv: 17
+            markers: |
+              NV_PEEK = 17
+              06*|                   ..                   |
+              07*| > SD2IEC KERNAL                        |
+              21 |                   ..                   |
+              22 |    UP/DOWN TO MOVE, RETURN TO BOOT     |
+          - app: c64-boot
+            target: combined
+            leg: 'menu-boot'
+            make_target: all
+            frames: 600
+            keys: 'CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;CRSR ↑ ↓|Crsr Down Up;Return'
+            send: ''
+            image: ''
+            slow: ''
+            hold: 'CBM'
+            slots: 20
+            nv: 17
+            markers: |
+              NV_POKE_COMMIT_BYTE = 19
+              LOAD_SLOT ram 1 <- flash 19 (SPARE IMAGE 19)
+              [pipe] SWITCHING TO SLOT $13
+              SWITCH_AND_EXIT ram slot 1
           - app: c64-aux-io
             target: kernal
             leg: ''

@@ -11,6 +11,16 @@
 VIC_CTRL1_DEN   = %00010000
 
 ; ---------------------------------------------------------------------------
+; Characters
+; ---------------------------------------------------------------------------
+
+; Each pair draws one triangle across two characters.
+CHAR_TRI_UP_L   = $E9
+CHAR_TRI_UP_R   = $DF
+CHAR_TRI_DOWN_L = $5F
+CHAR_TRI_DOWN_R = $69
+
+; ---------------------------------------------------------------------------
 ; CIA2 timers.  Timer A counts a millisecond of clock cycles and timer B
 ; counts timer A.
 ; ---------------------------------------------------------------------------
