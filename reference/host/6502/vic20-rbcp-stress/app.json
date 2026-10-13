@@ -1,7 +1,7 @@
 {
     "kind": "rom",
     "name": "VIC-20 RBCP Reliability Meter",
-    "description": "Measures how reliably a Commodore VIC-20 and a device communicate over RBCP. PAL and NTSC.",
+    "description": "Measures how reliably a Commodore VIC-20 and a device communicate over RBCP. Needs a 3KB RAM expansion. PAL and NTSC.",
     "machine": "vic20",
     "zip": "vic20",
     "build": "make",
