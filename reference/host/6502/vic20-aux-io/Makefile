@@ -34,7 +34,7 @@ RBCP_SRCS = $(RBCP_DIR)/rbcp_core.s $(wildcard $(RBCP_DIR)/cmd/*.s)
 # What every machine's tester shares, and what this one adds.
 AUX_DIR   = ../aux-io
 AUX_SRCS  = $(AUX_DIR)/auxio.s $(AUX_DIR)/display.s $(AUX_DIR)/pins.s
-COMMON_SRCS = ../common/vic20_tv.s
+COMMON_SRCS = ../common/vic20_tv.s ../common/vic20_3k.s
 APP_SRCS  = src/plat.s
 
 DEV_SRCS  = $(AUX_DIR)/pins_dev.s $(AUX_DIR)/session.s

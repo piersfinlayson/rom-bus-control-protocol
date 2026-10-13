@@ -11,7 +11,7 @@
 ; protocol's version or the device's.  See RELEASE.md for when it changes.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.2.0"
+.define APP_VERSION "0.2.1"
 
 ; ---------------------------------------------------------------------------
 ; What a VIC-20 varies: nothing

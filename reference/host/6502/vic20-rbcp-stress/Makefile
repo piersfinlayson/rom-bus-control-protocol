@@ -21,7 +21,7 @@ STRESS_DIR  = ../stress
 STRESS_SRCS = $(STRESS_DIR)/stress.s $(STRESS_DIR)/display.s \
               $(STRESS_DIR)/report.s $(STRESS_DIR)/ratio.s \
               $(STRESS_DIR)/session.s
-COMMON_SRCS = ../common/rbcp_recover.s ../common/vic20_tv.s
+COMMON_SRCS = ../common/rbcp_recover.s ../common/vic20_tv.s ../common/vic20_3k.s
 APP_SRCS    = src/plat.s
 
 DEPS = src/plat_defs.s ../common/rbcp_stage.s $(STRESS_DIR)/stress_defs.s \

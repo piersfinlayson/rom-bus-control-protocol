@@ -14,6 +14,7 @@
 
 .import stress_run
 .import vic20_tv_init
+.import vic20_3k_check
 
 .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__
 .import __RODATA_SIZE__
@@ -102,6 +103,8 @@ boot_entry:
     sta VIA2_DDRB
     lda #VIA2_DDRA_VAL
     sta VIA2_DDRA
+
+    jsr vic20_3k_check
 
     ; CODE and RODATA are laid out next to each other in the image and next to
     ; each other in RAM, so one copy moves both.

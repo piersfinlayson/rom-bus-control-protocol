@@ -26,7 +26,7 @@ PIPE_DIR  = ../pipe
 PIPE_SRCS = $(PIPE_DIR)/pipe.s $(PIPE_DIR)/session.s $(PIPE_DIR)/display.s \
             $(PIPE_DIR)/timing.s $(PIPE_DIR)/line.s $(PIPE_DIR)/send_lib.s \
             $(PIPE_DIR)/send_tuned.s $(PIPE_DIR)/fault.s
-COMMON_SRCS = ../common/rbcp_recover.s ../common/vic20_tv.s
+COMMON_SRCS = ../common/rbcp_recover.s ../common/vic20_tv.s ../common/vic20_3k.s
 APP_SRCS    = src/plat.s
 
 DEPS = src/plat_defs.s ../common/rbcp_stage.s $(PIPE_DIR)/pipe_defs.s \
