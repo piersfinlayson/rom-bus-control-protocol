@@ -60,6 +60,7 @@ Every figure this program reports comes from a device, so there is no demo build
 
 ```
 xvic -default -memory 3k -kernal build/vic20_meter.bin
+xvic -default -ntsc -memory 3k -kernal build/vic20_meter.bin
 ```
 
 That covers the screen and the refusal path. The rest needs a One ROM in the kernal socket running the host-control plugin.

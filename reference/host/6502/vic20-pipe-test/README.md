@@ -18,7 +18,7 @@ The three send paths are described with the [shared code](../pipe/README.md#send
 
 | Image | Size | Socket | Command page | Back channel |
 | --- | --- | --- | --- | --- |
-| `vic20_pipe.bin` | 8KB, 2364 | Kernal | $E100 | $E200, 512 bytes |
+| `vic20_pipe.bin` | 8KB, 2364 | Kernal | $E000 | $E100, 512 bytes |
 
 ## Dependencies
 
@@ -35,8 +35,8 @@ make
 Under VICE with no device fitted it draws its screen and stops at `NO DEVICE`:
 
 ```
-xvic -default -memory 3k -basic build/vic20_pipe.bin
-xvic -default -ntsc -memory 3k -basic build/vic20_pipe.bin
+xvic -default -memory 3k -kernal build/vic20_pipe.bin
+xvic -default -ntsc -memory 3k -kernal build/vic20_pipe.bin
 ```
 
 Anything past the screen needs a One ROM running the host-control plugin, and `pipe_rx` on the machine its USB is plugged into.

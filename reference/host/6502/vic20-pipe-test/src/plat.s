@@ -32,11 +32,9 @@ plat_pal:        .res 1         ; bit 7 set on a PAL machine
 ; FILL segment — the command page, then the back channel
 ; ===========================================================================
 
-; The machine's own kernal runs at reset and enters BASIC through the word at
-; $C000, which is where this image is entered.  The command page is the page
-; above, because the kernal reads $C000 itself and reads $C002 when RESTORE
-; arrives with RUN/STOP held, and a command page under either would take those
-; reads as command bytes.
+; This image is the kernal, so the machine boots into it through $FFFC.  The
+; command page is the first page of it and the back channel the two after that,
+; which is where the tester's own code is not.
 
 .segment "FILL"
 

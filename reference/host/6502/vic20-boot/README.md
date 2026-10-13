@@ -11,7 +11,7 @@ One image runs on PAL and NTSC VIC-20s.
 On reset the bootloader checks whether the **Commodore (C=) key** is held:
 
 **C= not held — auto-boot**
-Loads last booted slot 1 into the inactive RAM slot.
+Loads last booted slot into the inactive RAM slot.
 
 **C= held — menu**
 Presents a selection menu listing all available kernal images (flash slots 1 and above). Use **CRSR UP/DOWN** to move and **RETURN** to boot the highlighted entry. Flash slot 0 (the bootloader itself) is never shown.
