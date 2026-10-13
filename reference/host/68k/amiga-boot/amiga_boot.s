@@ -56,7 +56,7 @@
 ; The version, shown on screen and in the log.  A macro rather than an EQU
 ; because it expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.2"
+        DC.B    "0.1.3"
         ENDM
 
         ORG     CONFIG_ROM_BASE
@@ -168,6 +168,10 @@ boot_ram_entry:
         MOVEQ   #ERR_VERSION,D0
         BRA     err_halt
 .ok_ver:
+        ; The minor and patch, for the one-slot check below.
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+1).W,D2
+        LSL.W   #8,D2
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+2).W,D2
         ; --- RAM slots: they decide how the boot switch works ---
         BSR     rbcp_cmd_get_ram_info_all
         TST.B   D0
@@ -183,12 +187,21 @@ boot_ram_entry:
         MOVE.B  VAR_TOTAL_RAM,D0
         CMPI.B  #2,D0
         BCS.S   .one_slot
-        MOVE.B  VAR_ACTIVE_RAM,D0
-        EORI.B  #1,D0                   ; the other of two slots
-        MOVE.B  D0,VAR_TARGET_RAM
+        CLR.B   VAR_TARGET_RAM
+        TST.B   VAR_ACTIVE_RAM
+        BNE.S   .target_set             ; slot 0, since another one is active
+        MOVE.B  #1,VAR_TARGET_RAM
+.target_set:
         CLR.B   VAR_SINGLE_SLOT
         BRA.S   .ram_done
 .one_slot:
+        ; LOAD_AND_EXIT arrived in 0.1.2.  An older device reads its arguments
+        ; as the next command.
+        CMPI.W  #$0102,D2
+        BCC.S   .has_load_exit
+        MOVEQ   #ERR_ONE_SLOT_OLD,D0
+        BRA     err_halt
+.has_load_exit:
         MOVE.B  VAR_ACTIVE_RAM,VAR_TARGET_RAM
         MOVE.B  #1,VAR_SINGLE_SLOT
 .ram_done:
@@ -2031,9 +2044,13 @@ msg_err_4:
 msg_err_5:
         DC.B    "LOAD FAILED",0
         EVEN
+msg_err_6:
+        DC.B    "DEVICE FIRMWARE TOO OLD - UPDATE IT",0
+        EVEN
 err_msgs:
         DC.L    msg_err_0, msg_err_1, msg_err_2
         DC.L    msg_err_3, msg_err_4, msg_err_5
+        DC.L    msg_err_6
 
         INCLUDE "../amiga-common/amiga_diag_data.s"
 

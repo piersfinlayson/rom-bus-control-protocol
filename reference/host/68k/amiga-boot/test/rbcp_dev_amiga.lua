@@ -40,6 +40,12 @@ local SWITCH_IMG = os.getenv("RBCP_SWITCH_IMAGE")   -- served after the switch
 -- Set to make the device expose no auxiliary pins.  A device with none is
 -- legal, and it sends a host down its no-pins path.
 local NO_AUX     = os.getenv("RBCP_NO_AUX") ~= nil
+-- The protocol version the device reports.  A host-control plugin before
+-- 0.1.3 reports 0.1.1, which has no LOAD_AND_EXIT.
+local PROTO = {}
+for n in (os.getenv("RBCP_PROTO") or "0.1.2"):gmatch("%d+") do
+  PROTO[#PROTO + 1] = tonumber(n)
+end
 
 -- A device that goes wrong now and then rather than always.  One command in
 -- FAIL_EVERY is answered with failure and one in LOSE_EVERY is not answered
@@ -74,6 +80,8 @@ local ROM_TYPE = (ROM_KB == 512) and 0x13 or 0x21
 -- LOAD_AND_EXIT and store its choice without a staging slot.  Two make it
 -- stage a load in the spare and SWITCH_AND_EXIT to it.
 local RAM_SLOTS = tonumber(os.getenv("RBCP_RAM_SLOTS") or "2")
+-- The RAM slot active at the start.  One ROM always starts in slot 0.
+local ACTIVE_RAM = tonumber(os.getenv("RBCP_ACTIVE_RAM") or "0")
 
 -- The image the device serves once it has switched slots.  Without one there
 -- is nothing to follow the hand-over into, so the run stops at the switch.
@@ -179,7 +187,7 @@ local dev = {
   want     = 0,
   token    = 0,
   nv       = NV_START,
-  active_ram = 0,
+  active_ram = ACTIVE_RAM,
   switched = nil,
   aux      = aux_power_on(),
 }
@@ -427,11 +435,11 @@ local function execute()
     put_string(0, "v0.7.2")
     answer(true)
   elseif g == 0x01 and c == 0x06 then             -- GET_PROTOCOL_VERSION
-    put_data(0, 0) put_data(1, 1) put_data(2, 2) put_data(3, 0)
+    put_data(0, PROTO[1]) put_data(1, PROTO[2]) put_data(2, PROTO[3]) put_data(3, 0)
     answer(true)
   elseif g == 0x02 and c == 0x02 then             -- LOAD_SLOT
     log("LOAD_SLOT ram %d <- flash %d (%s)", a[1], a[2], slots[a[2]] or "?")
-    answer(slots[a[2]] ~= nil)
+    answer(slots[a[2]] ~= nil and a[1] < RAM_SLOTS)
   elseif g == 0x03 and c == 0x00 then             -- GET_NV_CAPABILITY
     put_data(0, 16) put_data(1, 0) put_data(2, 1)
     -- With no spare RAM slot to stage in, the device stages within itself and

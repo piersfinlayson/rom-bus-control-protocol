@@ -62,6 +62,10 @@ end
 -- the type it runs from.  A 2364 is type 2 and a C64C's 23128 is type 3.
 local ROM_TYPE = tonumber(getenv("RBCP_ROM_TYPE") or "2")
 local total_flash = tonumber(getenv("RBCP_SLOTS") or "5")
+-- The RAM slots the device has and the one active at the start.  One ROM
+-- always starts in slot 0.
+local RAM_SLOTS  = tonumber(getenv("RBCP_RAM_SLOTS") or "2")
+local ACTIVE_RAM = tonumber(getenv("RBCP_ACTIVE_RAM") or "0")
 
 -- Image served after a slot switch.  Without one the run stops there.
 local switch_img = nil
@@ -130,7 +134,7 @@ local dev = {
   want     = 0,
   token    = 0,
   nv       = NV_START,
-  active_ram = 0,
+  active_ram = ACTIVE_RAM,
   switched = nil,
   aux      = aux_power_on(),
 }
@@ -320,7 +324,7 @@ local function execute_now()
     log("GET_FLASH_SLOT_INFO_ALL %d of %d", whole, total_flash)
     answer(true)
   elseif g == 0x01 and c == 0x03 then             -- GET_RAM_SLOT_INFO_ALL
-    put_data(0, 2)
+    put_data(0, RAM_SLOTS)
     put_data(1, dev.active_ram)
     put_data(2, 0x00)
     put_data(3, 0)
@@ -336,7 +340,7 @@ local function execute_now()
     answer(true)
   elseif g == 0x02 and c == 0x02 then             -- LOAD_SLOT
     log("LOAD_SLOT ram %d <- flash %d (%s)", a[1], a[2], slots[a[2]] or "?")
-    answer(slots[a[2]] ~= nil)
+    answer(slots[a[2]] ~= nil and a[1] < RAM_SLOTS)
   elseif g == 0x03 and c == 0x00 then             -- GET_NV_CAPABILITY
     put_data(0, 16) put_data(1, 0) put_data(2, 1)
     answer(true)

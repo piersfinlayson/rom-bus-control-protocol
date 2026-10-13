@@ -83,6 +83,8 @@ Environment variables.
 | `RBCP_TARGET` | f8 | `f8` runs the 2KB build on an `apple2p`, `ef` the 8KB build on an `apple2e`. |
 | `RBCP_NV` | 255 | The slot the device has stored. 255 stands for never written. |
 | `RBCP_SLOTS` | 5 | Flash slots the device has, the ones past the fifth being filler. More than eleven exercises the entries a digit cannot pick. |
+| `RBCP_RAM_SLOTS` | 2 | How many RAM slots the device has. A load into one it doesn't have fails. |
+| `RBCP_ACTIVE_RAM` | 0 | The RAM slot active at the start. One ROM always starts in slot 0. |
 | `RBCP_KEYS` | none | Keys to press, in order, one every 20 frames. A key in braces is an input port field held for three frames, such as `{Cursor Right}`. |
 | `RBCP_KEY_AT` | 150 | Frame the first key is pressed on. |
 | `RBCP_FRAMES` | 600 | Frame to print the text screen on and stop. |

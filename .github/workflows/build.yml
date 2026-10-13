@@ -427,6 +427,43 @@ jobs:
                   || { echo "not in the log: $marker" >&2; exit 1; }
           done < "$RUNNER_TEMP/markers"
 
+      # Three RAM slots with slot 2 active.  Taking the other of two would
+      # load into slot 3, which the device doesn't have.
+      - name: Run ${{ matrix.app }} ${{ matrix.rom_kb }}KB with slot 2 of three active
+        if: matrix.app == 'amiga-boot' && matrix.rom_kb == 256
+        working-directory: reference/host/68k/${{ matrix.app }}
+        env:
+          RBCP_TARGET: ${{ matrix.rom_kb }}
+          RBCP_FRAMES: 600
+          RBCP_RAM_SLOTS: 3
+          RBCP_ACTIVE_RAM: 2
+        run: |
+          set -o pipefail
+          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/spare.log"
+          grep -q "dirtied with" "$RUNNER_TEMP/spare.log"
+          grep -qF "LOAD_SLOT ram 0 <- flash 1 (Kickstart 1.3)" "$RUNNER_TEMP/spare.log"
+          grep -qF "SWITCH_AND_EXIT ram slot 0" "$RUNNER_TEMP/spare.log"
+
+      # A host-control plugin before 0.1.3 reports RBCP 0.1.1, which has no
+      # LOAD_AND_EXIT, and a 27C400 leaves the device one RAM slot.
+      - name: Run ${{ matrix.app }} ${{ matrix.rom_kb }}KB on old firmware with one RAM slot
+        if: matrix.app == 'amiga-boot' && matrix.rom_kb == 512
+        working-directory: reference/host/68k/${{ matrix.app }}
+        env:
+          RBCP_TARGET: ${{ matrix.rom_kb }}
+          RBCP_FRAMES: 400
+          RBCP_RAM_SLOTS: 1
+          RBCP_PROTO: 0.1.1
+        run: |
+          set -o pipefail
+          test/run.sh "$RUNNER_TEMP/amiga-roms" 2>&1 | tee "$RUNNER_TEMP/old.log"
+          grep -q "dirtied with" "$RUNNER_TEMP/old.log"
+          grep -qF "RBCP ERROR: DEVICE FIRMWARE TOO OLD - UPDATE IT" "$RUNNER_TEMP/old.log"
+          if grep -q "LOAD_AND_EXIT" "$RUNNER_TEMP/old.log"; then
+              echo "LOAD_AND_EXIT sent to a 0.1.1 device" >&2
+              exit 1
+          fi
+
       # A run starts and a rate comes out whether or not the path keys work, so
       # this presses 2 and requires the run the tester started to be the one
       # that key asks for.  Before the keyboard handled punctuation, a shift
@@ -583,6 +620,23 @@ jobs:
                   || { echo "not in the log: $marker" >&2; exit 1; }
           done < "$RUNNER_TEMP/markers"
 
+      # Three RAM slots with slot 2 active.  Taking the other of two would
+      # load into slot 3, which the device doesn't have.
+      - name: Run ${{ matrix.app }} with slot 2 of three active
+        if: matrix.app == 'apple2-boot' && matrix.target == 'ef'
+        working-directory: reference/host/6502/${{ matrix.app }}
+        env:
+          RBCP_TARGET: ${{ matrix.target }}
+          RBCP_FRAMES: 600
+          RBCP_RAM_SLOTS: 3
+          RBCP_ACTIVE_RAM: 2
+        run: |
+          set -o pipefail
+          test/run.sh "$RUNNER_TEMP/apple2-roms" 2>&1 | tee "$RUNNER_TEMP/spare.log"
+          grep -qF "LOAD_SLOT ram 0 <- flash 1 (Apple IIe Stock ROM)" "$RUNNER_TEMP/spare.log"
+          grep -qF "SWITCH_AND_EXIT ram slot 0" "$RUNNER_TEMP/spare.log"
+          grep -qF "Apple ][                 |" "$RUNNER_TEMP/spare.log"
+
   cbm-test:
     name: cbm-test (${{ matrix.app }}, ${{ matrix.target }}${{ matrix.leg && format(', {0}', matrix.leg) || '' }})
     runs-on: ubuntu-latest
@@ -605,6 +659,23 @@ jobs:
               ENTER_CMD_RESP page=$00 bch=$0100 size=512
               GET_FLASH_SLOT_INFO_ALL 5 of 5
               SWITCH_AND_EXIT ram slot 1
+              **** COMMODORE 64 BASIC V2 ****
+          # Three RAM slots with slot 2 active.  Taking the other of two would
+          # load into slot 3, which the device doesn't have.
+          - app: c64-boot
+            target: kernal
+            leg: 'spare-slot'
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            slow: ''
+            ram_slots: 3
+            active_ram: 2
+            markers: |
+              LOAD_SLOT ram 0 <- flash 1 (Commodore Stock Kernal)
+              SWITCH_AND_EXIT ram slot 0
               **** COMMODORE 64 BASIC V2 ****
           # LOAD_SLOT completes after the bootloader stops waiting.  RETURN at
           # the prompt sends the report.
@@ -1004,6 +1075,23 @@ jobs:
               NV_POKE_COMMIT_BYTE = 19
               LOAD_SLOT ram 1 <- flash 19 (SPARE IMAGE 19)
               **** CBM BASIC V2 ****
+          # Three RAM slots with slot 2 active.  Taking the other of two would
+          # load into slot 3, which the device doesn't have.
+          - app: vic20-boot
+            target: pal
+            leg: 'spare-slot'
+            make_target: all
+            frames: 600
+            keys: ''
+            send: ''
+            image: ''
+            slow: ''
+            ram_slots: 3
+            active_ram: 2
+            markers: |
+              LOAD_SLOT ram 0 <- flash 1 (Commodore Stock Kernal)
+              SWITCH_AND_EXIT ram slot 0
+              **** CBM BASIC V2 ****
           - app: vic20-aux-io
             target: pal
             leg: ''
@@ -1188,6 +1276,8 @@ jobs:
           RBCP_HOLD: ${{ matrix.hold }}
           RBCP_SLOTS: ${{ matrix.slots }}
           RBCP_NV: ${{ matrix.nv }}
+          RBCP_RAM_SLOTS: ${{ matrix.ram_slots }}
+          RBCP_ACTIVE_RAM: ${{ matrix.active_ram }}
           IMAGE: ${{ matrix.image }}
           MARKERS: ${{ matrix.markers }}
         run: |

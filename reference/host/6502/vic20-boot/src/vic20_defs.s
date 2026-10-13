@@ -10,7 +10,7 @@
 ; not the device's.  RELEASE.md says when it changes and how it is published.
 ; ---------------------------------------------------------------------------
 
-.define APP_VERSION "0.2.1"
+.define APP_VERSION "0.2.2"
 
 ; ---------------------------------------------------------------------------
 ; VIC chip ($9000-$900F)

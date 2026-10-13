@@ -126,7 +126,8 @@ Everything is an environment variable:
 | `RBCP_RCLICK` | unset | Frame of a right click, which boots the highlighted entry. |
 | `RBCP_KEYS` | unset | `frame:Key;frame:Key`, each key held for six frames. A key is named by its cap or by any legend on it — `Cursor Up`, `Cursor Down`, `Enter`, `1`, `S` — and otherwise by the start of a cap. |
 | `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than sixteen exercises the entries the menu cannot show. |
-| `RBCP_RAM_SLOTS` | 2 | One makes the bootloader boot with `LOAD_AND_EXIT` and store its choice without a staging slot. Two make it stage the load in the spare and `SWITCH_AND_EXIT` to it. |
+| `RBCP_RAM_SLOTS` | 2 | One makes the bootloader boot with `LOAD_AND_EXIT` and store its choice without a staging slot. Two make it stage the load in the spare and `SWITCH_AND_EXIT` to it. A load into a slot it doesn't have fails. |
+| `RBCP_ACTIVE_RAM` | 0 | The RAM slot active at the start. One ROM always starts in slot 0. |
 | `RBCP_NV` | 0 | The slot the device has stored. 0 stands for never written. |
 | `RBCP_NV_FAIL` | unset | Fail every NV write, which the bootloader carries on through. |
 | `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
@@ -134,6 +135,7 @@ Everything is an environment variable:
 | `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said the command is complete. That is a device publishing the two out of order. |
 | `RBCP_FAIL_EVERY` | unset | One command in this many, whichever it is, answered with failed. |
 | `RBCP_LOSE_EVERY` | unset | One command in this many not answered at all, so the host has to reset and re-enter. |
+| `RBCP_PROTO` | 0.1.2 | The protocol version the device reports. A host-control plugin before 0.1.3 reports 0.1.1. |
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails. |
 | `RBCP_SEND` | unset | A line the far end sends unprompted. `\n` in it is a line feed. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, in place of the one `run.sh` finds for itself. |

@@ -55,6 +55,10 @@ end
 -- IIe's 8KB EF.
 local ROM_TYPE = (ROM_BASE == 0xF800) and 0x08 or 0x0A
 local total_flash = tonumber(os.getenv("RBCP_SLOTS") or "5")
+-- The RAM slots the device has and the one active at the start.  One ROM
+-- always starts in slot 0.
+local RAM_SLOTS  = tonumber(os.getenv("RBCP_RAM_SLOTS") or "2")
+local ACTIVE_RAM = tonumber(os.getenv("RBCP_ACTIVE_RAM") or "0")
 
 -- What the device serves once it has switched slots.  Without one the
 -- bootloader is still what is in the socket after the switch, and the machine
@@ -124,7 +128,7 @@ local dev = {
   want     = 0,
   token    = 0,
   nv       = NV_START,
-  active_ram = 0,
+  active_ram = ACTIVE_RAM,
   switched = nil,
   aux      = aux_power_on(),
 }
@@ -297,7 +301,7 @@ local function execute()
     log("GET_FLASH_SLOT_INFO_ALL %d of %d", whole, total_flash)
     answer(true)
   elseif g == 0x01 and c == 0x03 then             -- GET_RAM_SLOT_INFO_ALL
-    put_data(0, 2)
+    put_data(0, RAM_SLOTS)
     put_data(1, dev.active_ram)
     put_data(2, 0x00)
     put_data(3, 0)
@@ -313,7 +317,7 @@ local function execute()
     answer(true)
   elseif g == 0x02 and c == 0x02 then             -- LOAD_SLOT
     log("LOAD_SLOT ram %d <- flash %d (%s)", a[1], a[2], slots[a[2]] or "?")
-    answer(slots[a[2]] ~= nil)
+    answer(slots[a[2]] ~= nil and a[1] < RAM_SLOTS)
   elseif g == 0x03 and c == 0x00 then             -- GET_NV_CAPABILITY
     put_data(0, 16) put_data(1, 0) put_data(2, 1)
     answer(true)

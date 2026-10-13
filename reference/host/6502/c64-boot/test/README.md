@@ -151,6 +151,8 @@ Every setting is an environment variable. An empty one counts as unset:
 | `RBCP_NV` | 255 | The slot the device has stored. 255 stands for never written. |
 | `RBCP_NV_FAIL` | unset | Fail every NV write, which a bootloader carries on through. |
 | `RBCP_SLOTS` | 5 | How many flash slots the device has, the ones past the fifth being filler. More than fourteen scrolls the C64 menu. More than thirteen scrolls the VIC-20 menu. |
+| `RBCP_RAM_SLOTS` | 2 | How many RAM slots the device has. A load into one it doesn't have fails. |
+| `RBCP_ACTIVE_RAM` | 0 | The RAM slot active at the start. One ROM always starts in slot 0. |
 | `RBCP_DEAF` | unset | `GG:CC` — the command the device ignores entirely, so the token never moves. |
 | `RBCP_REFUSE` | unset | `GG:CC` — the command the device answers with failed. |
 | `RBCP_LATE_RSP` | unset | `GG:CC:reads` — the command whose response byte keeps its old value for that many reads after the device has said it is complete. That is a device publishing its completion before its result. |

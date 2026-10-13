@@ -212,8 +212,11 @@ boot_ram_entry:
     jmp err_insuff_ram
 @ok_ramcount:
 
-    lda var_active_ram
-    eor #1
+    lda #0
+    cmp var_active_ram
+    bne @target_set
+    lda #1
+@target_set:
     sta var_target_ram
 
     ; Flash slot count — needed by both paths and for NV validation.  A
