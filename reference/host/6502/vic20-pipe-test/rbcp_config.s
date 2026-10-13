@@ -1,14 +1,7 @@
 ; rbcp_config.s — RBCP configuration for the VIC-20 pipe throughput test
 ; Copyright (C) 2026 Piers Finlayson <piers@piers.rocks>
 ;
-; An 8KB 2364 in the kernal socket, $E000-$FFFF, with the machine's own kernal
-; still fitted.  The kernal runs at reset and enters BASIC through the word at
-; $C000, which is where this image is entered.
-;
-; The command page is $C100 rather than $C000, because the kernal reads the
-; first four bytes of this socket itself: $C000 on the way in, and $C002 when
-; RESTORE arrives with RUN/STOP held.  A command page there would take those
-; reads as command bytes.  A page further up, the kernal never touches.
+; The image replaces the VIC-20's kernal ROM.
 ;
 ; The timeouts and the retry count below are what this program measures with.
 ; A retry would hide the thing it exists to count, so there are none.
