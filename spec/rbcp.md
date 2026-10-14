@@ -458,9 +458,12 @@ A host may instead establish which groups a device implements from the version r
 | 0x04 | Pipes | 0.1.2 | Command-Response only | Transfer bytes between the host and a pipe on the device |
 | 0x05 | Auxiliary I/O | 0.1.2 | Command-Response only | Drive and read device pins that are not part of the ROM interface |
 | 0x06 | LEDs | 0.1.2 | Command-Response only | Drive and read the device's LEDs |
+| 0x80–0xFE | Implementation-specific | 0.1.4 | Implementation-specific | Reserved for implementation-specific use, except 0xAA |
 | 0xAA | Reset | 0.1.0 | Command, Command-Response | Reset the device's RBCP implementation |
 
 The Since column gives the specification version in which a group was introduced. The command tables below carry the same column per command.
+
+Groups 0x80 to 0xFE, other than 0xAA, are not assigned by the protocol and are reserved for implementation-specific use. A host should detect the device type using GET_DEVICE_TYPE before issuing such commands, and only issue commands for that implementation. CMD 0x00 on all implementation specific groups must take zero argument bytes, as laid out in [Unknown GROUP and CMD](#unknown-group-and-cmd).
 
 ---
 

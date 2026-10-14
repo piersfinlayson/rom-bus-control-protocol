@@ -8,6 +8,7 @@ Substantive changes to the specification are documented in this file.
 - Correct the reserved ROM type range to 0x27–0x7F, which overlapped the assigned 0x25
   and 0x26.
 - Add a REBOOT command to reboot the device. Additive
+- Reserve command groups 0x80–0xFE, except 0xAA, for implementation-specific use. Additive
 
 ## v0.1.3 - 2026-09-18
 
