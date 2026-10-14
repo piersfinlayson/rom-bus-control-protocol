@@ -391,7 +391,7 @@ The recommended reset sequence is:
 5. Issue a knock followed by an RBCP_RESET.
 6. Pause to allow the device to reset.  The amount of time required is implementation-specific, but a reset is likely to be a fast operation on the device.
 
-The maximum argument count for any command is 9 (ENTER_CMD_RESP). If the device is mid-argument collection, the 5 RBCP_RESET transmissions (10 bytes) are sufficient to flush any outstanding argument bytes and trigger execution of whatever command was in progress. The pause in step 2 allows that command to complete. The RBCP_RESET in step 3 then resets a now-idle device. The knock and final RBCP_RESET in step 5 ensure that the device resets if it was originally in command mode.
+The maximum argument count for any command is 9. If the device is mid-argument collection, the 5 RBCP_RESET transmissions (10 bytes) are sufficient to flush any outstanding argument bytes and trigger execution of whatever command was in progress. The pause in step 2 allows that command to complete. The RBCP_RESET in step 3 then resets a now-idle device. The knock and final RBCP_RESET in step 5 ensure that the device resets if it was originally in command mode.
 
 The group and command bytes of RBCP_RESET are deliberately chosen to be mode unique across all commands, and identical to each other, meaning that whether the device was expecting a group or command byte next, it will receive the reset group or command value.
 
@@ -429,7 +429,7 @@ There is no length field in the frame. Both host and device use a per-command de
 
 In command mode there is no back-channel and therefore no confirmation. If the host and device lose sync, the device will continue to consume address reads as argument bytes of the current partially-received command until that command's expected argument count is satisfied, before it can detect a new command or knock. Only after all expected bytes of the interrupted command have been consumed can a new knock re-establish session framing. Host implementations must take care to issue well-formed command sequences.
 
-The maximum argument count for any command defined by this version of the protocol is 9 (ENTER_CMD_RESP). For future extensibility, a host recovering from desync in command mode need transmit at most 10 additional address reads before a knock can re-establish framing. Future versions of the protocol will not exceed this maximum without incrementing the protocol version.
+The maximum argument count for any command defined by this version of the protocol is 9. For future extensibility, a host recovering from desync in command mode need transmit at most 10 additional address reads before a knock can re-establish framing. Future versions of the protocol will not exceed this maximum without incrementing the protocol version.
 
 A command refused because it is not valid in the current mode is nonetheless framed like any other: the device consumes its argument bytes before discarding it. A device that discarded such a command without taking its arguments off the wire would leave those bytes to be read as the next command frame, desynchronising a host that had done nothing malformed. The command has no other effect.
 
@@ -479,6 +479,7 @@ Commands in this group manage the session and mode of the device. All commands i
 | 0x04 | SWITCH_AND_EXIT | 0.1.0 | 1: A0=slot | Activates the specified RAM slot and exits command-response mode silently. This command is terminal to the current control-response session. The device switches to the specified slot and exits command-response mode without updating the response header. The host must not poll the back-channel region after issuing this command — the device begins serving the new slot immediately and the previous back-channel region is invalidated. An A0 value of 0xAA is invalid.  If received the slot is NOT switched but the exit DOES complete. |
 | 0x05 | LOAD_AND_EXIT | 0.1.2 | 2: A0=RAM slot, A1=flash slot | As LOAD_SLOT, but exits command-response mode without updating the [response header](#response-header). Where the RAM slot named is the active one, this restores the whole of the served image, including the bytes the back-channel region occupies — see [Loading the Active Slot](#loading-the-active-slot). This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. A0 or A1 values of 0xAA are invalid. If received the slot is NOT loaded but the exit DOES complete. |
 | 0x06 | EXIT_CMD_RESP_RESTORE | 0.1.2 | 9: A0-A7=bytes, A8=count | Writes count bytes, taken from A0 onwards, from the start of the back-channel region and exits command-response mode without further updating the [response header](#response-header). This lets the host put back the bytes the response header displaced. Bytes of the region beyond those this command writes are the host's to put back first, with SLOT_POKE — each such write dirties only the header, which this command then covers. This command is terminal to the current command-response session. The host must not poll the back-channel region after issuing it. Argument bytes beyond count are ignored by the device, but are still transmitted, as the argument count is fixed. All 256 values are valid in A0 to A7. A8 must be in the range 0x01 to 0x08. If it is not, no bytes are written but the exit DOES complete. Not supported in command mode, where there is no back-channel region to write to — the device consumes the arguments and discards the command. |
+| 0x07 | REBOOT | 0.1.4 | 9: A0=mode, A1-A7=parameters, A8=delay | Reboots the device into the specified [mode](#reboot-modes) after delay, which is specified in units of 10ms. In command-response mode the device completes the [command processing sequence](#command-processing-sequence) before the delay starts. On success this command is terminal to the current command-response session. During the delay the device continues to serve the active slot and does not process further commands, including RBCP_RESET. The device does not serve ROM data while it reboots. The time a reboot takes and the state of the device's pins during it are implementation-dependent. Fails if the mode is not one the device supports, or if the parameters are not valid for the mode. An A8 value of 0xAA is invalid and rejected. |
 
 CMD 0xAA is reserved and must never be assigned.
 
@@ -539,7 +540,7 @@ A device that supports neither form of write reports NV storage as read-only.
 
 NV_PEEK always reads directly from NV storage, regardless of whether a write transaction is in progress. This allows the host to inspect the actual state of NV storage after a failed commit — for example to verify what was written before deciding whether to retry NV_POKE_COMMIT or issue NV_POKE_DISCARD.
  
-If command-response mode exits for any reason while a write transaction is in progress — whether via EXIT_CMD_RESP_ACK, EXIT_CMD_RESP_SILENT, SWITCH_AND_EXIT, or RBCP_RESET — the device silently discards the staging buffer. Exit commands are never rejected on account of an in-progress transaction. RBCP_RESET in particular must unconditionally discard any in-progress transaction, as it is a recovery mechanism. The host is responsible for issuing NV_POKE_COMMIT or NV_POKE_DISCARD before exiting command-response mode if staged changes are to be resolved cleanly.
+If command-response mode exits for any reason while a write transaction is in progress the device silently discards the staging buffer. Exit commands are never rejected on account of an in-progress transaction. RBCP_RESET in particular must unconditionally discard any in-progress transaction, as it is a recovery mechanism. The host is responsible for issuing NV_POKE_COMMIT or NV_POKE_DISCARD before exiting command-response mode if staged changes are to be resolved cleanly.
  
 The NV storage address space is a maximum of 32KB. The location MSB in NV_PEEK and NV_POKE encodes the upper address bits; values above 0x7F are invalid, causing the device to reject the command. This constraint ensures that 0xAA is always detectable as a reset signal in the final argument position of both commands.
 
@@ -1105,6 +1106,23 @@ Beacon is bounded by definition: where the hold is zero the device uses a durati
 Which modes take a period is the device's to report, per mode and per LED, through [GET_LED_MODE_INFO](#get_led_mode_info-response-format). Off and On never take one.
 
 Host implementations must handle reserved values gracefully, as new modes may be defined in future protocol versions without a non-backwards compatible version increase.
+
+## Reboot Modes
+
+The following modes are defined by the protocol for [REBOOT](#group-0x00--control)'s mode argument.
+
+| Value | Mode | Description |
+|-------|------|-------------|
+| 0x00 | Normal | Reboots into its normal ROM serving behaviour |
+| 0x01 | Bootloader | Enters the device's bootloader |
+| 0x02–0x7F | Reserved |  |
+| 0x80–0xFF | Reserved for implementation-specific use |  |
+
+Arguments A1-A7:
+- Normal Mode - must be all zero
+- Bootloader Mode - must be all zero
+
+In Bootloader Mode the device does not serve ROM data and the state of its pins is implementation-dependent.
 
 ---
 
