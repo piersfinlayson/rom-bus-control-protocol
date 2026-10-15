@@ -285,6 +285,9 @@ boot_ram_entry:
         SUB.B   D0,D1
         LSR.B   #1,D1                   ; the title's row
         ADDQ.B  #MENU_TITLE_GAP,D1      ; the entries start below it
+        BSR     pal_drop
+        LSR.W   #1,D0
+        ADD.B   D0,D1
         MOVE.B  D1,VAR_MENU_ROW0
 
         BSR     log_device
@@ -352,7 +355,7 @@ boot_ram_entry:
         BSR     banner_show
         BSR     menu_draw_text
         BSR     draw_footer
-        BSR     draw_device
+        BSR     device_line
         BSR     banner_start
         ; The buttons are still held, so the menu opens in the state that
         ; watches for them coming up.  The loop animates throughout.
@@ -963,9 +966,29 @@ draw_sel_entry:
 draw_footer:
         MOVE.B  #PEN_LIGHT,VAR_PEN
         LEA     (str_footer).L,A0
-        MOVE.B  #FOOTER_ROW,D2
+        BSR     pal_drop
+        ADDI.B  #FOOTER_ROW,D0
+        MOVE.B  D0,D2
         BSR     screen_print_centred
         MOVE.B  #PEN_TEXT,VAR_PEN
+        RTS
+
+; device_line — the device line on the bottom row of either screen.
+device_line:
+        BSR     pal_drop
+        ADDI.B  #DEVICE_ROW,D0
+        MOVE.B  D0,D2
+        BRA     draw_device
+
+; pal_drop — D0.W = the extra rows a PAL screen has, 0 on NTSC.
+; See PAL_EXTRA_ROWS.
+; Clobbers: D0
+pal_drop:
+        MOVEQ   #0,D0
+        TST.B   VAR_IS_PAL
+        BEQ.S   .pd_out
+        MOVEQ   #PAL_EXTRA_ROWS,D0
+.pd_out:
         RTS
 
         INCLUDE "../amiga-common/amiga_input.s"
@@ -1278,12 +1301,13 @@ banner_show:
         MOVE.W  #TAGLINE_Y,D7
         BSR     draw_object_solid
 
+        BSR     logo_line
+        MOVE.W  D0,D7
         MOVEA.L #CHIP_LOGO,A0
         MOVEA.L #CHIP_LOGO_MASK,A2
         MOVE.W  #LOGO_WIDTH_W,D0
         MOVE.W  #LOGO_HEIGHT,D1
         MOVE.W  #LOGO_X,D6
-        MOVE.W  #LOGO_Y,D7
         BSR     draw_object
     endc
     ifne BANNER_FG
@@ -1291,6 +1315,17 @@ banner_show:
     endc
         MOVEM.L (SP)+,D0-D7/A0-A3
         RTS
+
+    ifne CONFIG_BANNER_ART
+; logo_line — D0.W = the logo's top line, moved down with the list on PAL.
+; Clobbers: D0
+logo_line:
+        BSR     pal_drop
+        LSR.W   #1,D0
+        LSL.W   #3,D0                   ; eight lines a row
+        ADDI.W  #LOGO_Y,D0
+        RTS
+    endc
 
 ; ---------------------------------------------------------------------------
 ; menu_draw_text — everything else the menu says, and the screen put up.
@@ -1306,7 +1341,7 @@ menu_draw_text:
         BSR     draw_list
         BSR     highlight_selection
         BSR     draw_footer
-        BSR     draw_device
+        BSR     device_line
     ifne BANNER_FG
         BSR     fg_mask_all
         MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
@@ -1316,7 +1351,7 @@ menu_draw_text:
 
 ; ---------------------------------------------------------------------------
 ; menu_select — D0.B = the entry to highlight.  Moves the bar in the object
-; and puts the screen back up.  The ball is left where it was and the next
+; and puts the list back on screen.  The ball is left where it was and the next
 ; frame draws it again.
 ; ---------------------------------------------------------------------------
 menu_select:
@@ -1331,7 +1366,7 @@ menu_select:
     ifne BANNER_FG
         BSR     fg_mask_sel
         MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
-        BSR     fg_show
+        BSR     fg_show_list
     endc
         MOVEM.L (SP)+,D0
         RTS
@@ -1687,7 +1722,10 @@ fg_clear:
 fg_logo_mask:
         MOVEM.L D0-D5/A0-A1,-(SP)
         MOVEA.L #CHIP_LOGO_MASK,A0
-        MOVEA.L #CHIP_FG_MASK+LOGO_Y*SCREEN_BPL_W,A1
+        BSR     logo_line
+        MULU    #SCREEN_BPL_W,D0
+        MOVEA.L #CHIP_FG_MASK,A1
+        ADDA.L  D0,A1
         MOVE.W  #LOGO_WIDTH_W,D0
         MOVE.W  #LOGO_HEIGHT,D1
         MOVE.W  #SCREEN_BPL_W-LOGO_WIDTH_W*2,D2
@@ -1808,6 +1846,22 @@ fg_show:
         MOVEQ   #0,D4
         BSR     blit_copy
         MOVEM.L (SP)+,D0-D5/A0-A1
+        RTS
+
+; fg_show_list — the list's rectangle of the object on screen, the one
+; fg_mask_sel works over.  The ball is left alone outside it.
+fg_show_list:
+        MOVEM.L D0-D1/D6-D7,-(SP)
+        MOVEQ   #FG_LIST_W0,D6
+        MOVEQ   #0,D7
+        MOVE.B  VAR_MENU_ROW0,D7
+        LSL.W   #3,D7                   ; eight pixel rows a text row
+        MOVEQ   #FG_LIST_WORDS,D0
+        MOVEQ   #0,D1
+        MOVE.B  VAR_NUM_DISPLAY,D1
+        LSL.W   #3,D1
+        BSR     fg_blit_solid
+        MOVEM.L (SP)+,D0-D1/D6-D7
         RTS
 
 ; ---------------------------------------------------------------------------

@@ -11,9 +11,11 @@
 ;
 ; Forty columns leave no room for a long device name beside "piers.rocks", so
 ; the print limit is pulled in and a name that would reach it is cut short.
-; Clobbers: D0-D3/A0
+; D2.B = the row.
+; Clobbers: D0-D1/D3/A0
 ; ---------------------------------------------------------------------------
 draw_device:
+        MOVEM.L D2,-(SP)                ; the row, read back for each print
         MOVE.B  #PEN_LIGHT,VAR_PEN
         MOVE.B  #ROCKS_COL-1,VAR_COL_MAX
         BSR     rbcp_cmd_get_device_type
@@ -24,7 +26,7 @@ draw_device:
         BSR     rbcp_read_data
         LEA     (CONFIG_RBCP_DATA_BUF).W,A0
         MOVE.B  #DEVICE_COL,D1
-        MOVE.B  #DEVICE_ROW,D2
+        MOVE.L  (SP),D2
         BSR     screen_print
         ; measure the type to place the version after it
         LEA     (CONFIG_RBCP_DATA_BUF).W,A0
@@ -45,14 +47,15 @@ draw_device:
         BSR     rbcp_read_data
         LEA     (CONFIG_RBCP_DATA_BUF).W,A0
         MOVE.B  VAR_SAVED_KEY,D1
-        MOVE.B  #DEVICE_ROW,D2
+        MOVE.L  (SP),D2
         BSR     screen_print
 .rocks:
         MOVE.B  #SCREEN_COLS,VAR_COL_MAX
         MOVE.B  #PEN_GOLD,VAR_PEN
         LEA     (str_rocks).L,A0
         MOVE.B  #ROCKS_COL,D1
-        MOVE.B  #DEVICE_ROW,D2
+        MOVE.L  (SP),D2
         BSR     screen_print
         MOVE.B  #PEN_TEXT,VAR_PEN
+        MOVEM.L (SP)+,D2
         RTS

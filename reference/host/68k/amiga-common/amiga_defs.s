@@ -62,8 +62,8 @@ DMAF_AUD0           EQU $0001           ; the channel's bit in DMACON
 INTF_AUD0           EQU $0080           ; the channel's bit in INTREQ.  It is
                                         ; raised once the sample has played out
 
-; VPOSR bit 12 is set by a PAL Agnus and clear by an NTSC one.
-VPOSR_PAL           EQU $1000
+; VPOSR bit 12 is set by an NTSC Agnus and clear by a PAL one.
+VPOSR_NTSC          EQU $1000
 
 ; ---------------------------------------------------------------------------
 ; CIA-B time of day counter.  Horizontal sync clocks it — 15625 Hz on a PAL

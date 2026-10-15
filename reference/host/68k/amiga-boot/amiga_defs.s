@@ -101,6 +101,11 @@ MENU_TITLE_GAP      EQU 2
 MENU_COL            EQU 16                  ; first column right of the logo
 FOOTER_ROW          EQU 21
 
+; A PAL machine shows more rows.  The controls and the device line move down
+; by all of them, and the logo and the list by half, so the two stay centred
+; between the heading and the controls.
+PAL_EXTRA_ROWS      EQU SCREEN_BPL_H/8-SCREEN_ROWS
+
 MAX_DISPLAY         EQU 15                  ; keys 1-9 then A-F, one each
 MENU_PREFIX         EQU 3                   ; the "N) " in front of a name
 

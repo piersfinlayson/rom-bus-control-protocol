@@ -131,8 +131,8 @@ screen_init:
         ; VAR_IS_PAL keeps which one is fitted because the field tick line and
         ; the chime's timings both follow from it.
         MOVE.W  (VPOSR).L,D0
-        ANDI.W  #VPOSR_PAL,D0
-        BEQ.S   .si_ntsc
+        ANDI.W  #VPOSR_NTSC,D0
+        BNE.S   .si_ntsc
         MOVE.W  #DIW_STOP_PAL,(COPPER_BASE+COP_OFF_DIWSTOP).W
         MOVE.B  #1,VAR_IS_PAL
         BRA.S   .si_height
