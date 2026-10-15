@@ -71,7 +71,7 @@ PEN14_RGB                   EQU $0F44       ; refusals and errors
 ; The version, shown in the heading.  A macro rather than an EQU because it
 ; expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.0"
+        DC.B    "0.1.1"
         ENDM
 
         ORG     CONFIG_ROM_BASE

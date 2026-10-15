@@ -56,7 +56,7 @@
 ; The version, shown on screen and in the log.  A macro rather than an EQU
 ; because it expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.3"
+        DC.B    "0.1.4"
         ENDM
 
         ORG     CONFIG_ROM_BASE

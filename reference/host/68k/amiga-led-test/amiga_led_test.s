@@ -102,7 +102,7 @@ PEN15_RGB                   EQU $0222       ; PEN_LENS
 ; The version, shown on screen and in the log.  A macro rather than an EQU
 ; because it expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.0"
+        DC.B    "0.1.1"
         ENDM
 
         ORG     CONFIG_ROM_BASE

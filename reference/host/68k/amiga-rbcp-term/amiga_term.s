@@ -76,7 +76,7 @@ PEN07_RGB                   EQU $0FA0       ; a direction with no pipe for it
 ; The version, shown in the heading.  A macro rather than an EQU because it
 ; expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.0"
+        DC.B    "0.1.1"
         ENDM
 
         ORG     CONFIG_ROM_BASE
