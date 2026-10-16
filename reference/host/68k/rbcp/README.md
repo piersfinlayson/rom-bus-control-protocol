@@ -187,6 +187,20 @@ not poll afterwards.
 `rbcp_cmd_set_aux` waits on `CONFIG_RBCP_AUX_POLL_TIMEOUT` because the device
 holds the pin before it answers.
 
+### One ROM Device Info
+
+The One ROM host-control plugin adds the Device Info group, 0x80, specified in
+its `EXTENSIONS.md`. Issue these commands only to a One ROM reporting protocol
+version 0.1.4 or later. Each reads a value from its start.
+
+| Routine | Takes |
+|---|---|
+| `rbcp_cmd_get_comm_version` | nothing |
+| `rbcp_cmd_get_comm_value` | `D0.B` count, `D1.W` key |
+| `rbcp_cmd_get_metadata_str` | `D0.B` count, `D1.L` key |
+| `rbcp_cmd_get_metadata_uint` | `D1.L` key |
+| `rbcp_cmd_get_metadata_array` | `D0.B` count, `D1.L` key |
+
 ### The `$AA` guard
 
 `$AA` is the reset marker, and the protocol forbids it as any command's final
@@ -195,7 +209,8 @@ a RAM slot — the routine refuses `$AA`, sends nothing, sets `RBCP_ERROR_CODE`
 to 3 and returns `D0=1`. That covers `rbcp_cmd_get_pipe_info`,
 `rbcp_cmd_pipe_read`, `rbcp_cmd_get_aux_group_info`,
 `rbcp_cmd_get_aux_pin_info`, `rbcp_cmd_set_aux`, `rbcp_cmd_slot_peek`,
-`rbcp_cmd_get_led_info`, `rbcp_cmd_get_led_mode_info` and `rbcp_cmd_set_led`.
+`rbcp_cmd_get_led_info`, `rbcp_cmd_get_led_mode_info`, `rbcp_cmd_set_led` and
+the Device Info routines that take a key.
 
 The terminal commands do not refuse it. The caller asked to leave, and the
 device declines the slot or the pin and completes the exit either way.

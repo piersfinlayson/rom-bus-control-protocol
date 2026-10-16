@@ -210,6 +210,34 @@ RBCP_CMD_GET_LED_MODE_INFO  EQU $02
 RBCP_CMD_SET_LED            EQU $03
 
 ; ---------------------------------------------------------------------------
+; Group 0x80 — One ROM Device Info
+;
+; The One ROM host-control plugin adds this group, specified in its
+; EXTENSIONS.md.  A host issues it only to a device whose GET_DEVICE_TYPE is
+; "One ROM" and whose protocol version is 0.1.4 or later.  Only the One ROM
+; keys in use are listed.
+; ---------------------------------------------------------------------------
+RBCP_GRP_ONEROM_INFO        EQU $80
+RBCP_CMD_GET_COMM_VERSION   EQU $00
+RBCP_CMD_GET_COMM_VALUE     EQU $01
+RBCP_CMD_GET_METADATA_STR   EQU $02
+RBCP_CMD_GET_METADATA_UINT  EQU $03
+RBCP_CMD_GET_METADATA_ARRAY EQU $04
+
+ONEROM_KEY_UNIT_NAME        EQU $01     ; metadata keys
+ONEROM_KEY_HW_REV           EQU $06
+ONEROM_KEY_BOARD_SIZE       EQU $14
+ONEROM_KEY_CHIP_ID          EQU $1A
+ONEROM_COMM_BOARD           EQU 1       ; commissioning keys
+ONEROM_COMM_SIG             EQU 2
+ONEROM_COMM_MANUFACTURER    EQU 3
+ONEROM_COMM_DATE            EQU 4
+ONEROM_COMM_SIGNER          EQU 5
+ONEROM_BOARD_SIZE_M         EQU 1
+ONEROM_BOARD_SIZE_L         EQU 2
+ONEROM_CHIP_ID_LEN          EQU 8
+
+; ---------------------------------------------------------------------------
 ; Group 0xAA — Reset
 ; ---------------------------------------------------------------------------
 RBCP_CMD_RESET              EQU $AA
@@ -318,6 +346,13 @@ RBCP_LED_BLINK             EQU $02
 RBCP_LED_BREATHE           EQU $03
 RBCP_LED_CYCLE             EQU $04
 RBCP_LED_BEACON            EQU $05
+; GET_COMM_VALUE and GET_METADATA_STR
+RBCP_VALUE_LEN_LO          EQU 0        ; the whole value's length
+RBCP_VALUE_LEN_HI          EQU 1
+RBCP_VALUE_DATA            EQU 4
+; GET_METADATA_ARRAY
+RBCP_ARRAY_RETURNED        EQU 0        ; elements returned, zero means 256
+RBCP_ARRAY_DATA            EQU 4
 
 ; ---------------------------------------------------------------------------
 ; Back-channel response header — CPU addresses

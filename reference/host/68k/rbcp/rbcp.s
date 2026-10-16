@@ -1054,3 +1054,142 @@ rbcp_cmd_set_led:
         MOVE.B  #RBCP_ERR_RESPONSE,RBCP_ERROR_CODE
         MOVEQ   #1,D0
         RTS
+
+; ===========================================================================
+; One ROM Device Info helpers (group 0x80)
+;
+; Each reads a value from its start, offset and element index 0.  An array's
+; elements are read a byte each.
+;
+; The final argument byte is the top byte of the key, and $AA there is the
+; reset marker, so these refuse it and send nothing.
+; ===========================================================================
+
+; ---------------------------------------------------------------------------
+; rbcp_cmd_get_comm_version — the version of One ROM's commissioning data
+; Input : none
+; Output: D0=0/Z=1 success, D0=error stage/Z=0 failure
+;         Data section: the version, a little-endian word, 0 where the One ROM
+;         isn't commissioned.
+; Clobbers: D0
+;
+; This is also the check for the group.  The command takes no argument bytes,
+; so a device without the group consumes nothing, fails it and stays in step.
+; ---------------------------------------------------------------------------
+rbcp_cmd_get_comm_version:
+        MOVE.B  #RBCP_GRP_ONEROM_INFO,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_COMM_VERSION,RBCP_CMD
+        MOVEQ   #0,D0
+        BRA     rbcp_issue_cmd
+
+; ---------------------------------------------------------------------------
+; rbcp_cmd_get_comm_value — one commissioning value
+; Input : D0.B = most bytes to return, 0 meaning 256
+;         D1.W = key
+; Output: D0=0/Z=1 success, D0=error stage/Z=0 failure
+;         Data section: the value's length from RBCP_VALUE_LEN_LO and its
+;         bytes from RBCP_VALUE_DATA.
+; Clobbers: D0
+;
+; A value the One ROM doesn't hold fails.
+; ---------------------------------------------------------------------------
+rbcp_cmd_get_comm_value:
+        MOVE.B  D0,RBCP_ARG0
+        CLR.B   RBCP_ARG1               ; offset
+        CLR.B   RBCP_ARG2
+        MOVE.B  D1,RBCP_ARG3
+        MOVE.W  D1,D0
+        LSR.W   #8,D0
+        CMPI.B  #$AA,D0
+        BEQ.S   rbcp_refuse
+        MOVE.B  D0,RBCP_ARG4
+        MOVE.B  #RBCP_GRP_ONEROM_INFO,RBCP_GROUP
+        MOVE.B  #RBCP_CMD_GET_COMM_VALUE,RBCP_CMD
+        MOVEQ   #5,D0
+        BRA     rbcp_issue_cmd
+
+; ---------------------------------------------------------------------------
+; rbcp_cmd_get_metadata_str — one metadata string
+; Input : D0.B = most bytes to return, 0 meaning 256
+;         D1.L = key
+; Output: D0=0/Z=1 success, D0=error stage/Z=0 failure
+;         Data section: the string's length from RBCP_VALUE_LEN_LO and its
+;         bytes from RBCP_VALUE_DATA.  The string isn't null-terminated, and
+;         one that isn't set has length 0.
+; Clobbers: D0
+; ---------------------------------------------------------------------------
+rbcp_cmd_get_metadata_str:
+        MOVE.B  D0,RBCP_ARG0
+        CLR.B   RBCP_ARG1               ; offset
+        CLR.B   RBCP_ARG2
+        MOVE.L  A0,-(SP)
+        LEA     (RBCP_ARG3).W,A0
+        BSR.S   rbcp_put_key
+        MOVEA.L (SP)+,A0
+        BEQ.S   rbcp_refuse
+        MOVE.B  #RBCP_CMD_GET_METADATA_STR,RBCP_CMD
+        MOVEQ   #7,D0
+        BRA.S   rbcp_issue_info
+
+; ---------------------------------------------------------------------------
+; rbcp_cmd_get_metadata_uint — one metadata number
+; Input : D1.L = key
+; Output: D0=0/Z=1 success, D0=error stage/Z=0 failure
+;         Data section: the number, a little-endian long.
+; Clobbers: D0
+; ---------------------------------------------------------------------------
+rbcp_cmd_get_metadata_uint:
+        MOVE.L  A0,-(SP)
+        LEA     (RBCP_ARG0).W,A0
+        BSR.S   rbcp_put_key
+        MOVEA.L (SP)+,A0
+        BEQ.S   rbcp_refuse
+        MOVE.B  #RBCP_CMD_GET_METADATA_UINT,RBCP_CMD
+        MOVEQ   #4,D0
+        BRA.S   rbcp_issue_info
+
+; ---------------------------------------------------------------------------
+; rbcp_cmd_get_metadata_array — the first elements of one metadata array
+; Input : D0.B = most elements to return, 0 meaning 256
+;         D1.L = key
+; Output: D0=0/Z=1 success, D0=error stage/Z=0 failure
+;         Data section: how many came back at RBCP_ARRAY_RETURNED and the
+;         elements from RBCP_ARRAY_DATA, a byte each.
+; Clobbers: D0
+; ---------------------------------------------------------------------------
+rbcp_cmd_get_metadata_array:
+        MOVE.B  D0,RBCP_ARG0
+        CLR.B   RBCP_ARG1               ; index
+        MOVE.B  #1,RBCP_ARG2            ; width
+        MOVE.L  A0,-(SP)
+        LEA     (RBCP_ARG3).W,A0
+        BSR.S   rbcp_put_key
+        MOVEA.L (SP)+,A0
+        BEQ.S   rbcp_refuse
+        MOVE.B  #RBCP_CMD_GET_METADATA_ARRAY,RBCP_CMD
+        MOVEQ   #7,D0
+        ; fall through
+
+rbcp_issue_info:
+        MOVE.B  #RBCP_GRP_ONEROM_INFO,RBCP_GROUP
+        BRA     rbcp_issue_cmd
+
+rbcp_refuse:
+        MOVE.B  #RBCP_ERR_RESPONSE,RBCP_ERROR_CODE
+        MOVEQ   #1,D0
+        RTS
+
+; rbcp_put_key — D1.L into the four argument bytes from A0, low byte first.
+; Returns Z set where the top byte is $AA.
+; Clobbers: D0/A0
+rbcp_put_key:
+        MOVE.L  D1,D0
+        MOVE.B  D0,(A0)+
+        LSR.L   #8,D0
+        MOVE.B  D0,(A0)+
+        LSR.L   #8,D0
+        MOVE.B  D0,(A0)+
+        LSR.L   #8,D0
+        MOVE.B  D0,(A0)
+        CMPI.B  #$AA,D0
+        RTS

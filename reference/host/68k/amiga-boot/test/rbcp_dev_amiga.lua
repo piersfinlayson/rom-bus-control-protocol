@@ -219,6 +219,34 @@ local ARGS = {                          -- [group][cmd] = argument count
   [0xAA] = { [0xAA] = 0 },
 }
 
+-- The Device Info group the One ROM host-control plugin adds, specified in its
+-- EXTENSIONS.md.  The plugin that has it reports RBCP 0.1.4, so an older
+-- version leaves it out.
+local function proto_at_least(major, minor, patch)
+  local have = (PROTO[1] << 16) | (PROTO[2] << 8) | PROTO[3]
+  return have >= ((major << 16) | (minor << 8) | patch)
+end
+if proto_at_least(0, 1, 4) then
+  ARGS[0x80] = { [0x00] = 0, [0x01] = 5, [0x02] = 7, [0x03] = 4, [0x04] = 7 }
+end
+
+-- The values it serves.  RBCP_UNIT_NAME is the unit's name, which is otherwise
+-- unset.  RBCP_COMM is the commissioning version, 0 where the unit isn't
+-- commissioned, and a version other than 1 makes every value fail as an older
+-- firmware would.
+local META_STR   = { [0x01] = os.getenv("RBCP_UNIT_NAME") or "",
+                     [0x06] = "fire-40-a" }
+local META_UINT  = { [0x14] = 2 }                 -- size L
+local META_ARRAY = { [0x1A] = { 0xE1, 0x26, 0xC9, 0xF9, 0x7C, 0x10, 0xAD, 0xAC } }
+local COMM_VERSION = tonumber(os.getenv("RBCP_COMM") or "1")
+-- The date is YYYYMMDD, as OTP holds it.  RBCP_UNSIGNED leaves out the
+-- signature and the key that made it.
+local COMM = { [1] = "fire-40-a", [3] = "piers.rocks", [4] = "20260929" }
+if not os.getenv("RBCP_UNSIGNED") then
+  COMM[2] = string.rep("\90", 64)
+  COMM[5] = string.char(1, 0)
+end
+
 local function log(fmt, ...) print(string.format("[dev] " .. fmt, ...)) end
 
 local function put_data(i, v) bch[8 + i] = v & 0xFF end
@@ -226,6 +254,18 @@ local function put_data(i, v) bch[8 + i] = v & 0xFF end
 local function put_string(i, s)
   for n = 1, #s do put_data(i + n - 1, s:byte(n)) end
   put_data(i + #s, 0)
+end
+
+-- A Device Info value response: the whole length, two reserved bytes, then up
+-- to count bytes from offset.  An offset past the end fails.
+local function put_value(s, count, offset)
+  if count == 0 then count = 256 end
+  if offset > #s or 4 + count > BCH_SIZE - 8 then return false end
+  put_data(0, #s & 0xFF) put_data(1, #s >> 8) put_data(2, 0) put_data(3, 0)
+  for n = 0, math.min(count, #s - offset) - 1 do
+    put_data(4 + n, s:byte(offset + n + 1))
+  end
+  return true
 end
 
 -- The far end's side of the pipe, as RBCP_SEND holds it.  "\n" in that
@@ -589,6 +629,42 @@ local function execute()
     local mode, r, gr, b, led = a[1], a[2], a[3], a[4], a[8]
     if LED_TYPE[led] == nil then answer(false) return end
     log("SET_LED %d %s rgb %02X%02X%02X", led, MODE_NAME[mode] or mode, r, gr, b)
+    answer(true)
+  elseif g == 0x80 and c == 0x00 then             -- GET_COMMISSIONING_VERSION
+    put_data(0, COMM_VERSION & 0xFF) put_data(1, COMM_VERSION >> 8)
+    put_data(2, 0) put_data(3, 0)
+    log("GET_COMMISSIONING_VERSION = %d", COMM_VERSION)
+    answer(true)
+  elseif g == 0x80 and c == 0x01 then             -- GET_COMMISSIONING_VALUE
+    local key = a[4] | (a[5] << 8)
+    local v = (COMM_VERSION == 1) and COMM[key] or nil
+    log("GET_COMMISSIONING_VALUE %d%s", key, v and "" or " missing")
+    answer(v ~= nil and put_value(v, a[1], a[2] | (a[3] << 8)))
+  elseif g == 0x80 and c == 0x02 then             -- GET_METADATA_STR
+    local key = a[4] | (a[5] << 8) | (a[6] << 16) | (a[7] << 24)
+    local v = META_STR[key]
+    log("GET_METADATA_STR $%02X = %s", key, v or "<not a string>")
+    answer(v ~= nil and put_value(v, a[1], a[2] | (a[3] << 8)))
+  elseif g == 0x80 and c == 0x03 then             -- GET_METADATA_UINT
+    local key = a[1] | (a[2] << 8) | (a[3] << 16) | (a[4] << 24)
+    local v = META_UINT[key]
+    if v == nil then answer(false) return end
+    for i = 0, 3 do put_data(i, (v >> (8 * i)) & 0xFF) end
+    log("GET_METADATA_UINT $%02X = %d", key, v)
+    answer(true)
+  elseif g == 0x80 and c == 0x04 then             -- GET_METADATA_ARRAY
+    local count, index, width = a[1], a[2], a[3]
+    local key = a[4] | (a[5] << 8) | (a[6] << 16) | (a[7] << 24)
+    local v = META_ARRAY[key]
+    if count == 0 then count = 256 end
+    if v == nil or index >= #v or width ~= 1 or 4 + count > BCH_SIZE - 8 then
+      answer(false)
+      return
+    end
+    local n = math.min(count, #v - index)
+    put_data(0, n & 0xFF) put_data(1, 0) put_data(2, 0) put_data(3, 0)
+    for i = 0, n - 1 do put_data(4 + i, v[index + i + 1]) end
+    log("GET_METADATA_ARRAY $%02X, %d of %d", key, n, #v)
     answer(true)
   else
     log("unknown command $%02X/$%02X", g, c)

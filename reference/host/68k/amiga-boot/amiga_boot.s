@@ -56,7 +56,7 @@
 ; The version, shown on screen and in the log.  A macro rather than an EQU
 ; because it expands to text.
 APP_VERSION MACRO
-        DC.B    "0.1.4"
+        DC.B    "0.1.5"
         ENDM
 
         ORG     CONFIG_ROM_BASE
@@ -380,7 +380,12 @@ main_loop:
         BSR     release_step
         BRA.S   main_loop
 .ml_menu:
+        CMPI.B  #ST_INFO,VAR_STATE
+        BEQ.S   .ml_info
         BSR     state_menu
+        BRA.S   main_loop
+.ml_info:
+        BSR     state_info
         BRA.S   main_loop
 
 ; ---------------------------------------------------------------------------
@@ -418,8 +423,8 @@ key_poll:
         BSR     amiga_getkey
         TST.B   D0
         BEQ.S   .kp_out
-        CMPI.B  #ST_MENU,VAR_STATE
-        BEQ.S   .kp_keep
+        CMPI.B  #ST_RELEASE,VAR_STATE
+        BNE.S   .kp_keep
         CMPI.B  #KEY_LMB,D0
         BEQ.S   .kp_out
         CMPI.B  #KEY_RMB,D0
@@ -523,27 +528,41 @@ release_settle:
         RTS
 
 ; ---------------------------------------------------------------------------
-; state_menu — acts on the key key_poll is holding.  A left click or the
-; arrows change the choice, a right click or RETURN boots it, and 1-9 or A-F
-; picks an entry.
+; take_key — D0 = the key key_poll is holding, with Z clear, or 0 with Z set.
 ;
 ; Acting on a key redraws, which needs the blitter, so a key that arrives
 ; mid-frame is held until the frame is on screen rather than waited out on
 ; BBUSY.  That is at most one frame's blits, and no key is lost: key_poll
 ; reads no further while one is still waiting here.
 ; ---------------------------------------------------------------------------
-state_menu:
-        TST.B   VAR_PEND_KEY
-        BEQ     .sm_done
+take_key:
+        MOVEQ   #0,D0
     ifne CONFIG_BANNER_BALL
         TST.B   VAR_ANIM_STEP
-        BNE     .sm_done                ; a frame is part way through
+        BNE.S   .tk_out                 ; a frame is part way through
         BTST    #6,(DMACONR).L          ; BBUSY: its last blit is still running
-        BNE     .sm_done
+        BNE.S   .tk_out
     endc
-        MOVEQ   #0,D0
         MOVE.B  VAR_PEND_KEY,D0
         CLR.B   VAR_PEND_KEY
+.tk_out:
+        TST.B   D0
+        RTS
+
+; state_info — any key or click goes back to the menu.
+state_info:
+        BSR.S   take_key
+        BNE     info_close
+        RTS
+
+; ---------------------------------------------------------------------------
+; state_menu — acts on the key key_poll is holding.  A left click or the
+; arrows change the choice, a right click or RETURN boots it, 1-9 or A-F
+; picks an entry and I opens the One ROM info screen.
+; ---------------------------------------------------------------------------
+state_menu:
+        BSR.S   take_key
+        BEQ     .sm_done
         CMPI.B  #KEY_RETURN,D0
         BEQ     do_boot
         CMPI.B  #KEY_RMB,D0
@@ -559,6 +578,8 @@ state_menu:
         CMPI.B  #'9'+1,D0
         BCS.S   .sm_digit
         ORI.B   #$20,D0                 ; A-F and a-f alike
+        CMPI.B  #'i',D0
+        BEQ     info_open
         CMPI.B  #'a',D0
         BCS.S   .sm_done
         CMPI.B  #'f'+1,D0
@@ -849,18 +870,25 @@ draw_list:
 
         ; --- pass two: draw them all ---
 .dl_place:
+        BSR.S   draw_entries
+        MOVEM.L (SP)+,D3-D7/A0-A1
+        RTS
+
+; draw_entries — every entry from the names draw_list read.
+draw_entries:
+        MOVEM.L D0/D7,-(SP)
         MOVE.B  #MENU_COL,VAR_MENU_COL
         MOVE.B  #PEN_TEXT,VAR_PEN
         MOVEQ   #0,D7
-.dl_draw:
+.de_next:
         MOVE.B  VAR_NUM_DISPLAY,D0
         CMP.B   D7,D0
-        BLS.S   .dl_done
+        BLS.S   .de_all
         BSR     draw_entry
         ADDQ.B  #1,D7
-        BRA.S   .dl_draw
-.dl_done:
-        MOVEM.L (SP)+,D3-D7/A0-A1
+        BRA.S   .de_next
+.de_all:
+        MOVEM.L (SP)+,D0/D7
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -962,13 +990,34 @@ draw_sel_entry:
         MOVEM.L (SP)+,D7
         RTS
 
-; draw_footer — the controls line, centred.
+; draw_footer — the controls line, centred, and the info key lined up under
+; its first column.
+; Clobbers: D0-D2/A0
 draw_footer:
-        MOVE.B  #PEN_LIGHT,VAR_PEN
         LEA     (str_footer).L,A0
+        BSR.S   footer_show
+        MOVE.B  #PEN_LIGHT,VAR_PEN
+        LEA     (str_info_key).L,A0
+        MOVEQ   #FOOTER_COL,D1
+        ADDQ.B  #1,D2
+        BSR     screen_print
+        MOVE.B  #PEN_TEXT,VAR_PEN
+        RTS
+
+; footer_show — A0 = the line for the bottom of the screen, centred, over
+; whatever was there, and the row under it cleared.
+; Clobbers: D0/D2
+footer_show:
         BSR     pal_drop
         ADDI.B  #FOOTER_ROW,D0
         MOVE.B  D0,D2
+        MOVE.B  #PEN_BG,VAR_PEN
+        CLR.B   VAR_MENU_COL
+        BSR     screen_fill_row
+        ADDQ.B  #1,D0
+        BSR     screen_fill_row
+        MOVE.B  #MENU_COL,VAR_MENU_COL
+        MOVE.B  #PEN_LIGHT,VAR_PEN
         BSR     screen_print_centred
         MOVE.B  #PEN_TEXT,VAR_PEN
         RTS
@@ -989,6 +1038,459 @@ pal_drop:
         BEQ.S   .pd_out
         MOVEQ   #PAL_EXTRA_ROWS,D0
 .pd_out:
+        RTS
+
+; ===========================================================================
+; One ROM info screen
+;
+; It takes the list's place beside the logo and leaves the logo, the ball and
+; the device line alone.  The device is queried again each time the screen
+; opens.
+; ===========================================================================
+
+; text_rows — D0.W = the first row the list or the info screen may use.
+text_rows:
+        BSR     pal_drop
+        LSR.W   #1,D0
+        ADDQ.W  #TEXT_ROW_FIRST,D0
+        RTS
+
+; text_clear — every one of those rows cleared, from the list's column across.
+; Clobbers: D0-D1
+text_clear:
+        MOVE.B  #PEN_BG,VAR_PEN
+        BSR.S   text_rows
+        MOVEQ   #TEXT_ROWS-1,D1
+.tc_row:
+        BSR     screen_fill_row
+        ADDQ.B  #1,D0
+        DBF     D1,.tc_row
+        MOVE.B  #PEN_TEXT,VAR_PEN
+        RTS
+
+; info_open — the info screen up in place of the list.
+; Clobbers: D0-D2/A0
+info_open:
+    ifne BANNER_FG
+        MOVE.L  #FG_DRAW_BASE,VAR_DRAW_BASE
+    endc
+        BSR.S   text_clear
+        BSR     info_draw
+        LEA     (str_info_footer).L,A0
+        BSR     footer_show
+    ifne BANNER_FG
+        BSR     fg_text_update
+        MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
+    endc
+        MOVE.B  #ST_INFO,VAR_STATE
+        RTS
+
+; info_close — the list back, with the highlight where it was.
+; Clobbers: D0-D2/A0
+info_close:
+    ifne BANNER_FG
+        MOVE.L  #FG_DRAW_BASE,VAR_DRAW_BASE
+    endc
+        BSR.S   text_clear
+        BSR     draw_title
+        BSR     draw_entries
+        BSR     highlight_selection
+        BSR     draw_footer
+    ifne BANNER_FG
+        BSR     fg_text_update
+        BSR     fg_mask_bar
+        MOVE.L  #BITPLANE_BASE,VAR_DRAW_BASE
+    endc
+        MOVE.B  #ST_MENU,VAR_STATE
+        RTS
+
+; ---------------------------------------------------------------------------
+; info_draw — the info screen's rows, each drawn as its query returns.
+;
+; A row whose query fails is left out.  Unit name, board, chip ID and
+; commissioning come from host-control's Device Info group, which a One ROM
+; has from RBCP 0.1.4.  Without it those rows are replaced by the update line.
+;
+; D2 is the row, D3 is 1 for a One ROM, D4 the protocol version as
+; $00MMmmpp or -1, and D5 the commissioning version or -1 where Device Info
+; can't be read.
+; ---------------------------------------------------------------------------
+info_draw:
+        MOVEM.L D0-D5/A0-A1,-(SP)
+        MOVE.B  #PEN_TEXT,VAR_PEN
+        BSR     pal_drop
+        LSR.W   #1,D0
+        ADDQ.W  #INFO_ROW0,D0
+        MOVE.W  D0,D2
+
+        ; --- the title, the device's type in capitals ---
+        MOVEQ   #0,D3
+        BSR     rbcp_cmd_get_device_type
+        TST.B   D0
+        BNE.S   .id_titled
+        BSR     info_ascii
+        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
+        LEA     (str_one_rom).L,A1
+.id_cmp:
+        CMPM.B  (A0)+,(A1)+
+        BNE.S   .id_upper
+        TST.B   -1(A0)
+        BNE.S   .id_cmp
+        MOVEQ   #1,D3
+.id_upper:
+        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
+.id_up:
+        MOVE.B  (A0),D0
+        CMPI.B  #'a',D0
+        BCS.S   .id_up_next
+        CMPI.B  #'z'+1,D0
+        BCC.S   .id_up_next
+        SUBI.B  #'a'-'A',(A0)
+.id_up_next:
+        TST.B   (A0)+
+        BNE.S   .id_up
+        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
+        BSR     info_line
+.id_titled:
+        ADDQ.B  #1,D2
+
+        ; --- whether Device Info can be read ---
+        MOVEQ   #-1,D4
+        MOVEQ   #-1,D5
+        BSR     rbcp_cmd_get_proto_version
+        TST.B   D0
+        BNE.S   .id_probed
+        MOVEQ   #3,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        MOVEQ   #0,D4
+        MOVE.B  (CONFIG_RBCP_DATA_BUF).W,D4
+        SWAP    D4
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+1).W,D4
+        LSL.W   #8,D4
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+2).W,D4
+        TST.B   D3
+        BEQ.S   .id_probed
+        CMPI.L  #$00000104,D4
+        BCS.S   .id_probed
+        BSR     rbcp_cmd_get_comm_version
+        TST.B   D0
+        BNE.S   .id_probed
+        MOVEQ   #2,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        MOVEQ   #0,D5
+        MOVE.B  (CONFIG_RBCP_DATA_BUF+1).W,D5
+        LSL.W   #8,D5
+        MOVE.B  (CONFIG_RBCP_DATA_BUF).W,D5
+.id_probed:
+
+        ; --- the unit's name, where it has one ---
+        TST.L   D5
+        BMI.S   .id_named
+        MOVEQ   #ONEROM_KEY_UNIT_NAME,D1
+        MOVEQ   #INFO_VALUE_MAX,D0
+        BSR     rbcp_cmd_get_metadata_str
+        TST.B   D0
+        BNE.S   .id_named
+        BSR     info_str
+        BEQ.S   .id_named
+        MOVEA.L A0,A1
+        LEA     (str_lbl_name).L,A0
+        BSR     info_row
+.id_named:
+
+        BSR     rbcp_cmd_get_device_version
+        TST.B   D0
+        BNE.S   .id_versioned
+        BSR     info_ascii
+        LEA     (CONFIG_RBCP_DATA_BUF).W,A1
+        LEA     (str_lbl_fw).L,A0
+        BSR     info_row
+.id_versioned:
+
+        TST.L   D4
+        BMI.S   .id_rbcp_done
+        LEA     (INFO_LINE).W,A1
+        MOVE.B  #'v',(A1)+              ; as the device writes its own version
+        MOVE.L  D4,D0
+        SWAP    D0
+        BSR     put_dec_byte
+        MOVE.B  #'.',(A1)+
+        MOVE.W  D4,D0
+        LSR.W   #8,D0
+        BSR     put_dec_byte
+        MOVE.B  #'.',(A1)+
+        MOVE.B  D4,D0
+        BSR     put_dec_byte
+        CLR.B   (A1)
+        LEA     (INFO_LINE).W,A1
+        LEA     (str_lbl_rbcp).L,A0
+        BSR     info_row
+.id_rbcp_done:
+
+        TST.L   D5
+        BPL.S   .id_board
+        TST.B   D3
+        BEQ     .id_done                ; another device has nothing more
+        ADDQ.B  #1,D2
+        BRA     .id_update
+
+        ; --- the board type, with its size where that is known ---
+.id_board:
+        MOVEQ   #ONEROM_KEY_HW_REV,D1
+        MOVEQ   #INFO_VALUE_MAX,D0
+        BSR     rbcp_cmd_get_metadata_str
+        TST.B   D0
+        BNE.S   .id_boarded
+        BSR     info_str
+        LEA     (INFO_LINE).W,A1
+        BSR     put_str
+        MOVEQ   #ONEROM_KEY_BOARD_SIZE,D1
+        BSR     rbcp_cmd_get_metadata_uint
+        TST.B   D0
+        BNE.S   .id_sized
+        MOVEQ   #4,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        MOVE.L  (CONFIG_RBCP_DATA_BUF).W,D1
+        MOVEQ   #'M',D0
+        CMPI.L  #ONEROM_BOARD_SIZE_M<<24,D1     ; little-endian
+        BEQ.S   .id_size
+        MOVEQ   #'L',D0
+        CMPI.L  #ONEROM_BOARD_SIZE_L<<24,D1
+        BNE.S   .id_sized
+.id_size:
+        MOVE.B  #' ',(A1)+
+        MOVE.B  #'(',(A1)+
+        MOVE.B  D0,(A1)+
+        MOVE.B  #')',(A1)+
+.id_sized:
+        CLR.B   (A1)
+        LEA     (INFO_LINE).W,A1
+        LEA     (str_lbl_board).L,A0
+        BSR     info_row
+.id_boarded:
+
+        MOVEQ   #ONEROM_KEY_CHIP_ID,D1
+        MOVEQ   #ONEROM_CHIP_ID_LEN,D0
+        BSR     rbcp_cmd_get_metadata_array
+        TST.B   D0
+        BNE.S   .id_chipped
+        MOVEQ   #RBCP_ARRAY_DATA+ONEROM_CHIP_ID_LEN,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        CMPI.B  #ONEROM_CHIP_ID_LEN,(CONFIG_RBCP_DATA_BUF+RBCP_ARRAY_RETURNED).W
+        BNE.S   .id_chipped
+        LEA     (CONFIG_RBCP_DATA_BUF+RBCP_ARRAY_DATA).W,A0
+        LEA     (INFO_LINE).W,A1
+        MOVEQ   #ONEROM_CHIP_ID_LEN-1,D1
+.id_hex:
+        MOVE.B  (A0)+,D0
+        BSR     put_hex
+        DBF     D1,.id_hex
+        CLR.B   (A1)
+        LEA     (INFO_LINE).W,A1
+        LEA     (str_lbl_chip_id).L,A0
+        BSR     info_row
+.id_chipped:
+
+        ; --- commissioning ---
+        ADDQ.B  #1,D2
+        LEA     (str_comm_heading).L,A0
+        BSR     info_line
+        ADDQ.B  #1,D2
+        TST.W   D5
+        BNE.S   .id_comm
+        LEA     (str_not_comm).L,A0
+        BSR     info_line
+        BRA     .id_done
+.id_comm:
+        MOVEQ   #ONEROM_COMM_BOARD,D1
+        LEA     (str_lbl_board).L,A0
+        BSR     info_comm_row
+        BNE.S   .id_update              ; values this firmware can't read
+        MOVEQ   #ONEROM_COMM_MANUFACTURER,D1
+        LEA     (str_lbl_made_by).L,A0
+        BSR     info_comm_row
+        MOVEQ   #ONEROM_COMM_DATE,D1
+        LEA     (str_lbl_date).L,A0
+        BSR     info_comm_row
+
+        ; Signed where the One ROM holds both a signature and the key that
+        ; made it.  The signature isn't checked.
+        LEA     (str_no).L,A1
+        MOVEQ   #ONEROM_COMM_SIG,D1
+        MOVEQ   #1,D0
+        BSR     rbcp_cmd_get_comm_value
+        TST.B   D0
+        BNE.S   .id_signed
+        MOVEQ   #ONEROM_COMM_SIGNER,D1
+        MOVEQ   #2,D0
+        BSR     rbcp_cmd_get_comm_value
+        TST.B   D0
+        BNE.S   .id_signed
+        MOVEQ   #RBCP_VALUE_DATA+2,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
+        CMPI.W  #$0200,RBCP_VALUE_LEN_LO(A0)    ; 2, little-endian
+        BNE.S   .id_signed
+        MOVEQ   #0,D0
+        MOVE.B  RBCP_VALUE_DATA+1(A0),D0
+        LSL.W   #8,D0
+        MOVE.B  RBCP_VALUE_DATA(A0),D0
+        LEA     (INFO_LINE).W,A1
+        LEA     (str_key).L,A0
+        BSR     put_str
+        BSR     put_dec
+        CLR.B   (A1)
+        LEA     (INFO_LINE).W,A1
+.id_signed:
+        LEA     (str_lbl_signed).L,A0
+        BSR     info_row
+        BRA.S   .id_done
+
+.id_update:
+        LEA     (str_update_1).L,A0
+        BSR     info_line
+        LEA     (str_update_2).L,A0
+        BSR     info_line
+.id_done:
+        MOVEM.L (SP)+,D0-D5/A0-A1
+        RTS
+
+; info_comm_row — D1.W = a commissioning key, A0 = its label.  Draws the row
+; and returns Z set, or Z clear where the command fails.
+; Clobbers: D0/A0-A1
+info_comm_row:
+        MOVE.L  A0,-(SP)
+        MOVEQ   #INFO_VALUE_MAX,D0
+        BSR     rbcp_cmd_get_comm_value
+        MOVEA.L (SP)+,A1
+        TST.B   D0
+        BNE.S   .icr_out
+        MOVE.L  A1,-(SP)
+        BSR.S   info_str
+        MOVEA.L A0,A1
+        MOVEA.L (SP)+,A0
+        BSR.S   info_row
+        MOVEQ   #0,D0
+.icr_out:
+        RTS
+
+; ---------------------------------------------------------------------------
+; info_str — after a value command that asked for INFO_VALUE_MAX bytes, A0 =
+; the value as a string and D0.W its length, Z set where it is empty.  A value
+; longer than a row has room for is cut short.
+; ---------------------------------------------------------------------------
+info_str:
+        MOVEM.L D1,-(SP)
+        MOVEQ   #RBCP_VALUE_DATA+INFO_VALUE_MAX,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        LEA     (CONFIG_RBCP_DATA_BUF).W,A0
+        MOVEQ   #0,D0
+        MOVE.B  RBCP_VALUE_LEN_HI(A0),D0
+        LSL.W   #8,D0
+        MOVE.B  RBCP_VALUE_LEN_LO(A0),D0
+        CMPI.W  #INFO_VALUE_MAX,D0
+        BLS.S   .is_fits
+        MOVEQ   #INFO_VALUE_MAX,D0
+.is_fits:
+        ADDQ.L  #RBCP_VALUE_DATA,A0
+        CLR.B   (A0,D0.W)
+        MOVEM.L (SP)+,D1
+        TST.W   D0
+        RTS
+
+; info_ascii — after GET_DEVICE_TYPE or GET_DEVICE_VERSION, the string at
+; CONFIG_RBCP_DATA_BUF, terminated even where the device filled the field.
+info_ascii:
+        MOVEM.L D0-D1,-(SP)
+        MOVEQ   #24,D0
+        MOVEQ   #0,D1
+        BSR     rbcp_read_data
+        CLR.B   (CONFIG_RBCP_DATA_BUF+24).W
+        MOVEM.L (SP)+,D0-D1
+        RTS
+
+; info_row — A0 = label, A1 = value, on row D2, which moves on one.
+info_row:
+        MOVEM.L D1/A0,-(SP)
+        MOVEQ   #MENU_COL,D1
+        BSR     screen_print
+        MOVEA.L A1,A0
+        MOVEQ   #INFO_VALUE_COL,D1
+        BSR     screen_print
+        MOVEM.L (SP)+,D1/A0
+        ADDQ.B  #1,D2
+        RTS
+
+; info_line — A0 = a line on its own, on row D2, which moves on one.
+info_line:
+        MOVEM.L D1,-(SP)
+        MOVEQ   #MENU_COL,D1
+        BSR     screen_print
+        MOVEM.L (SP)+,D1
+        ADDQ.B  #1,D2
+        RTS
+
+; put_str — the string at A0 copied to A1, without its terminator.  Both are
+; left past it.
+put_str:
+        TST.B   (A0)
+        BEQ.S   .ps_done
+        MOVE.B  (A0)+,(A1)+
+        BRA.S   put_str
+.ps_done:
+        RTS
+
+; put_dec_byte — D0.B in decimal at A1, which moves past it.
+; Clobbers: D0
+put_dec_byte:
+        ANDI.W  #$00FF,D0
+        ; fall through
+
+; put_dec — D0.W in decimal at A1, which moves past it.
+; Clobbers: D0
+put_dec:
+        MOVEM.L D1,-(SP)
+        ANDI.L  #$0000FFFF,D0
+        MOVEQ   #0,D1                   ; digits stacked
+.pd_div:
+        DIVU    #10,D0
+        SWAP    D0
+        MOVE.W  D0,-(SP)                ; the remainder, the next digit up
+        CLR.W   D0
+        SWAP    D0
+        ADDQ.W  #1,D1
+        TST.W   D0
+        BNE.S   .pd_div
+.pd_out:
+        MOVE.W  (SP)+,D0
+        ADDI.B  #'0',D0
+        MOVE.B  D0,(A1)+
+        SUBQ.W  #1,D1
+        BNE.S   .pd_out
+        MOVEM.L (SP)+,D1
+        RTS
+
+; put_hex — D0.B as two hex digits at A1, which moves past them.
+; Clobbers: D0
+put_hex:
+        MOVE.W  D0,-(SP)
+        LSR.B   #4,D0
+        BSR.S   .ph_digit
+        MOVE.W  (SP)+,D0
+.ph_digit:
+        ANDI.B  #$0F,D0
+        ADDI.B  #'0',D0
+        CMPI.B  #'9'+1,D0
+        BCS.S   .ph_put
+        ADDQ.B  #'A'-'9'-1,D0
+.ph_put:
+        MOVE.B  D0,(A1)+
         RTS
 
         INCLUDE "../amiga-common/amiga_input.s"
@@ -1774,35 +2276,56 @@ fg_mask_all:
 ; undo the mask fg_logo_mask folded in.
 ; ---------------------------------------------------------------------------
 fg_mask_sel:
-        MOVEM.L D0-D4/A0-A1,-(SP)
-        MOVEQ   #0,D0
-        MOVE.B  VAR_MENU_ROW0,D0
-        MOVE.W  D0,D1
-        MULU    #ROW_STRIDE,D0
-        MOVEA.L #CHIP_FG+FG_LIST_W0*2,A0
-        ADDA.L  D0,A0
-        MULU    #8*SCREEN_BPL_W,D1
-        MOVEA.L #CHIP_FG_MASK+FG_LIST_W0*2,A1
-        ADDA.L  D1,A1
-        MOVEQ   #0,D4
-        MOVE.B  VAR_NUM_DISPLAY,D4
-        LSL.W   #3,D4                   ; eight pixel rows an entry
-        SUBQ.W  #1,D4
-.fms_row:
-        MOVE.W  #FG_LIST_WORDS-1,D3
-.fms_word:
+        MOVEM.L D0-D1/D6-D7,-(SP)
+        BSR.S   list_rect
+        BSR.S   fg_mask_rect
+        BSR     fg_mask_bar
+        MOVEM.L (SP)+,D0-D1/D6-D7
+        RTS
+
+; list_rect — the list's rectangle, as fg_mask_rect and fg_blit_solid take it.
+list_rect:
+        MOVEQ   #FG_LIST_W0,D6
+        MOVEQ   #0,D7
+        MOVE.B  VAR_MENU_ROW0,D7
+        LSL.W   #3,D7                   ; eight pixel rows a text row
+        MOVEQ   #FG_LIST_WORDS,D0
+        MOVEQ   #0,D1
+        MOVE.B  VAR_NUM_DISPLAY,D1
+        LSL.W   #3,D1
+        RTS
+
+; ---------------------------------------------------------------------------
+; fg_mask_rect — the mask over one rectangle of the object, worked out from
+; what was drawn there, as fg_mask_all does for the whole of it.
+; D6.W = first word, D7.W = line, D0.W = words, D1.W = pixel rows
+; ---------------------------------------------------------------------------
+fg_mask_rect:
+        MOVEM.L D0-D5/A0-A2,-(SP)
+        BSR     fg_ptrs                 ; A0 = object, A2 = mask
+        MOVE.W  D0,D2
+        SUBQ.W  #1,D2                   ; words, less one
+        MOVE.W  D1,D4
+        SUBQ.W  #1,D4                   ; rows, less one
+        ADD.W   D0,D0
+        MOVE.W  #SCREEN_BPL_W,D5
+        SUB.W   D0,D5                   ; the mask skips a plane row
+        NEG.W   D0
+        ADDI.W  #SCREEN_ROW_BYTES,D0    ; the object skips a pixel row
+.fmr_row:
+        MOVE.W  D2,D3
+.fmr_word:
         MOVE.W  (A0),D1
         OR.W    SCREEN_BPL_W(A0),D1
         OR.W    SCREEN_BPL_W*2(A0),D1
         OR.W    SCREEN_BPL_W*3(A0),D1
-        MOVE.W  D1,(A1)+
+        MOVE.W  D1,(A2)+
         ADDQ.L  #2,A0
-        DBF     D3,.fms_word
-        ADDA.W  #SCREEN_ROW_BYTES-FG_LIST_WORDS*2,A0
-        ADDA.W  #SCREEN_BPL_W-FG_LIST_WORDS*2,A1
-        DBF     D4,.fms_row
-        BSR     fg_mask_bar
-        MOVEM.L (SP)+,D0-D4/A0-A1
+        DBF     D3,.fmr_word
+        ADDA.W  D0,A0
+        ADDA.W  D5,A2
+        DBF     D4,.fmr_row
+        MOVEM.L (SP)+,D0-D5/A0-A2
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -1852,14 +2375,34 @@ fg_show:
 ; fg_mask_sel works over.  The ball is left alone outside it.
 fg_show_list:
         MOVEM.L D0-D1/D6-D7,-(SP)
+        BSR     list_rect
+        BSR     fg_blit_solid
+        MOVEM.L (SP)+,D0-D1/D6-D7
+        RTS
+
+; ---------------------------------------------------------------------------
+; fg_text_update — the mask worked out again over every row the list or the
+; info screen may use, and over the two footer rows, and both put on screen.
+; Everything else is left as it was.
+; ---------------------------------------------------------------------------
+fg_text_update:
+        MOVEM.L D0-D1/D6-D7,-(SP)
+        BSR     text_rows               ; D0 = the first row
         MOVEQ   #FG_LIST_W0,D6
-        MOVEQ   #0,D7
-        MOVE.B  VAR_MENU_ROW0,D7
-        LSL.W   #3,D7                   ; eight pixel rows a text row
+        MOVE.W  D0,D7
+        LSL.W   #3,D7
         MOVEQ   #FG_LIST_WORDS,D0
-        MOVEQ   #0,D1
-        MOVE.B  VAR_NUM_DISPLAY,D1
-        LSL.W   #3,D1
+        MOVE.W  #TEXT_ROWS*8,D1
+        BSR     fg_mask_rect
+        BSR     fg_blit_solid
+        BSR     pal_drop
+        ADDI.W  #FOOTER_ROW,D0
+        MOVEQ   #0,D6
+        MOVE.W  D0,D7
+        LSL.W   #3,D7
+        MOVEQ   #SCREEN_BPL_W/2,D0
+        MOVEQ   #16,D1                  ; the controls and the info key
+        BSR     fg_mask_rect
         BSR     fg_blit_solid
         MOVEM.L (SP)+,D0-D1/D6-D7
         RTS
@@ -2040,6 +2583,47 @@ str_log_title:
 ; The controls line, fitted to the screen's 40 columns.
 str_footer:
         DC.B    "MOVE: ARROWS/CLICK  BOOT: RET/R-CLICK",0
+str_footer_end:
+str_info_key:
+        DC.B    "INFO: I",0
+
+; The column screen_print_centred starts the controls line at.
+FOOTER_COL          EQU (SCREEN_COLS-(str_footer_end-str_footer-1))/2
+
+; The One ROM info screen.  A label is at most 7 characters — see
+; INFO_VALUE_COL.
+str_info_footer:
+        DC.B    "BACK: ANY KEY/CLICK",0
+str_one_rom:
+        DC.B    "One ROM",0
+str_lbl_name:
+        DC.B    "Name",0
+str_lbl_fw:
+        DC.B    "FW",0
+str_lbl_rbcp:
+        DC.B    "RBCP",0
+str_lbl_board:
+        DC.B    "Board",0
+str_lbl_chip_id:
+        DC.B    "Chip ID",0
+str_lbl_made_by:
+        DC.B    "Made by",0
+str_lbl_date:
+        DC.B    "Date",0
+str_lbl_signed:
+        DC.B    "Signed",0
+str_comm_heading:
+        DC.B    "COMMISSIONING INFO",0
+str_not_comm:
+        DC.B    "Not commissioned",0
+str_key:
+        DC.B    "Key ",0
+str_no:
+        DC.B    "No",0
+str_update_1:
+        DC.B    "Update One ROM to see",0
+str_update_2:
+        DC.B    "more details",0
 
         INCLUDE "../amiga-common/amiga_error_data.s"
 

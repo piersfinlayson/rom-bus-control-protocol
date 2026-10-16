@@ -61,6 +61,7 @@ VAR_REL_CNT         EQU VAR_BASE+28         ; long, passes left in ST_RELEASE
 ST_RELEASE          EQU 0                   ; waiting for the two mouse buttons
                                             ; to come up
 ST_MENU             EQU 1                   ; idle in the menu, reading input
+ST_INFO             EQU 2                   ; the One ROM info screen is up
 
 ; Passes of the main loop before ST_RELEASE gives up on a button that will not
 ; read up, so a stuck one cannot lock the machine out of its own menu.  A loop
@@ -79,6 +80,7 @@ RELEASE_SETTLE      EQU $2000
 ;   y  50-141   the logo, 112x92, at x=4
 ;   y  24-159   rows 3-19   at most, the heading as text and the images
 ;   y 168-175   row 21   the controls
+;   y 176-183   row 22   the info key
 ;   y 184-191   row 23   the device line, with piers.rocks beside it
 ;
 ; The logo is 112 wide, leaving columns 16 to 39 for the text beside it — 24
@@ -108,6 +110,21 @@ PAL_EXTRA_ROWS      EQU SCREEN_BPL_H/8-SCREEN_ROWS
 
 MAX_DISPLAY         EQU 15                  ; keys 1-9 then A-F, one each
 MENU_PREFIX         EQU 3                   ; the "N) " in front of a name
+
+; The rows beside the logo that the list or the info screen may use, rows 3-19
+; as the longest list puts them.  Both move down by half of PAL_EXTRA_ROWS.
+TEXT_ROW_FIRST      EQU 3
+TEXT_ROWS           EQU 17
+
+; ---------------------------------------------------------------------------
+; The One ROM info screen, in the list's place beside the logo.  Its longest
+; form is 14 rows, centred as a list of 12 entries would be.  A label takes 8
+; columns, which leaves 16 for a value and fits the chip ID's 16 digits.
+; ---------------------------------------------------------------------------
+INFO_ROW0           EQU (MENU_CENTRE_SUM-12)/2
+INFO_VALUE_COL      EQU MENU_COL+8
+INFO_VALUE_MAX      EQU SCREEN_COLS-INFO_VALUE_COL
+INFO_LINE           EQU APP_BASE+$190       ; 32 bytes, a value put together
 
 ; Menu name store — one slot name per entry, as read from the device.  NAME_BUF
 ; sits above the RBCP un-swap buffer, where there is room for the whole of it

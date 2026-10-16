@@ -14,6 +14,7 @@ it has none.
 | left click, or cursor up/down | move the highlight |
 | right click, or RETURN | boot the highlighted image |
 | `1`-`9`, `A`-`F` | select a ROM image |
+| `I` | show One ROM info |
 
 ## LED
 

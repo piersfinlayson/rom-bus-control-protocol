@@ -7,8 +7,8 @@ hardware.
 `rbcp_dev_amiga.lua` watches every read in the Kickstart window, decodes the
 RBCP command stream out of the addresses, and answers by substituting bytes on
 reads of the back-channel region, as a real device does. It implements the
-commands the bootloader calls, the pipe and the auxiliary I/O group, and
-nothing else. The
+commands the bootloader calls, the pipe, the auxiliary I/O group and One ROM's
+Device Info group, and nothing else. The
 [reliability meter](../../amiga-rbcp-stress/test/README.md) drives the same
 device from its own `run.sh`.
 
@@ -23,6 +23,9 @@ sixteen bytes of writable non-volatile storage and two LEDs of which the second
 is the RGB one — so the search for the lowest-numbered RGB LED is exercised
 rather than assumed to land on zero. One slot name is mixed case and another is
 twenty-nine characters, one short of the most a record holds.
+
+Device Info is there only where `RBCP_PROTO` is 0.1.4 or later, as on a One
+ROM. It reports a commissioned size L `fire-40-a`.
 
 The device carries three groups of auxiliary pins for the harnesses that drive
 them. The bootloader drives none.
@@ -136,6 +139,9 @@ Everything is an environment variable:
 | `RBCP_FAIL_EVERY` | unset | One command in this many, whichever it is, answered with failed. |
 | `RBCP_LOSE_EVERY` | unset | One command in this many not answered at all, so the host has to reset and re-enter. |
 | `RBCP_PROTO` | 0.1.2 | The protocol version the device reports. A host-control plugin before 0.1.3 reports 0.1.1. |
+| `RBCP_UNIT_NAME` | unset | The One ROM's unit name. |
+| `RBCP_COMM` | 1 | The commissioning data version. 0 is not commissioned, and any version but 1 makes every commissioning value fail. |
+| `RBCP_UNSIGNED` | unset | Leave the commissioning signature and its key out. |
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails. |
 | `RBCP_SEND` | unset | A line the far end sends unprompted. `\n` in it is a line feed. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, in place of the one `run.sh` finds for itself. |
@@ -160,6 +166,12 @@ highlight:
 
 ```bash
 RBCP_MOUSE=200 RBCP_KEYS='240:Cursor Down;265:Cursor Down;290:Enter' ./run.sh <rom-dir>
+```
+
+Open the One ROM info screen and photograph it:
+
+```bash
+RBCP_PROTO=0.1.4 RBCP_MOUSE=200 RBCP_KEYS='240:I' RBCP_SNAP=1 RBCP_FRAMES=300 ./run.sh <rom-dir>
 ```
 
 Refuse `GET_FLASH_SLOT_COUNT` and photograph the error screen:
