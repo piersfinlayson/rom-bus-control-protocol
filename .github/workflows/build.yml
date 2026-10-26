@@ -484,7 +484,7 @@ jobs:
         working-directory: reference/host/68k/${{ matrix.app }}
         env:
           RBCP_TARGET: a1200
-          RBCP_FRAMES: 150
+          RBCP_FRAMES: 400
           RBCP_DEAF_LO: "01:00"
         run: |
           set -o pipefail
