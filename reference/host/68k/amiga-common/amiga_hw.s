@@ -46,6 +46,13 @@ a500_hw_init:
         MOVE.W  #$FF00,POTGO        ; drive pot pins weak-high so a mouse button
                                     ; reads low when pressed, high when released
         CLR.L   COP1LCH             ; stop the copper
+    ifne CONFIG_AGA
+        ; The values that make AGA fetch and colour the display as the
+        ; original chipset does.
+        CLR.W   FMODE
+        MOVE.W  #$0C00,BPLCON3
+        MOVE.W  #$0011,BPLCON4
+    endc
 
         ; Clear OVL: PRA bit 0 = 0 (chip RAM at $0), bit 1 = 1 (LED off)
         MOVE.B  #$03,CIAA_DDRA

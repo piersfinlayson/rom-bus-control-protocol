@@ -19,6 +19,9 @@ COLOR01             EQU CUSTOM+$182
 BPLCON0             EQU CUSTOM+$100
 BPLCON1             EQU CUSTOM+$102
 BPLCON2             EQU CUSTOM+$104
+BPLCON3             EQU CUSTOM+$106     ; AGA, and ECS in part
+BPLCON4             EQU CUSTOM+$10C     ; AGA
+FMODE               EQU CUSTOM+$1FC     ; AGA
 BPL1MOD             EQU CUSTOM+$108
 BPL2MOD             EQU CUSTOM+$10A
 BPL1PTH             EQU CUSTOM+$0E0
@@ -310,7 +313,8 @@ VAR_LOG_PIPE        EQU APP_BASE+$165
 ; to err_halt.  Sending the log is itself an RBCP command, so by the time it
 ; has gone the scratch bytes hold that command and the device has rewritten
 ; the response header.  Both readers take their values from here.
-VAR_ERR_SNAP        EQU APP_BASE+$170       ; 8 bytes
+VAR_ERR_SNAP        EQU APP_BASE+$170       ; 8 bytes, 9 with more than one
+                                            ; device
 VAR_ES_STAGE        EQU VAR_ERR_SNAP+0      ; RBCP_ERROR_CODE
 VAR_ES_SGRP         EQU VAR_ERR_SNAP+1      ; RBCP_GROUP, the group sent
 VAR_ES_SCMD         EQU VAR_ERR_SNAP+2      ; RBCP_CMD, the command sent
@@ -319,11 +323,19 @@ VAR_ES_DCMD         EQU VAR_ERR_SNAP+4      ; command the device last processed
 VAR_ES_TOK          EQU VAR_ERR_SNAP+5      ; token LSB
 VAR_ES_PRG          EQU VAR_ERR_SNAP+6      ; progress
 VAR_ES_RSP          EQU VAR_ERR_SNAP+7      ; response
+VAR_ES_DEV          EQU VAR_ERR_SNAP+8      ; RBCP_ERROR_DEV, where there is
+                                            ; more than one device
 
 ; Polls the left button must read up before another press is taken, so the
 ; bounce either side of a click reads as one press.  A loop count rather than a
 ; unit of time.  The RBCP timeouts are counts in the same way.
-LMB_DEBOUNCE        EQU 1500
+;
+; An application built for a faster CPU defines CONFIG_LOOP_SCALE, and every
+; loop count is multiplied by it.
+    ifnd CONFIG_LOOP_SCALE
+CONFIG_LOOP_SCALE   EQU 1
+    endc
+LMB_DEBOUNCE        EQU 1500*CONFIG_LOOP_SCALE
 
 ; How many times a write the device will not take is tried.  A log line is not
 ; under test and a line cut in the middle is a record lost.
@@ -390,6 +402,14 @@ COP_DDFSTOP         EQU $0094
 COP_DIWSTRT         EQU $008E
 COP_DIWSTOP         EQU $0090
 COP_COLOR00         EQU $0180
+
+; ---------------------------------------------------------------------------
+; CONFIG_AGA — an application built for AGA machines defines it as 1, and
+; a500_hw_init then sets the AGA display registers.
+; ---------------------------------------------------------------------------
+    ifnd CONFIG_AGA
+CONFIG_AGA          EQU 0
+    endc
 
 ; ---------------------------------------------------------------------------
 ; CONFIG_BOOT_CHIME — an application that plays a chime defines it as 1 and

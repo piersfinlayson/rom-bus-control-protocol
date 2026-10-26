@@ -36,6 +36,7 @@ See [`rbcp/README.md`](rbcp/README.md) for more details.
 | Tool | Purpose |
 | --- | --- |
 | [vasm](http://sun.hasenbraten.de/vasm/) `vasmm68k_mot` | builds the ROM images |
+| Python 3 | splits the 32-bit bootloader's image into hi/lo pairs |
 | [One ROM](https://onerom.org) `onerom` | used to program a One ROM |
 
 vasm ships as a source tarball. Build it with `make CPU=m68k SYNTAX=mot`.

@@ -40,8 +40,8 @@ at an RBCP release.
 2. Build it.
 
    - The 6502 images: cc65.
-   - The Amiga ones: `vasmm68k_mot`. `make images` writes both sizes under the
-     names a release uses, already in the device's byte order.
+   - The Amiga image: `vasmm68k_mot`, and Python 3 for the bootloader's 32-bit
+     images. `make images` writes the files to be published.
    - ROMSEL: Open Watcom. Use a DOS or Linux machine, or the artefact from the
      `build.yml` run.
 

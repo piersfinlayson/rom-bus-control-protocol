@@ -53,6 +53,14 @@ PEN14_RGB                   EQU $0333
 BANNER_FG                   EQU CONFIG_BANNER_BALL
 
 ; ---------------------------------------------------------------------------
+; The A1200 and A4000 are AGA, so the 32-bit build sets the AGA display
+; registers.
+; ---------------------------------------------------------------------------
+    ifeq CONFIG_BUS_WIDTH-32
+CONFIG_AGA                  EQU 1
+    endc
+
+; ---------------------------------------------------------------------------
 ; CONFIG_BOOT_CHIME — `make CHIME=0` drops it.  Paula plays it once as the
 ; menu comes up.  See chime_start.
 ; ---------------------------------------------------------------------------

@@ -26,6 +26,20 @@ str_d_prg:
 str_d_rsp:
         DC.B    "RSP:",0
         EVEN
+    ifeq CONFIG_RBCP_DEVICES-2
+str_d_word:
+        DC.B    "WORD:",0
+        EVEN
+str_d_hi:
+        DC.B    "HI",0
+        EVEN
+str_d_lo:
+        DC.B    "LO",0
+        EVEN
+msg_err_word:
+        DC.B    " word ",0
+        EVEN
+    endc
 
 ; The same labels for the pipe, with the line's opening text and its separator.
 msg_err_pre:

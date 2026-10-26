@@ -27,7 +27,7 @@ included before the `ORG`. `rbcp.s` must be placed where the code will execute
 
 RBCP is defined in terms of the address and data lines the *device* observes.
 On a 68K the CPU drives its own wider set, so the library maps between the two
-using five constants supplied by `rbcp_config.s`:
+using the constants `rbcp_config.s` supplies:
 
 | Constant | Meaning |
 |---|---|
@@ -36,6 +36,8 @@ using five constants supplied by `rbcp_config.s`:
 | `CONFIG_RBCP_DEV_MASK` | the low bits of a device word, `(1 << DEV_SHIFT) - 1` |
 | `CONFIG_RBCP_LANE_OFF` | CPU byte offset of this device's lane within one bus cycle |
 | `CONFIG_RBCP_ENDIAN_XOR` | Set where the host's byte order within a cycle runs opposite the specification's data-line assignment |
+| `CONFIG_RBCP_DEVICES` | how many devices share the bus, 1 where it isn't defined |
+| `CONFIG_RBCP_DEV_BASE` | the CPU address device offset 0 would be at, `CONFIG_ROM_BASE` where it isn't defined |
 
 From these `rbcp_defs.s` works out the CPU address of every command byte and
 every response header field, and converts the CPU-address placement in your
@@ -54,7 +56,8 @@ Write CPU addresses in your config and leave that conversion to it.
 | …low word | 2 | 1 | 1 | 2 | 1 |
 | Four 8-bit devices, 32-bit bus — lane L | 2 | 0 | 0 | L | 0 |
 
-The first row is the one this library is used with.
+The first row and the two 32-bit ×16 rows are the ones this library is used
+with.
 
 On a multi-device bus the address lines are shared, which means:
 
@@ -63,7 +66,14 @@ On a multi-device bus the address lines are shared, which means:
   in CPU address space at the bus stride
 - a host there polls every lane's header before treating a command as complete
 
-This library polls one, so it suits a single-device bus.
+Device k drives the lane `k << DEV_SHIFT` CPU bytes past `LANE_OFF`,
+so `LANE_OFF` is device 0's. With more than one:
+
+- every poll waits on each device in turn, each with the whole timeout
+- a command succeeds only where every device reports success
+- `RBCP_ERROR_DEV` holds the device a failure came from, or `RBCP_DEV_NONE`
+- `rbcp_read_data` reads the device `RBCP_DEV` holds
+- `rbcp_reset` sets `RBCP_DEV` to 0
 
 One device is singled out in three ways:
 
@@ -124,6 +134,7 @@ space, so a linear index into that section is not a linear CPU offset.
 |---|---|
 | `rbcp_region_addr` | CPU address of back-channel region byte `D0.W` |
 | `rbcp_read_data` | Copy `D0.W` data bytes from data offset `D1.W` into `CONFIG_RBCP_DATA_BUF` in linear order |
+| `rbcp_data_differ` | Compare every device's `D0.W` data bytes from data offset `D1.W` with device 0's. Built only with more than one device |
 
 A reply longer than `CONFIG_RBCP_DATA_BUF_SIZE` is read a window at a time,
 moving `D1` along. `GET_FLASH_SLOT_INFO_ALL` returns a 4-byte preamble then a
@@ -172,8 +183,8 @@ Arguments the caller writes to scratch RAM before the call are named by their
 | `rbcp_cmd_set_led` | `ARG0` mode, `ARG1/2/3` colour, `ARG4` brightness, `ARG5` period, `ARG6` hold, `D0.B` LED |
 
 `rbcp_cmd_enter_cmd_resp` takes its nine arguments from your config, and
-`rbcp_check_protocol_version` issues `GET_PROTO_VERSION` and judges the
-answer.
+`rbcp_check_protocol_version` issues `GET_PROTO_VERSION` and checks every
+device's answer.
 
 Pipes, auxiliary I/O and LEDs are optional. Ask the group's capability command
 first. A device that does not implement the group fails that command without

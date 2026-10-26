@@ -106,6 +106,16 @@ rbcp_send_cmd_core:
 .rsc_done:
         RTS
 
+; The registers the poll routines and rbcp_issue_cmd_body save.  With more
+; than one device a poll walks the devices with two pointers and a count.
+    ifgt CONFIG_RBCP_DEVICES-1
+RBCP_POLL_REGS  REG D1-D3/A0-A1
+RBCP_BODY_REGS  REG D1-D3/A0-A1/A5
+    else
+RBCP_POLL_REGS  REG D1-D2
+RBCP_BODY_REGS  REG D1-D2/A0/A5
+    endc
+
 ; ---------------------------------------------------------------------------
 ; rbcp_save_token — snapshot current token LSB to scratch RAM
 ;
@@ -113,28 +123,87 @@ rbcp_send_cmd_core:
 ; individual byte writes, so the 16-bit token must never be read as a word:
 ; a word read can catch the LSB updated and the MSB not.  The polling
 ; sequence needs only the LSB.
-; Clobbers (saved/restored): D0
+;
+; With more than one device every device's LSB goes to RBCP_SAVED_TOKS.
+; Clobbers (saved/restored): D0, or D2/A0-A1 with more than one device
 ; ---------------------------------------------------------------------------
+    ifgt CONFIG_RBCP_DEVICES-1
+rbcp_save_token:
+        MOVEM.L D2/A0-A1,-(SP)
+        BSR.S   rbcp_save_tokens_core
+        MOVEM.L (SP)+,D2/A0-A1
+        RTS
+
+; rbcp_save_tokens_core — rbcp_save_token without the guard.
+; Clobbers: D2/A0-A1
+rbcp_save_tokens_core:
+        LEA     (RBCP_TOKEN_LSB_ADDR).L,A0
+        LEA     (RBCP_SAVED_TOKS).W,A1
+        MOVEQ   #CONFIG_RBCP_DEVICES-1,D2
+.rstc_dev:
+        MOVE.B  (A0),(A1)+
+        ADDQ.L  #RBCP_DEV_STRIDE,A0
+        DBF     D2,.rstc_dev
+        RTS
+
+; rbcp_dev_failed — records in RBCP_ERROR_DEV the device a device loop below
+;                   stopped on.
+; Input : D3.B = that loop's DBF counter
+; Output: D0=1/Z=0
+rbcp_dev_failed:
+        MOVEQ   #CONFIG_RBCP_DEVICES-1,D0
+        SUB.B   D3,D0
+        MOVE.B  D0,RBCP_ERROR_DEV
+        MOVEQ   #1,D0
+        RTS
+    else
 rbcp_save_token:
         MOVEM.L D0,-(SP)
         MOVE.B  (RBCP_TOKEN_LSB_ADDR).L,D0
         MOVE.B  D0,RBCP_SAVED_TOK
         MOVEM.L (SP)+,D0
         RTS
+    endc
 
 ; ---------------------------------------------------------------------------
 ; rbcp_poll_token — poll until token LSB differs from the saved value
 ; Output: D0=0/Z=1 success, D0=1/Z=0 timeout
-; Clobbers (saved/restored): D1-D2
+; Clobbers (saved/restored): RBCP_POLL_REGS
 ;
-; rbcp_poll_token_core is the same code without the guard.
+; rbcp_poll_token_core is the same code without the guard.  With more than
+; one device it polls each in turn, each with the whole timeout, and on a
+; timeout records the device in RBCP_ERROR_DEV.
 ; ---------------------------------------------------------------------------
 rbcp_poll_token:
-        MOVEM.L D1-D2,-(SP)
+        MOVEM.L RBCP_POLL_REGS,-(SP)
         BSR.S   rbcp_poll_token_core
-        MOVEM.L (SP)+,D1-D2
+        MOVEM.L (SP)+,RBCP_POLL_REGS
         RTS
 
+    ifgt CONFIG_RBCP_DEVICES-1
+rbcp_poll_token_core:
+        LEA     (RBCP_TOKEN_LSB_ADDR).L,A0
+        LEA     (RBCP_SAVED_TOKS).W,A1
+        MOVEQ   #CONFIG_RBCP_DEVICES-1,D3
+.rptm_dev:
+        MOVE.B  (A1)+,D2
+        MOVE.L  #CONFIG_RBCP_POLL_TIMEOUT,D1
+        BEQ.S   .rptm_inf
+.rptm_loop:
+        CMP.B   (A0),D2
+        BNE.S   .rptm_next
+        SUBQ.L  #1,D1
+        BNE.S   .rptm_loop
+        BRA.S   rbcp_dev_failed
+.rptm_inf:
+        CMP.B   (A0),D2
+        BEQ.S   .rptm_inf
+.rptm_next:
+        ADDQ.L  #RBCP_DEV_STRIDE,A0
+        DBF     D3,.rptm_dev
+        MOVEQ   #0,D0
+        RTS
+    else
 rbcp_poll_token_core:
         MOVE.B  RBCP_SAVED_TOK,D2
         MOVE.L  #CONFIG_RBCP_POLL_TIMEOUT,D1
@@ -154,6 +223,7 @@ rbcp_poll_token_core:
 .rpt_ok:
         MOVEQ   #0,D0
         RTS
+    endc
 
 ; ---------------------------------------------------------------------------
 ; rbcp_poll_progress      — poll until progress = RBCP_COMPLETE
@@ -164,29 +234,71 @@ rbcp_poll_token_core:
 ; rbcp_poll_progress_core — the loop the three share, with no guard.
 ;                           Input: D1.L = poll turns, 0 to wait forever
 ; Output: D0=0/Z=1 success, D0=1/Z=0 timeout
-; Clobbers (saved/restored): D1-D2
+; Clobbers (saved/restored): RBCP_POLL_REGS
+;
+; With more than one device the core polls each as rbcp_poll_token_core
+; does.
 ; ---------------------------------------------------------------------------
 rbcp_poll_progress:
-        MOVEM.L D1-D2,-(SP)
+        MOVEM.L RBCP_POLL_REGS,-(SP)
         MOVE.L  #CONFIG_RBCP_POLL_TIMEOUT,D1
         BSR.S   rbcp_poll_progress_core
-        MOVEM.L (SP)+,D1-D2
+        MOVEM.L (SP)+,RBCP_POLL_REGS
         RTS
 
 rbcp_poll_progress_long:
-        MOVEM.L D1-D2,-(SP)
+        MOVEM.L RBCP_POLL_REGS,-(SP)
         MOVE.L  #CONFIG_RBCP_NV_POLL_TIMEOUT,D1
         BSR.S   rbcp_poll_progress_core
-        MOVEM.L (SP)+,D1-D2
+        MOVEM.L (SP)+,RBCP_POLL_REGS
         RTS
 
 rbcp_poll_progress_aux:
-        MOVEM.L D1-D2,-(SP)
+        MOVEM.L RBCP_POLL_REGS,-(SP)
         MOVE.L  #CONFIG_RBCP_AUX_POLL_TIMEOUT,D1
         BSR.S   rbcp_poll_progress_core
-        MOVEM.L (SP)+,D1-D2
+        MOVEM.L (SP)+,RBCP_POLL_REGS
         RTS
 
+    ifgt CONFIG_RBCP_DEVICES-1
+rbcp_poll_progress_core:
+        MOVE.L  D1,D0                   ; the turns, for each device afresh
+        LEA     (RBCP_PROGRESS_ADDR).L,A0
+        MOVE.B  #RBCP_COMPLETE,D2
+        MOVEQ   #CONFIG_RBCP_DEVICES-1,D3
+.rppm_dev:
+        MOVE.L  D0,D1
+        BEQ.S   .rppm_inf
+.rppm_loop:
+        CMP.B   (A0),D2
+        BEQ.S   .rppm_next
+        SUBQ.L  #1,D1
+        BNE.S   .rppm_loop
+        BRA     rbcp_dev_failed
+.rppm_inf:
+        CMP.B   (A0),D2
+        BNE.S   .rppm_inf
+.rppm_next:
+        ADDQ.L  #RBCP_DEV_STRIDE,A0
+        DBF     D3,.rppm_dev
+        MOVEQ   #0,D0
+        RTS
+
+; rbcp_check_response_core — compare every device's response field with
+; RBCP_STATUS_OK, recording the first that differs in RBCP_ERROR_DEV.
+; Output: D0=0/Z=1 success, D0=1/Z=0 failed
+; Clobbers: D0/D3/A0
+rbcp_check_response_core:
+        LEA     (RBCP_RESPONSE_ADDR).L,A0
+        MOVEQ   #CONFIG_RBCP_DEVICES-1,D3
+.rcrc_dev:
+        CMPI.B  #RBCP_STATUS_OK,(A0)
+        BNE     rbcp_dev_failed
+        ADDQ.L  #RBCP_DEV_STRIDE,A0
+        DBF     D3,.rcrc_dev
+        MOVEQ   #0,D0
+        RTS
+    else
 rbcp_poll_progress_core:
         MOVE.B  #RBCP_COMPLETE,D2   ; MOVEQ sign-extends a value above 127
         TST.L   D1
@@ -206,12 +318,20 @@ rbcp_poll_progress_core:
 .rpp_ok:
         MOVEQ   #0,D0
         RTS
+    endc
 
 ; ---------------------------------------------------------------------------
 ; rbcp_check_response — verify the response field = RBCP_STATUS_OK
 ; Output: D0=0/Z=1 success, D0=1/Z=0 failed
 ; Clobbers: D0
 ; ---------------------------------------------------------------------------
+    ifgt CONFIG_RBCP_DEVICES-1
+rbcp_check_response:
+        MOVEM.L D3/A0,-(SP)
+        BSR.S   rbcp_check_response_core
+        MOVEM.L (SP)+,D3/A0
+        RTS
+    else
 rbcp_check_response:
         MOVE.B  (RBCP_RESPONSE_ADDR).L,D0
         CMP.B   #RBCP_STATUS_OK,D0
@@ -221,6 +341,7 @@ rbcp_check_response:
 .rcr_fail:
         MOVEQ   #1,D0
         RTS
+    endc
 
 ; ---------------------------------------------------------------------------
 ; rbcp_issue_cmd_long_poll — full command issue cycle, NV progress timeout
@@ -231,10 +352,10 @@ rbcp_check_response:
 ; Implements the host polling sequence from the specification: snapshot the
 ; token LSB, send the command, poll the token, poll progress, read response.
 ;
-; The body guards D1-D2/A0/A5 once for the whole sequence and then calls the
-; unguarded cores, so the frame pays for one MOVEM pair rather than four.  The
-; token snapshot is one instruction and the response check two, so both are
-; written out rather than called.
+; The body guards RBCP_BODY_REGS once for the whole sequence and then calls
+; the unguarded cores, so the frame pays for one MOVEM pair rather than four.
+; For one device the token snapshot is one instruction and the response check
+; two, so both are written out rather than called.
 ;
 ; Input : D0.B = argument count
 ;         RBCP_GROUP, RBCP_CMD, RBCP_ARG0..N set by caller
@@ -258,12 +379,19 @@ rbcp_issue_cmd:
         ; fall through
 
 rbcp_issue_cmd_body:
-        MOVEM.L D1-D2/A0/A5,-(SP)
+        MOVEM.L RBCP_BODY_REGS,-(SP)
         CLR.B   RBCP_ERROR_CODE
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVE.B  #RBCP_DEV_NONE,RBCP_ERROR_DEV
+    endc
         MOVE.B  #CONFIG_RBCP_TIMEOUT_RETRIES,RBCP_RETRY_CNT
 
 .ric_tok_attempt:
+    ifgt CONFIG_RBCP_DEVICES-1
+        BSR     rbcp_save_tokens_core
+    else
         MOVE.B  (RBCP_TOKEN_LSB_ADDR).L,RBCP_SAVED_TOK  ; rbcp_save_token
+    endc
         MOVE.B  RBCP_ARG_COUNT,D0
         BSR     rbcp_send_cmd_core
         BSR     rbcp_poll_token_core    ; leaves Z set on success, so no TST
@@ -293,17 +421,21 @@ rbcp_issue_cmd_body:
         BRA.S   .ric_fail
 
 .ric_prog_ok:
+    ifgt CONFIG_RBCP_DEVICES-1
+        BSR     rbcp_check_response_core
+    else
         MOVE.B  (RBCP_RESPONSE_ADDR).L,D0   ; rbcp_check_response
         CMPI.B  #RBCP_STATUS_OK,D0
+    endc
         BNE.S   .ric_resp_fail
         MOVEQ   #0,D0
-        MOVEM.L (SP)+,D1-D2/A0/A5
+        MOVEM.L (SP)+,RBCP_BODY_REGS
         RTS
 .ric_resp_fail:
         MOVEQ   #RBCP_ERR_RESPONSE,D0
 .ric_fail:
         MOVE.B  D0,RBCP_ERROR_CODE
-        MOVEM.L (SP)+,D1-D2/A0/A5
+        MOVEM.L (SP)+,RBCP_BODY_REGS
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -349,6 +481,9 @@ rbcp_cmd_reset_noknock:
 ;   pause  — allow the reset to settle
 ;
 ; The stages are individually exported for diagnostics.
+;
+; With more than one device it also sets RBCP_DEV to 0 and RBCP_ERROR_DEV to
+; RBCP_DEV_NONE, since it is the first thing a host calls.
 ; Clobbers: nothing
 ; ---------------------------------------------------------------------------
 rbcp_reset_stage1:
@@ -368,6 +503,10 @@ rbcp_reset_stage3:
         BRA     rbcp_cmd_reset_noknock  ; tail call
 
 rbcp_reset:
+    ifgt CONFIG_RBCP_DEVICES-1
+        CLR.B   RBCP_DEV
+        MOVE.B  #RBCP_DEV_NONE,RBCP_ERROR_DEV
+    endc
         BSR     rbcp_reset_stage1
         BSR     rbcp_pause
         BSR     rbcp_reset_stage2
@@ -484,6 +623,7 @@ rbcp_cmd_exit_cmd_resp_ack:
 ; ---------------------------------------------------------------------------
 ; rbcp_region_addr — CPU address of one back-channel region byte
 ; Input : D0.W = region byte index N
+;         RBCP_DEV = the device, where there is more than one
 ; Output: A0   = CPU address of that byte
 ; Clobbers (saved/restored): D1-D2
 ; ---------------------------------------------------------------------------
@@ -503,6 +643,14 @@ rbcp_region_addr:
     ifne CONFIG_RBCP_LANE_OFF
         ADDI.W  #CONFIG_RBCP_LANE_OFF,D1     ; this device's lane on the bus
     endc
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVEQ   #0,D2
+        MOVE.B  RBCP_DEV,D2
+    ifne CONFIG_RBCP_DEV_SHIFT
+        LSL.W   #CONFIG_RBCP_DEV_SHIFT,D2
+    endc
+        ADD.W   D2,D1
+    endc
         MOVEA.L #CONFIG_RBCP_BCH_ABS,A0
         ADDA.W  D1,A0
         MOVEM.L (SP)+,D1-D2
@@ -521,6 +669,8 @@ rbcp_region_addr:
 ;
 ; The offset lets a caller read a reply longer than the buffer a window at a
 ; time.  The device holds the whole reply until the next command.
+;
+; With more than one device it reads the device in RBCP_DEV.
 ; ---------------------------------------------------------------------------
 rbcp_read_data:
         MOVEM.L D0-D4/A0-A1,-(SP)
@@ -537,6 +687,49 @@ rbcp_read_data:
         DBF     D4,.rrd_loop
         MOVEM.L (SP)+,D0-D4/A0-A1
         RTS
+
+    ifgt CONFIG_RBCP_DEVICES-1
+; ---------------------------------------------------------------------------
+; rbcp_data_differ — whether the devices' replies differ over a window of the
+;                    data section
+; Input : D0.W = number of data bytes to compare (at least 1)
+;         D1.W = data byte offset to start at
+; Output: D0=0/Z=1 where every device holds what device 0 does, D0=1/Z=0
+;         where one differs
+; Clobbers: D0
+;
+; Commands reach every device alike, so the replies differ only where the
+; devices themselves do.  Call it after a command succeeds, as with rbcp_read_data.
+; ---------------------------------------------------------------------------
+rbcp_data_differ:
+        MOVEM.L D1-D4/A0,-(SP)
+        MOVE.B  RBCP_DEV,D4
+        CLR.B   RBCP_DEV
+        MOVE.W  D0,D3
+        SUBQ.W  #1,D3               ; DBF counter
+        ADDQ.W  #8,D1
+.rdd_byte:
+        MOVE.W  D1,D0
+        BSR     rbcp_region_addr    ; A0 = the byte on device 0
+        MOVE.B  (A0),D2
+        MOVEQ   #CONFIG_RBCP_DEVICES-2,D0
+.rdd_dev:
+        ADDQ.L  #RBCP_DEV_STRIDE,A0 ; the same byte on the next device
+        CMP.B   (A0),D2
+        BNE.S   .rdd_differ
+        DBF     D0,.rdd_dev
+        ADDQ.W  #1,D1
+        DBF     D3,.rdd_byte
+        MOVEQ   #0,D0
+        BRA.S   .rdd_out
+.rdd_differ:
+        MOVEQ   #1,D0
+.rdd_out:
+        MOVE.B  D4,RBCP_DEV
+        MOVEM.L (SP)+,D1-D4/A0
+        TST.B   D0
+        RTS
+    endc
 
 ; ===========================================================================
 ; Read-group command helpers (group 0x01)
@@ -635,42 +828,64 @@ rbcp_cmd_slot_peek:
 ; this library's.  Major must match exactly.  With major 0 the minor must
 ; match and the patch be at least ours.  Above major 0 a greater minor is
 ; enough, and an equal one needs the patch at least ours.
+;
+; With more than one device every device is checked and a failure is recorded
+; in RBCP_ERROR_DEV.  On success CONFIG_RBCP_DATA_BUF holds device 0's reply.
 ; Output: D0=0/Z=1 compatible, D0=1/Z=0 not
 ; Clobbers (saved/restored): D1-D2/A0-A1
 ; ---------------------------------------------------------------------------
 rbcp_check_protocol_version:
         MOVEM.L D1-D2/A0-A1,-(SP)
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVE.B  RBCP_DEV,D2
+    endc
         BSR     rbcp_cmd_get_proto_version
         TST.B   D0
         BNE.S   .rcpv_fail
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVE.B  #CONFIG_RBCP_DEVICES-1,RBCP_DEV
+.rcpv_dev:
+    endc
         MOVEQ   #4,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data          ; major, minor, patch, reserved
         MOVEA.L #CONFIG_RBCP_DATA_BUF,A0
         MOVE.B  (A0),D1                 ; device major
         CMPI.B  #RBCP_SUPPORTED_MAJOR,D1
-        BNE.S   .rcpv_fail
+        BNE.S   .rcpv_bad
     ifeq RBCP_SUPPORTED_MAJOR
         MOVE.B  1(A0),D1                ; major 0: minor must match
         CMPI.B  #RBCP_SUPPORTED_MINOR,D1
-        BNE.S   .rcpv_fail
+        BNE.S   .rcpv_bad
         MOVE.B  2(A0),D1                ; patch at least ours
         CMPI.B  #RBCP_SUPPORTED_PATCH,D1
-        BCS.S   .rcpv_fail
+        BCS.S   .rcpv_bad
     else
         MOVE.B  1(A0),D1                ; device minor at least ours
         CMPI.B  #RBCP_SUPPORTED_MINOR,D1
-        BCS.S   .rcpv_fail
+        BCS.S   .rcpv_bad
         BNE.S   .rcpv_ok                ; device minor greater, patch irrelevant
         MOVE.B  2(A0),D1
         CMPI.B  #RBCP_SUPPORTED_PATCH,D1
-        BCS.S   .rcpv_fail
+        BCS.S   .rcpv_bad
     endc
 .rcpv_ok:
+    ifgt CONFIG_RBCP_DEVICES-1
+        SUBQ.B  #1,RBCP_DEV
+        BCC.S   .rcpv_dev
+        MOVE.B  D2,RBCP_DEV
+    endc
         MOVEQ   #0,D0
         MOVEM.L (SP)+,D1-D2/A0-A1
         RTS
+.rcpv_bad:
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVE.B  RBCP_DEV,RBCP_ERROR_DEV
+    endc
 .rcpv_fail:
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVE.B  D2,RBCP_DEV
+    endc
         MOVEQ   #1,D0
         MOVEM.L (SP)+,D1-D2/A0-A1
         RTS

@@ -65,14 +65,17 @@ The font is found through `-I ../amiga-common`.
 | `draw_title_at` | Draws `str_title` at `D2.B` = row. `err_halt` calls it |
 | `err_msgs` | A `DC.L` table of message pointers the error number in `D0` indexes |
 | `chime_stop` | Stops the chime. An application that sets `CONFIG_BOOT_CHIME` to 1 needs it |
+| `CONFIG_AGA` | Optional. 1 makes `a500_hw_init` set the AGA display registers |
+| `CONFIG_LOOP_SCALE` | Optional. Multiplies every loop count |
 
 Variables sit at fixed offsets from `VAR_BASE`. `amiga_defs.s` lists the ones
 the code here owns: `VAR_BASE`+0 to +24, `APP_BASE`+$158 to +$15A,
-`APP_BASE`+$160 to +$163 and `APP_BASE`+$170 to +$177. An application's own
-variables go above all four — `amiga-rbcp-stress` starts at `APP_BASE`+$400.
-Chip RAM holds whatever it held at reset, so an application clears its own
-block and `CONFIG_RBCP_DATA_BUF` at startup, and clears or sets the shared
-variables as well. `err_halt` fills `APP_BASE`+$170 to +$177 itself.
+`APP_BASE`+$160 to +$163 and `APP_BASE`+$170 to +$177, or to +$178 with more
+than one RBCP device. An application's own variables go above all four —
+`amiga-rbcp-stress` starts at `APP_BASE`+$400. Chip RAM holds whatever it held
+at reset, so an application clears its own block and `CONFIG_RBCP_DATA_BUF` at
+startup, and clears or sets the shared variables as well. `err_halt` fills the
+block from `APP_BASE`+$170 itself.
 
 ## The palette
 
@@ -175,5 +178,6 @@ goes out. The stump then stands as a short line.
 ## Errors
 
 `err_halt` takes an error number in `D0`, logs the raw device state, turns the
-screen red and stops. There is no way back. The session is in an unknown state
-and no image has loaded.
+screen red and stops. With two devices the screen and the log also identify
+the one that failed, by the word of the bus it serves. There is no way back.
+The session is in an unknown state and no image has loaded.

@@ -1,8 +1,8 @@
 # Amiga Bootloader Test Harness
 
-Runs the built bootloader on an emulated Amiga 500 against a fake RBCP device
-written in [MAME](https://mamedev.org)'s Lua, so the menu can be driven without
-hardware.
+Runs the built bootloader on an emulated Amiga 500, 1200, 3000, 4000 or 4000T
+against a fake RBCP device written in [MAME](https://mamedev.org)'s Lua, so the
+menu can be driven without hardware.
 
 `rbcp_dev_amiga.lua` watches every read in the Kickstart window, decodes the
 RBCP command stream out of the addresses, and answers by substituting bytes on
@@ -17,6 +17,19 @@ and never a byte address. One command byte is two CPU address bytes. Region
 byte N sits at CPU address `BCH_ABS + (N xor 1)`, so a word read answers with
 region bytes `rel+1` and `rel` high byte first, which covers both lanes without
 looking at the mask.
+
+On a 32-bit Amiga there is a device in each socket. Every read reaches both, so
+each decodes the same commands. One command byte is four CPU address bytes.
+Each keeps its own back-channel and answers in its own word of the long, the
+high word's device in bits 31-16. Their log lines start `[hi]` and `[lo]`. Both
+receive every pipe write, and only the high word's copy is printed.
+
+A device checks the command page and the back-channel start `ENTER_CMD_RESP`
+sends against where the CPU reads them, and logs a mismatch. It then decodes
+commands only on the page it was sent and answers only at the back-channel
+start it was sent, as a One ROM does, so a bootloader that sends the wrong
+values times out. A 27C400 pair is served as an A1200 wires it, with the CPU
+reading the top half.
 
 The device it pretends to be has five flash slots, two RAM slots, one pipe,
 sixteen bytes of writable non-volatile storage and two LEDs of which the second
@@ -40,13 +53,18 @@ state behind an error.
 From this directory:
 
 ```bash
-./run.sh <rom-dir>                    # the 256 KB build, a 27C200 menu
-RBCP_TARGET=512 ./run.sh <rom-dir>    # the 512 KB build, a 27C400 menu
+./run.sh <rom-dir>                        # the 256 KB build, a 27C200 menu
+RBCP_TARGET=512 ./run.sh <rom-dir>        # the 512 KB build, a 27C400 menu
+RBCP_TARGET=a1200 ./run.sh <rom-dir>      # the 32-bit 27C200 pair on an A1200
+RBCP_TARGET=a1200-512 ./run.sh <rom-dir>  # the 32-bit 27C400 pair on an A1200
 ```
+
+`a3000`, `a4000` and `a4000t` run the 32-bit 27C200 pair on those machines.
 
 Build first. `make` writes `build/amiga_boot.bin` and `make ROM_KB=512` writes
 the same name, so `run.sh` checks the size on disk and names the `make` to run
-when the wrong build is there.
+when the wrong build is there. The 32-bit targets run the pairs `make BUS=32`
+and `make BUS=32 ROM_KB=512` write.
 
 `<rom-dir>` holds the Amiga ROM files, named as MAME names them — see the table
 below. There is no default and nothing is read from the environment. Without
@@ -116,13 +134,26 @@ by the bootloader. `run.sh` checks the size of what it finds and says when it
 finds nothing. MAME never sees these files, so it does not hash them, and
 `RBCP_SWITCH_IMAGE` names one directly.
 
+The 32-bit machines run with the A2000 keyboard, which uses the same dump. On
+the A1200 `run.sh` fits it in place of the A1200's own keyboard, whose MCU dump
+isn't needed.
+
+For a 32-bit target `run.sh` looks for a pair of halves under MAME's names for
+another Kickstart and joins them, for example `391523-01.u6a` and
+`391524-01.u6b` on an A1200. `stock_pairs` in `run.sh` lists the pairs for each
+machine. With a 32-bit target `RBCP_SWITCH_IMAGE` is a whole 512 KB Kickstart,
+as one file.
+
+MAME's A3000 doesn't boot Kickstart 3.1 even without the bootloader, so its
+hand-over can't be followed.
+
 ## Settings
 
 Everything is an environment variable:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `RBCP_TARGET` | 256 | `256` runs the 27C200 build, `512` the 27C400 build. Both on an `a500`. |
+| `RBCP_TARGET` | 256 | `256` runs the 27C200 build, `512` the 27C400 build, both on an `a500`. `a1200`, `a3000`, `a4000` and `a4000t` run the 32-bit 27C200 pair on that machine, and `a1200-512` the 27C400 pair on an `a1200`. |
 | `RBCP_FRAMES` | 600 | Frame to stop the run on. |
 | `RBCP_DIRTY` | `count` | The byte chip RAM is filled with before the application sets its variables up. `count` steps `$FF` down to `$01`, a hex byte such as `FF` fills with that byte throughout, and `off` leaves chip RAM as MAME zeroes it. |
 | `RBCP_MOUSE` | unset | Frame the held mouse buttons come up. They are held from the first frame, the gesture that asks for the menu. |
@@ -145,8 +176,15 @@ Everything is an environment variable:
 | `RBCP_NO_AUX` | unset | Give the device no auxiliary pins, so `GET_AUX_CAPABILITY` reports a group count of zero and every other command in the group fails. |
 | `RBCP_SEND` | unset | A line the far end sends unprompted. `\n` in it is a line feed. |
 | `RBCP_SWITCH_IMAGE` | unset | A ROM image to serve once the device has switched slots, in place of the one `run.sh` finds for itself. |
-| `RBCP_SNAP` | unset | Save a screenshot at the end of the run, to `build/a500/`, numbered from `0000.png`. MAME runs in a window when this is set. |
+| `RBCP_LAG` | 0 | Reads of the progress byte that answer pending after every command, as a device slower than its neighbour. A command that arrives before they have run out is logged. |
+| `RBCP_SNAP` | unset | Save a screenshot at the end of the run, to `build/<machine>/`, numbered from `0000.png`. MAME runs in a window when this is set. |
 | `RBCP_DEBUG` | unset | Print every command byte the device sees. |
+
+On a 32-bit Amiga `RBCP_DEAF`, `RBCP_REFUSE`, `RBCP_LATE_RSP`, `RBCP_LAG`,
+`RBCP_SLOTS`, `RBCP_RAM_SLOTS`, `RBCP_ACTIVE_RAM`, `RBCP_NV`, `RBCP_NV_FAIL`,
+`RBCP_PROTO`, `RBCP_UNIT_NAME`, `RBCP_COMM` and `RBCP_UNSIGNED` each have a form
+ending `_LO`, which applies to the low word's device in place of the one
+without it. The low word's device has a chip ID of its own.
 
 The progress byte and the response byte share a word, and a 68000 cannot read
 one without the other crossing the bus. `RBCP_LATE_RSP` counts word reads, so
@@ -178,4 +216,11 @@ Refuse `GET_FLASH_SLOT_COUNT` and photograph the error screen:
 
 ```bash
 RBCP_REFUSE=01:00 RBCP_SNAP=1 RBCP_FRAMES=400 ./run.sh <rom-dir>
+```
+
+Run the 32-bit build with the low word's device answering late and boot the
+third entry from the menu:
+
+```bash
+RBCP_TARGET=a1200 RBCP_LAG_LO=300 RBCP_MOUSE=200 RBCP_KEYS='240:3;270:Enter' ./run.sh <rom-dir>
 ```

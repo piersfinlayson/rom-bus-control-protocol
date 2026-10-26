@@ -19,11 +19,39 @@ err_halt:
         MOVE.B  RBCP_ERROR_CODE,VAR_ES_STAGE
         MOVE.B  RBCP_GROUP,VAR_ES_SGRP
         MOVE.B  RBCP_CMD,VAR_ES_SCMD
+    ifgt CONFIG_RBCP_DEVICES-1
+        ; The header comes from the device that failed, or device 0 where none
+        ; did.
+        MOVE.B  RBCP_ERROR_DEV,D0
+        MOVE.B  D0,VAR_ES_DEV
+        CMPI.B  #RBCP_DEV_NONE,D0
+        BNE.S   .eh_dev
+        MOVEQ   #0,D0
+.eh_dev:
+        MOVE.B  D0,RBCP_DEV
+        MOVEQ   #0,D0
+        BSR     rbcp_region_addr
+        MOVE.B  (A0),VAR_ES_DGRP
+        MOVEQ   #1,D0
+        BSR     rbcp_region_addr
+        MOVE.B  (A0),VAR_ES_DCMD
+        MOVEQ   #2,D0
+        BSR     rbcp_region_addr
+        MOVE.B  (A0),VAR_ES_TOK
+        MOVEQ   #4,D0
+        BSR     rbcp_region_addr
+        MOVE.B  (A0),VAR_ES_PRG
+        MOVEQ   #5,D0
+        BSR     rbcp_region_addr
+        MOVE.B  (A0),VAR_ES_RSP
+        CLR.B   RBCP_DEV
+    else
         MOVE.B  (RBCP_LASTCMD_GRP_ADDR).L,VAR_ES_DGRP
         MOVE.B  (RBCP_LASTCMD_CMD_ADDR).L,VAR_ES_DCMD
         MOVE.B  (RBCP_TOKEN_LSB_ADDR).L,VAR_ES_TOK
         MOVE.B  (RBCP_PROGRESS_ADDR).L,VAR_ES_PRG
         MOVE.B  (RBCP_RESPONSE_ADDR).L,VAR_ES_RSP
+    endc
         BSR     log_error               ; to the pipe, where there is one
     ifne CONFIG_BOOT_CHIME
         BSR     chime_stop              ; nothing left running behind the error
@@ -61,7 +89,9 @@ err_halt:
 ; the group and command the application was sending.  DGRP/DCMD are the last
 ; command the device says it processed, so a shifted frame shows as the device
 ; answering something other than what was asked.  TOK/PRG/RSP are the response
-; header.
+; header.  With two devices, WORD is the one that failed, HI for the device
+; serving the high word and LO for the low, and the header is that device's.
+; It is left out where neither failed.
 ; Clobbers: nothing
 ; ---------------------------------------------------------------------------
 draw_err_diag:
@@ -80,6 +110,17 @@ draw_err_diag:
         LEA     (str_d_cmd).L,A0
         MOVE.B  VAR_ES_SCMD,D0
         BSR     diag_field
+    ifeq CONFIG_RBCP_DEVICES-2
+        CMPI.B  #RBCP_DEV_NONE,VAR_ES_DEV
+        BEQ.S   .ded_row2
+        ADDQ.B  #1,D1
+        LEA     (str_d_word).L,A0
+        BSR     screen_print
+        ADDQ.B  #5,D1                   ; past "WORD:"
+        BSR     err_word
+        BSR     screen_print
+.ded_row2:
+    endc
 
         MOVE.B  #ERROR_ROW+5,D2
         MOVE.B  #ERROR_COL,D1
@@ -105,6 +146,18 @@ draw_err_diag:
 
         MOVEM.L (SP)+,D0-D2/A0
         RTS
+
+    ifeq CONFIG_RBCP_DEVICES-2
+; err_word — A0 = "HI" or "LO", the word the failing device serves.
+; Clobbers: nothing else
+err_word:
+        LEA     (str_d_hi).L,A0
+        TST.B   VAR_ES_DEV
+        BEQ.S   .ew_out
+        LEA     (str_d_lo).L,A0
+.ew_out:
+        RTS
+    endc
 
 ; diag_field — A0 = label, D0.B = value, D1.B = column, D2.B = row.  Prints
 ; the label then the value as two hex digits, and leaves D1 past both so the
@@ -180,6 +233,15 @@ log_error:
         BSR     pipe_puts
         MOVE.B  VAR_ES_SCMD,D0
         BSR     log_hex_byte
+    ifeq CONFIG_RBCP_DEVICES-2
+        CMPI.B  #RBCP_DEV_NONE,VAR_ES_DEV
+        BEQ.S   .lge_dev
+        LEA     (msg_err_word).L,A0     ; " word "
+        BSR     pipe_puts
+        BSR     err_word
+        BSR     pipe_puts
+.lge_dev:
+    endc
         LEA     (msg_err_dev).L,A0      ; " dev "
         BSR     pipe_puts
         MOVE.B  VAR_ES_DGRP,D0

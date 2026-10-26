@@ -31,6 +31,11 @@ The Amiga bootloader is in `amiga-boot/`, the RBCP library it links in
   contact bounce. `LMB_DEBOUNCE` sets how long the button reads up before
   another press is taken.
 
+## The 32-bit build
+
+MAME's A4000 runs loops 9.1 times faster than its A500, so the 32-bit build
+multiplies every loop count by 10 (`CONFIG_LOOP_SCALE`).
+
 ## vasm
 
 - **An operand ends at the first space.** `X EQU FOOTER_COL + 11` silently
@@ -43,9 +48,11 @@ The Amiga bootloader is in `amiga-boot/`, the RBCP library it links in
 
 ## The bus mapping
 
-`rbcp/README.md` has the model. In this configuration back-channel region byte
-N sits at CPU `BCH_ABS + (N XOR 1)`. The code is `rbcp_read_data` and
-`rbcp_region_addr` in `rbcp/rbcp.s`, driven by five constants in
+`rbcp/README.md` has the model. In the 16-bit build back-channel region byte
+N sits at CPU `BCH_ABS + (N XOR 1)`. In the 32-bit build it sits at
+`BCH_ABS + ((N >> 1) << 2) + ((N & 1) XOR 1)` on the high word's device, and 2
+bytes further on for the low word's. The code is `rbcp_read_data` and
+`rbcp_region_addr` in `rbcp/rbcp.s`, driven by the constants in
 `amiga-boot/rbcp_config.s`.
 
 ## Building the Amiga bootloader with parts left out

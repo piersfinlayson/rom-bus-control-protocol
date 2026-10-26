@@ -26,6 +26,12 @@
 ;   $FFFC00  back-channel region (512 bytes, zeroed)
 ;   $FFFE00  command page        (512 bytes, zeroed)
 ;
+; The 32-bit build is 512 KB from $F80000, with the back-channel region at
+; $FFF800 and the command page at $FFFC00.  A device on each half of the bus
+; serves one word of every long.  Commands reach both and the RBCP library
+; polls both.  Replies are read from the high word's device except on the low
+; word's info page and where the two are compared.
+;
 ; Why the split?
 ;   The knock and command sequences work by triggering specific ROM address
 ;   reads.  Code fetched from that same ROM puts its own instruction-fetch
@@ -168,6 +174,12 @@ boot_ram_entry:
         MOVEQ   #ERR_VERSION,D0
         BRA     err_halt
 .ok_ver:
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVEQ   #4,D0
+        MOVEQ   #0,D1
+        MOVEQ   #ERR_FW_DIFFER,D3
+        BSR     devices_agree
+    endc
         ; The minor and patch, for the one-slot check below.
         MOVE.B  (CONFIG_RBCP_DATA_BUF+1).W,D2
         LSL.W   #8,D2
@@ -182,6 +194,10 @@ boot_ram_entry:
         MOVEQ   #4,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVEQ   #ERR_TYPE_DIFFER,D3
+        BSR     devices_agree
+    endc
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_RAM_TOTAL).W,VAR_TOTAL_RAM
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_RAM_ACTIVE).W,VAR_ACTIVE_RAM
         MOVE.B  VAR_TOTAL_RAM,D0
@@ -214,6 +230,10 @@ boot_ram_entry:
         MOVEQ   #1,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data
+    ifgt CONFIG_RBCP_DEVICES-1
+        BSR     rbcp_data_differ        ; a write would fail on one of them
+        BNE.S   .pipe_done
+    endc
         TST.B   (CONFIG_RBCP_DATA_BUF+RBCP_PIPE_CAP_COUNT).W
         BEQ.S   .pipe_done
         MOVEQ   #0,D0                   ; the bootloader logs through pipe 0
@@ -244,6 +264,10 @@ boot_ram_entry:
         MOVEQ   #1,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data
+    ifgt CONFIG_RBCP_DEVICES-1
+        BSR     rbcp_data_differ        ; an RGB LED on every device or none
+        BNE.S   .led_next
+    endc
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_LED_INFO_TYPE).W,D0
         CMPI.B  #RBCP_LED_TYPE_RGB,D0
         BNE.S   .led_next
@@ -265,6 +289,10 @@ boot_ram_entry:
         MOVEQ   #1,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data
+    ifgt CONFIG_RBCP_DEVICES-1
+        MOVEQ   #ERR_COUNT_DIFFER,D3
+        BSR     devices_agree
+    endc
         MOVE.B  (CONFIG_RBCP_DATA_BUF).W,VAR_TOTAL_FLASH
         CMPI.B  #2,VAR_TOTAL_FLASH      ; slot 0 is this bootloader
         BCC.S   .ok_flashcount
@@ -310,6 +338,10 @@ boot_ram_entry:
         MOVEQ   #1,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data
+    ifgt CONFIG_RBCP_DEVICES-1
+        BSR     rbcp_data_differ        ; treated as nothing stored where they disagree
+        BNE.S   .nv_done
+    endc
         MOVE.B  (CONFIG_RBCP_DATA_BUF).W,D0
         MOVE.B  D0,VAR_NV_STORED
         BEQ.S   .nv_done                ; 0 = never stored
@@ -520,9 +552,15 @@ release_step:
 ; nothing.  It is the same length every time and it runs once.
 release_settle:
         MOVEM.L D0,-(SP)
+    ifgt RELEASE_SETTLE-$FFFF
+        MOVE.L  #RELEASE_SETTLE,D0
+.rst_loop:
+        SUBQ.L  #1,D0
+    else
         MOVE.W  #RELEASE_SETTLE,D0
 .rst_loop:
         SUBQ.W  #1,D0
+    endc
         BNE.S   .rst_loop
         MOVEM.L (SP)+,D0
         RTS
@@ -549,10 +587,22 @@ take_key:
         TST.B   D0
         RTS
 
-; state_info — any key or click goes back to the menu.
+; state_info — any key or click goes back to the menu.  With more than one
+; device it moves on to the next device's page first.  RBCP_DEV holds the
+; device on screen.
 state_info:
         BSR.S   take_key
+    ifgt CONFIG_RBCP_DEVICES-1
+        BEQ.S   .sti_out
+        ADDQ.B  #1,RBCP_DEV
+        CMPI.B  #CONFIG_RBCP_DEVICES,RBCP_DEV
+        BCS     info_open
+        CLR.B   RBCP_DEV
+        BRA     info_close
+.sti_out:
+    else
         BNE     info_close
+    endc
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -717,7 +767,7 @@ boot_into_rom:
 ; copy before the machine reads the new ROM.  Roughly 650ms at 7MHz.
 boot_settle:
         MOVEM.L D0-D1,-(SP)
-        MOVEQ   #6,D0
+        MOVEQ   #6*CONFIG_LOOP_SCALE,D0
 .bs_o:  MOVE.W  #$FFFF,D1
 .bs_i:  DBF     D1,.bs_i
         DBF     D0,.bs_o
@@ -727,6 +777,28 @@ boot_settle:
 ; ===========================================================================
 ; Menu drawing
 ; ===========================================================================
+
+    ifgt CONFIG_RBCP_DEVICES-1
+; ---------------------------------------------------------------------------
+; devices_agree — stop with error D3.B unless every device's reply matches
+;                 device 0's
+; Input : D0.W = number of data bytes to compare
+;         D1.W = data byte offset to start at
+;         D3.B = error number
+; Clobbers: nothing
+;
+; The halves of an image load and switch together, so the devices must agree.
+; ---------------------------------------------------------------------------
+devices_agree:
+        MOVEM.L D0,-(SP)
+        BSR     rbcp_data_differ
+        MOVEM.L (SP)+,D0
+        BNE.S   .da_differ
+        RTS
+.da_differ:
+        MOVE.B  D3,D0
+        BRA     err_halt
+    endc
 
 ; ---------------------------------------------------------------------------
 ; nv_locate — where a remembered byte lives, and what to name as staging.
@@ -751,6 +823,10 @@ nv_locate:
         MOVEQ   #4,D0
         MOVEQ   #0,D1
         BSR     rbcp_read_data
+    ifgt CONFIG_RBCP_DEVICES-1
+        BSR     rbcp_data_differ        ; one would store what the other cannot
+        BNE.S   .nl_fail
+    endc
 
         MOVEQ   #0,D3
         MOVE.B  (CONFIG_RBCP_DATA_BUF+RBCP_NV_CAP_SIZE_HI).W,D3
@@ -1068,7 +1144,8 @@ text_clear:
         MOVE.B  #PEN_TEXT,VAR_PEN
         RTS
 
-; info_open — the info screen up in place of the list.
+; info_open — the info screen up in place of the list, for the device in
+; RBCP_DEV where there is more than one.
 ; Clobbers: D0-D2/A0
 info_open:
     ifne BANNER_FG
@@ -1077,6 +1154,12 @@ info_open:
         BSR.S   text_clear
         BSR     info_draw
         LEA     (str_info_footer).L,A0
+    ifgt CONFIG_RBCP_DEVICES-1
+        CMPI.B  #CONFIG_RBCP_DEVICES-1,RBCP_DEV
+        BEQ.S   .io_last
+        LEA     (str_info_next).L,A0
+.io_last:
+    endc
         BSR     footer_show
     ifne BANNER_FG
         BSR     fg_text_update
@@ -1149,6 +1232,17 @@ info_draw:
 .id_up_next:
         TST.B   (A0)+
         BNE.S   .id_up
+    ifeq CONFIG_RBCP_DEVICES-2
+        ; The word this device serves, after its type.
+        SUBQ.L  #1,A0
+        LEA     (str_info_hi).L,A1
+        TST.B   RBCP_DEV
+        BEQ.S   .id_word
+        LEA     (str_info_lo).L,A1
+.id_word:
+        MOVE.B  (A1)+,(A0)+
+        BNE.S   .id_word
+    endc
         LEA     (CONFIG_RBCP_DATA_BUF).W,A0
         BSR     info_line
 .id_titled:
@@ -2594,6 +2688,16 @@ FOOTER_COL          EQU (SCREEN_COLS-(str_footer_end-str_footer-1))/2
 ; INFO_VALUE_COL.
 str_info_footer:
         DC.B    "BACK: ANY KEY/CLICK",0
+    ifgt CONFIG_RBCP_DEVICES-1
+str_info_next:
+        DC.B    "NEXT: ANY KEY/CLICK",0
+    endc
+    ifeq CONFIG_RBCP_DEVICES-2
+str_info_hi:
+        DC.B    " - HIGH WORD",0
+str_info_lo:
+        DC.B    " - LOW WORD",0
+    endc
 str_one_rom:
         DC.B    "One ROM",0
 str_lbl_name:
@@ -2684,11 +2788,25 @@ msg_err_5:
         EVEN
 msg_err_6:
         DC.B    "DEVICE FIRMWARE TOO OLD - UPDATE IT",0
+    ifgt CONFIG_RBCP_DEVICES-1
+        EVEN
+msg_err_7:
+        DC.B    "ROM FIRMWARE VERSIONS DIFFER",0
+        EVEN
+msg_err_8:
+        DC.B    "ROM TYPES OR BOARDS DIFFER",0
+        EVEN
+msg_err_9:
+        DC.B    "ROM IMAGE COUNTS DIFFER",0
+    endc
         EVEN
 err_msgs:
         DC.L    msg_err_0, msg_err_1, msg_err_2
         DC.L    msg_err_3, msg_err_4, msg_err_5
         DC.L    msg_err_6
+    ifgt CONFIG_RBCP_DEVICES-1
+        DC.L    msg_err_7, msg_err_8, msg_err_9
+    endc
 
         INCLUDE "../amiga-common/amiga_diag_data.s"
 

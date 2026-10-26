@@ -4,6 +4,25 @@
 ; Target: Amiga A500 (68000, 16-bit bus) with a single word-organised (x16)
 ; Kickstart ROM.  Both 256 KB and 512 KB Kickstart sizes are supported.
 ; Change CONFIG_ROM_KB below and everything else follows.
+;
+; CONFIG_BUS_WIDTH 32 targets a 32-bit Amiga, the A1200 for example, with a
+; pair of x16 devices each serving half of a 512 KB Kickstart.  `make BUS=32`
+; sets it.
+; CONFIG_DEV_KB is then each device's size, 256 for a 27C200 or 512 for a
+; 27C400.
+
+    ifnd CONFIG_BUS_WIDTH
+CONFIG_BUS_WIDTH            EQU 16              ; 16 or 32
+    endc
+
+; Every loop count is multiplied by CONFIG_LOOP_SCALE, because a 32-bit Amiga
+; runs a loop faster than the A500.  MAME runs the RBCP poll loop up to 9.1
+; times as fast, on an A4000.
+    ifeq CONFIG_BUS_WIDTH-32
+CONFIG_LOOP_SCALE           EQU 10
+    else
+CONFIG_LOOP_SCALE           EQU 1
+    endc
 
 ; ---------------------------------------------------------------------------
 ; ROM geometry
@@ -17,6 +36,16 @@
 CONFIG_ROM_KB               EQU 256             ; 256 or 512
     endc
 CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
+
+; A 27C400 has one more address line than half a Kickstart uses, A17 on
+; pin 1.  The A1200 wires it to CPU A19, which is high from $F80000 to
+; $FFFFFF, so the CPU reads the top half of each device.
+    ifeq CONFIG_BUS_WIDTH-32
+    ifnd CONFIG_DEV_KB
+CONFIG_DEV_KB               EQU 256             ; 256 or 512
+    endc
+CONFIG_RBCP_DEV_BASE        EQU ($1000000-(CONFIG_DEV_KB*1024*2))
+    endc
 
 ; ---------------------------------------------------------------------------
 ; Bus mapping — see the BUS MAPPING commentary in rbcp_defs.s
@@ -33,8 +62,18 @@ CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
 ;
 ; The Amiga reads Kickstart as 16-bit words, so the device observes the ROM's
 ; word address lines and one command byte advances the CPU address by 2.
+;
+; Two x16 devices on a 32-bit bus differ in:
+;   BUS_SHIFT  2  one device bus cycle is 4 CPU address bytes
+;   DEVICES    2  the high word's device at LANE_OFF, the low word's 2 CPU
+;                 bytes on
 ; ---------------------------------------------------------------------------
+    ifeq CONFIG_BUS_WIDTH-32
+CONFIG_RBCP_BUS_SHIFT       EQU 2
+CONFIG_RBCP_DEVICES         EQU 2
+    else
 CONFIG_RBCP_BUS_SHIFT       EQU 1
+    endc
 CONFIG_RBCP_DEV_SHIFT       EQU 1
 CONFIG_RBCP_DEV_MASK        EQU 1
 CONFIG_RBCP_LANE_OFF        EQU 0
@@ -47,11 +86,14 @@ CONFIG_RBCP_ENDIAN_XOR      EQU 1
 ;   $FFFC00 .. $FFFDFF           back-channel region  (512 bytes, zeroed)
 ;   $FFFE00 .. $FFFFFF           command page         (512 bytes, zeroed)
 ;
+; On a 32-bit bus each region spans twice the CPU bytes, so the back-channel
+; starts at $FFF800 and the command page at $FFFC00.
+;
 ; Both regions sit at the very top of the image so the application area is
 ; unencumbered, and both are identical for 256 KB and 512 KB because the ROM
 ; is top-aligned.  The device-side values (the command page number and the
 ; back-channel start offset) differ between the two sizes, and rbcp_defs.s
-; derives them from CONFIG_ROM_BASE.
+; derives them from CONFIG_RBCP_DEV_BASE.
 ;
 ; One command page spans 256 device bus cycles = 256 << BUS_SHIFT CPU bytes.
 ; The back-channel spans (SIZE >> DEV_SHIFT) << BUS_SHIFT CPU bytes, which
@@ -77,19 +119,20 @@ CONFIG_RBCP_STATUS_OK       EQU $CC             ; inverse $33 = failed
 ; Timeouts and retries — counts of a poll, and 0 = forever.
 ;
 ; One turn of the poll loop in rbcp.s is 46 cycles, 6.5us at 7.09MHz, so a
-; count here is that many 6.5us turns.  Somebody is watching the menu
+; count here is that many 6.5us turns.  The times are an A500's, and on every
+; MAME machine the 32-bit build's last at least as long.  Somebody is watching the menu
 ; while these run, so a device that has stopped answering has to be given up
 ; on while they are still willing to wait.
 ; ---------------------------------------------------------------------------
-CONFIG_RBCP_POLL_TIMEOUT    EQU $0000FFFF       ; 0.43s, and LOAD_SLOT polls on it
-CONFIG_RBCP_NV_POLL_TIMEOUT EQU $00080000       ; 3.4s, against a flash erase of ms
+CONFIG_RBCP_POLL_TIMEOUT    EQU $0000FFFF*CONFIG_LOOP_SCALE ; 0.43s, and LOAD_SLOT polls on it
+CONFIG_RBCP_NV_POLL_TIMEOUT EQU $00080000*CONFIG_LOOP_SCALE ; 3.4s, against a flash erase of ms
 CONFIG_RBCP_TIMEOUT_RETRIES EQU 3
-CONFIG_RBCP_CMD_PAUSE       EQU $100            ; inter-command gap, cmd mode
+CONFIG_RBCP_CMD_PAUSE       EQU $100*CONFIG_LOOP_SCALE      ; inter-command gap, cmd mode
 
 ; SET_AUX with a hold waits on its own timeout rather than the NV one, because
 ; the two bound unrelated things.  A hold runs to 2.55 seconds and the device
 ; answers only once it has elapsed.
-CONFIG_RBCP_AUX_POLL_TIMEOUT EQU $000C0000      ; 5.1s, over the longest hold
+CONFIG_RBCP_AUX_POLL_TIMEOUT EQU $000C0000*CONFIG_LOOP_SCALE ; 5.1s, over the longest hold
 
 ; ---------------------------------------------------------------------------
 ; Scratch RAM used by the RBCP library — 32 bytes of chip RAM, clear of the

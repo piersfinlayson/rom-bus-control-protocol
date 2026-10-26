@@ -20,7 +20,7 @@ CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
 ; ===========================================================================
 ; BUS MAPPING
 ;
-; These five constants describe how the device sits on the host's bus.  They
+; These constants map the device onto the host's bus.  They
 ; are the only place the host's width, the device's width, and the host's
 ; byte order enter the library.  See the BUS MAPPING commentary in
 ; rbcp_defs.s for the two formulae they feed.
@@ -46,14 +46,19 @@ CONFIG_ROM_BASE             EQU ($1000000-(CONFIG_ROM_KB*1024))
 ;             16-bit pair, so a x16 device needs 1 here.  An 8-bit device
 ;             has no intra-cycle ordering, so it needs 0.
 ;
-; rbcp_defs.s lists the combinations these five take, and what a bus with
-; more than one device on it needs beyond what this library does.
+; DEVICES     how many devices share the bus, 1 where it isn't defined.
+;             Device k drives the lane (k << DEV_SHIFT) CPU bytes past
+;             LANE_OFF.  2 for a 32-bit Amiga's pair of x16 Kickstart ROMs,
+;             with BUS_SHIFT 2.
+;
+; rbcp_defs.s lists the supported combinations.
 ; ===========================================================================
 CONFIG_RBCP_BUS_SHIFT       EQU 1
 CONFIG_RBCP_DEV_SHIFT       EQU 1
 CONFIG_RBCP_DEV_MASK        EQU 1
 CONFIG_RBCP_LANE_OFF        EQU 0
 CONFIG_RBCP_ENDIAN_XOR      EQU 1
+CONFIG_RBCP_DEVICES         EQU 1
 
 ; ---------------------------------------------------------------------------
 ; Command page and back-channel placement

@@ -66,12 +66,12 @@ ST_INFO             EQU 2                   ; the One ROM info screen is up
 ; Passes of the main loop before ST_RELEASE gives up on a button that will not
 ; read up, so a stuck one cannot lock the machine out of its own menu.  A loop
 ; count, like the RBCP timeouts, not a unit.
-RELEASE_LIMIT       EQU $00200000
+RELEASE_LIMIT       EQU $00200000*CONFIG_LOOP_SCALE
 
 ; The short delay once both buttons have read up, so a contact bouncing on
 ; release does not slip a fresh press into the menu.  It waits for nothing and
 ; runs once.  A spin count, not a unit.
-RELEASE_SETTLE      EQU $2000
+RELEASE_SETTLE      EQU $2000*CONFIG_LOOP_SCALE
 
 ; ---------------------------------------------------------------------------
 ; Menu screen layout — three bands down the 200 lines an NTSC machine shows
@@ -243,3 +243,6 @@ ERR_FLASH_INFO      EQU 3
 ERR_NO_IMAGES       EQU 4
 ERR_LOAD            EQU 5
 ERR_ONE_SLOT_OLD    EQU 6
+ERR_FW_DIFFER       EQU 7                   ; more than one device only
+ERR_TYPE_DIFFER     EQU 8
+ERR_COUNT_DIFFER    EQU 9

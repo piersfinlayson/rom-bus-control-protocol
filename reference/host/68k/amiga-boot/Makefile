@@ -11,7 +11,13 @@
 # The device serves a slot in its own byte order, so the build also writes a
 # byte-swapped image.  That is the one to program.
 #
+# BUS=32 builds for a 32-bit Amiga, the A1200 for example, where a pair of
+# devices serve the high and low words of a 512 KB Kickstart.  ROM_KB is then
+# each device's size, and the build writes one image per device in the
+# device's byte order.  A 512 KB image holds its 256 KB half twice.
+#
 # Build:   make
+# 32-bit:  make BUS=32 [ROM_KB=512]
 # Images:  make images
 # Clean:   make clean
 #
@@ -44,6 +50,24 @@ LAST_ROM_KB := $(shell cat $(ROM_KB_FILE) 2>/dev/null)
 ifneq ($(LAST_ROM_KB),$(ROM_KB))
 ROM_KB_DEP = FORCE
 endif
+
+# The CPU image is the whole 512 KB Kickstart as the CPU reads it, under
+# build/32bit/.  The 32-bit build splits it into one image per device.
+BUS       ?= 16
+ifneq ($(BUS),16)
+ifneq ($(BUS),32)
+$(error BUS must be 16 or 32)
+endif
+endif
+WIDE      = $(BUILD)/$(NAME)_32bit
+WIDE_CPU  = $(BUILD)/32bit/$(NAME)
+WIDE_ALL  = $(WIDE)_256k_hi.bin $(WIDE)_256k_lo.bin \
+            $(WIDE)_512k_hi.bin $(WIDE)_512k_lo.bin
+
+# split — $(1) the CPU image, $(2) 0 for the high word or 2 for the low,
+# $(3) the output, $(4) how many copies of the half it holds.  The half is
+# written in the device's byte order.
+split = python3 -c 'import sys; d = open(sys.argv[1], "rb").read(); o = int(sys.argv[2]); open(sys.argv[3], "wb").write(b"".join(d[i+o+1:i+o+2] + d[i+o:i+o+1] for i in range(0, len(d), 4)) * int(sys.argv[4]))' $(1) $(2) $(3) $(4)
 
 # DEV=1 builds a bench copy whose menu always appears, however the mouse
 # buttons read.  See CONFIG_DEV_ALWAYS_MENU in amiga_config.s.
@@ -95,10 +119,14 @@ DEPS      = amiga_boot.s        \
 
 .PHONY: all images clean FORCE
 
+ifeq ($(BUS),32)
+all: $(WIDE)_$(ROM_KB)k_hi.bin $(WIDE)_$(ROM_KB)k_lo.bin
+else
 all: $(TARGET)
+endif
 
-# Both ROM sizes, under the names a release carries.
-images: $(BUILD)/$(NAME)_256k.bin $(BUILD)/$(NAME)_512k.bin
+# Both ROM sizes and both 32-bit pairs, under the names a release uses.
+images: $(BUILD)/$(NAME)_256k.bin $(BUILD)/$(NAME)_512k.bin $(WIDE_ALL)
 
 FORCE:
 
@@ -130,6 +158,25 @@ $(BUILD)/$(NAME)_%k.bin: $(DEPS) | $(BUILD)
 	 fi
 	@dd if=$(BUILD)/$(NAME)_$*k_unswapped.bin of=$@ conv=swab status=none
 	@rm -f $(BUILD)/$(NAME)_$*k_unswapped.bin
+
+$(WIDE_CPU)_%k.bin: $(DEPS)
+	@mkdir -p $(BUILD)/32bit
+	$(AS) $(ASFLAGS) -DCONFIG_BUS_WIDTH=32 -DCONFIG_ROM_KB=512 -DCONFIG_DEV_KB=$* $(SRC) -o $@
+	@SIZE=$$(wc -c < $@ | tr -d ' '); \
+	 echo "Output: $@ ($$SIZE bytes, expected 524288 for 512 KB)"; \
+	 if [ "$$SIZE" != "524288" ]; then \
+	     echo "ERROR: wrong image size — check ORG directives and CONFIG_ROM_KB"; \
+	     exit 1; \
+	 fi
+
+# The CPU image is kept for use under a debugger.
+.PRECIOUS: $(WIDE_CPU)_%k.bin
+
+$(WIDE)_%k_hi.bin: $(WIDE_CPU)_%k.bin
+	@$(call split,$<,0,$@,$(if $(filter 512,$*),2,1))
+
+$(WIDE)_%k_lo.bin: $(WIDE_CPU)_%k.bin
+	@$(call split,$<,2,$@,$(if $(filter 512,$*),2,1))
 
 clean:
 	@echo "Cleaning build artefacts"

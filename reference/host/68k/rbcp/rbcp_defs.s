@@ -61,18 +61,27 @@ RBCP_SUPPORTED_PATCH        EQU 1
 ;                               lo word   2   1   1    2     1
 ; Four 8-bit devices, 32-bit bus, lane L  2   0   0    L     0
 ;
-; Only the first row is exercised.
+; The first row and the two 32-bit x16 rows are exercised.
 ;
 ; NOTE for multi-device configurations: address lines are shared, so every
 ; device on the bus decodes every knock and every command.  Each maintains
 ; its own complete back-channel header, and those headers interleave in CPU
 ; address space at the stride above — they are not merged.  Completion is
 ; therefore per-device and unsynchronised: a host must poll every lane's
-; header before treating a command as complete.  The library as written
-; polls one lane and is correct only for a single-device bus.
+; header before treating a command as complete.
+;
+; CONFIG_RBCP_DEVICES is how many devices share the bus, 1 where it is not
+; defined.  Device k drives the lane DEV_STRIDE*k CPU bytes past LANE_OFF.
+; With more than one, the library polls every device and reads replies from
+; the one in RBCP_DEV.
 ; ===========================================================================
 
+    ifnd CONFIG_RBCP_DEVICES
+CONFIG_RBCP_DEVICES EQU 1
+    endc
+
 RBCP_BUS_STRIDE     EQU (1<<CONFIG_RBCP_BUS_SHIFT)
+RBCP_DEV_STRIDE     EQU (1<<CONFIG_RBCP_DEV_SHIFT)
 
 ; Intra-bus-cycle CPU byte offset for an even and an odd region offset.
 ; Computed arithmetically rather than with XOR so the expression does not
@@ -96,9 +105,18 @@ CONFIG_ROM_SIZE     EQU (CONFIG_ROM_KB*1024)
 ; RBCP_BCH_START — the back-channel start address as a *device byte* offset
 ;   within the slot, which is what ENTER_CMD_RESP takes.  Must be 4-byte
 ;   aligned.  The assertion below enforces that at build time.
+;
+; Both count from CONFIG_RBCP_DEV_BASE, the CPU address device offset 0 would
+; be at.  It is CONFIG_ROM_BASE unless a device address line stays at one
+; level across the Kickstart.  A line held high means the CPU reads only the
+; top of the device, and the base is below the Kickstart by the part of the
+; device the CPU can't read.
 ; ---------------------------------------------------------------------------
-RBCP_CMD_PAGE_REL   EQU (((CONFIG_RBCP_CMD_PAGE_ABS-CONFIG_ROM_BASE)>>CONFIG_RBCP_BUS_SHIFT)>>8)
-RBCP_BCH_START      EQU (((CONFIG_RBCP_BCH_ABS-CONFIG_ROM_BASE)>>CONFIG_RBCP_BUS_SHIFT)<<CONFIG_RBCP_DEV_SHIFT)
+    ifnd CONFIG_RBCP_DEV_BASE
+CONFIG_RBCP_DEV_BASE EQU CONFIG_ROM_BASE
+    endc
+RBCP_CMD_PAGE_REL   EQU (((CONFIG_RBCP_CMD_PAGE_ABS-CONFIG_RBCP_DEV_BASE)>>CONFIG_RBCP_BUS_SHIFT)>>8)
+RBCP_BCH_START      EQU (((CONFIG_RBCP_BCH_ABS-CONFIG_RBCP_DEV_BASE)>>CONFIG_RBCP_BUS_SHIFT)<<CONFIG_RBCP_DEV_SHIFT)
 
 ; CPU address span of the back-channel region, for reserving it in the image.
 RBCP_BCH_CPU_SPAN   EQU ((CONFIG_RBCP_BCH_SIZE>>CONFIG_RBCP_DEV_SHIFT)<<CONFIG_RBCP_BUS_SHIFT)
@@ -398,6 +416,9 @@ RBCP_DATA0_ADDR       EQU CONFIG_RBCP_BCH_ABS+(((8>>CONFIG_RBCP_DEV_SHIFT)<<CONF
     IFEQ (CONFIG_RBCP_STATUS_OK-$AA)
         FAIL "CONFIG_RBCP_STATUS_OK must not be $AA"
     ENDC
+    IFGT (CONFIG_RBCP_DEVICES-8)
+        FAIL "CONFIG_RBCP_DEVICES must be 8 or fewer"
+    ENDC
 
 ; ---------------------------------------------------------------------------
 ; Scratch RAM layout (CONFIG_RBCP_SCRATCH_BASE, 32 bytes total)
@@ -413,7 +434,8 @@ RBCP_POLL_KIND  EQU CONFIG_RBCP_SCRATCH_BASE+3   ; which progress timeout
 RBCP_ARG_COUNT  EQU CONFIG_RBCP_SCRATCH_BASE+4   ; argument count for send
 RBCP_ERROR_CODE EQU CONFIG_RBCP_SCRATCH_BASE+5   ; failure stage (1/2/3)
 RBCP_RETRY_CNT  EQU CONFIG_RBCP_SCRATCH_BASE+6   ; retry counter
-                                                  ; +7 reserved/padding
+RBCP_ERROR_DEV  EQU CONFIG_RBCP_SCRATCH_BASE+7   ; device a failure came from,
+                                                  ; or RBCP_DEV_NONE
 RBCP_ARG0       EQU CONFIG_RBCP_SCRATCH_BASE+8
 RBCP_ARG1       EQU CONFIG_RBCP_SCRATCH_BASE+9
 RBCP_ARG2       EQU CONFIG_RBCP_SCRATCH_BASE+10
@@ -423,6 +445,13 @@ RBCP_ARG5       EQU CONFIG_RBCP_SCRATCH_BASE+13
 RBCP_ARG6       EQU CONFIG_RBCP_SCRATCH_BASE+14
 RBCP_ARG7       EQU CONFIG_RBCP_SCRATCH_BASE+15
 RBCP_ARG8       EQU CONFIG_RBCP_SCRATCH_BASE+16
+
+; Used only where CONFIG_RBCP_DEVICES is above 1.
+RBCP_DEV        EQU CONFIG_RBCP_SCRATCH_BASE+17  ; device rbcp_read_data reads
+RBCP_SAVED_TOKS EQU CONFIG_RBCP_SCRATCH_BASE+24  ; token LSB per device, up to 8
+
+; RBCP_ERROR_DEV where no device has failed
+RBCP_DEV_NONE       EQU $FF
 
 ; Values written to RBCP_POLL_KIND, picking the progress timeout
 RBCP_POLL_NORMAL    EQU 0

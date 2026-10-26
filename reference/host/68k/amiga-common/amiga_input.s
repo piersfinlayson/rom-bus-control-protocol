@@ -36,7 +36,7 @@ amiga_getkey:
         BEQ     .gk_lmb
         MOVE.B  (CIAA_SDR).L,D0         ; raw keycode
         BSET    #CIAA_CRA_SPMODE,(CIAA_CRA).L   ; drive the handshake
-        MOVE.W  #250,D2
+        MOVE.W  #250*CONFIG_LOOP_SCALE,D2
 .gk_hs:
         DBF     D2,.gk_hs               ; the keyboard needs 85us, and this is about 350
         BCLR    #CIAA_CRA_SPMODE,(CIAA_CRA).L   ; back to input

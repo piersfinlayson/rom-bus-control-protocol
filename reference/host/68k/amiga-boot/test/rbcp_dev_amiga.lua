@@ -13,39 +13,61 @@
 --     (offset - CMD_ABS) >> 1
 --   * region byte N sits at CPU address BCH_ABS + (N xor 1), so a word read at
 --     an even offset answers with region bytes rel+1 and rel, high byte first
+--
+-- RBCP_BUS=32 is a 32-bit Amiga's pair of sockets instead, with a device in each.
+-- The tap sees the long-aligned CPU address and a mask that selects the word read.
+-- Every read reaches both devices, so each decodes the same command stream,
+-- and one command byte is four CPU address bytes.  Each device keeps its own
+-- back-channel and answers in its own word, the high word's device in bits
+-- 31-16 and the low word's in bits 15-0.
+
+local BUS     = tonumber(os.getenv("RBCP_BUS") or "16")
+local DEVICES = (BUS == 32) and 2 or 1
+local WIDE    = DEVICES > 1
 
 local ROM_KB    = tonumber(os.getenv("RBCP_ROM_KB") or "256")
 local ROM_BASE  = 0x1000000 - ROM_KB * 1024
 -- Both regions sit at the top of the image, so neither moves with the size.
 -- These must match rbcp_config.s.
-local CMD_ABS   = 0xFFFE00
-local BCH_ABS   = 0xFFFC00
-local BCH_SIZE  = 512                   -- device bytes
-local BCH_SPAN  = 512                   -- CPU bytes
+local STRIDE    = WIDE and 4 or 2           -- CPU bytes in one device bus cycle
+local CMD_ABS   = 0x1000000 - 256 * STRIDE
+local BCH_SIZE  = 512                       -- device bytes
+local BCH_SPAN  = BCH_SIZE // 2 * STRIDE    -- CPU bytes
+local BCH_ABS   = CMD_ABS - BCH_SPAN
 local COMPLETE  = 0xBB
 local STATUS_OK = 0xCC
+
+-- Each device's size on the 32-bit bus, 256 for a 27C200 or 512 for a 27C400.
+-- A 27C400's A17 is CPU A19 on an A1200, high across the Kickstart, so the CPU
+-- reads the top half and the device's offset 0 sits below the Kickstart.
+local DEV_KB   = tonumber(os.getenv("RBCP_DEV_KB") or "256")
+local DEV_BASE = WIDE and (0x1000000 - DEV_KB * 1024 * 2) or ROM_BASE
+
+-- The command page and the back-channel start where the CPU reads them, in
+-- the device's terms.  ENTER_CMD_RESP must send these.  Otherwise the device
+-- decodes commands on a page the CPU never reads and writes its header where
+-- the CPU never reads it.
+local function dev_word(offset) return (offset - DEV_BASE) // STRIDE end
+local CMD_PAGE  = dev_word(CMD_ABS) >> 8
+local BCH_START = dev_word(BCH_ABS) * 2
 local KNOCK     = { 0x21, 0x52, 0x42, 0x43, 0x50, 0x21 }
 
-local NV_START   = tonumber(os.getenv("RBCP_NV") or "0")
+-- One device's setting.  RBCP_<NAME>_LO, where set, overrides RBCP_<NAME>
+-- for the low word's device.
+local function setting(name, k)
+  if k == 1 then
+    local v = os.getenv(name .. "_LO")
+    if v ~= nil then return v end
+  end
+  return os.getenv(name)
+end
+
 local RUN_FRAMES = tonumber(os.getenv("RBCP_FRAMES") or "600")
 local DEBUG      = os.getenv("RBCP_DEBUG") ~= nil
--- "01:06" makes the device ignore GET_PROTOCOL_VERSION entirely.  That is
--- how a device too busy to answer in time looks to the host.
-local DEAF       = os.getenv("RBCP_DEAF")
--- "01:00:5" makes the device answer the response byte with what it held
--- before the command for five reads after it has said the command is
--- complete.  That is a device publishing the two out of order.
-local LATE       = os.getenv("RBCP_LATE_RSP")
 local SWITCH_IMG = os.getenv("RBCP_SWITCH_IMAGE")   -- served after the switch
 -- Set to make the device expose no auxiliary pins.  A device with none is
 -- legal, and it sends a host down its no-pins path.
 local NO_AUX     = os.getenv("RBCP_NO_AUX") ~= nil
--- The protocol version the device reports.  A host-control plugin before
--- 0.1.3 reports 0.1.1, which has no LOAD_AND_EXIT.
-local PROTO = {}
-for n in (os.getenv("RBCP_PROTO") or "0.1.2"):gmatch("%d+") do
-  PROTO[#PROTO + 1] = tonumber(n)
-end
 
 -- A device that goes wrong now and then rather than always.  One command in
 -- FAIL_EVERY is answered with failure and one in LOSE_EVERY is not answered
@@ -55,36 +77,16 @@ end
 -- arrive at intervals and to land on whatever command is in flight.
 local FAIL_EVERY = tonumber(os.getenv("RBCP_FAIL_EVERY") or "0")
 local LOSE_EVERY = tonumber(os.getenv("RBCP_LOSE_EVERY") or "0")
-local commands, failed, lost = 0, 0, 0
-
--- Names a real device might carry.  One runs capitals into lower case
--- mid-word and one is twenty-nine characters.  A record holds thirty.
-local slots = {
-  [0] = "Amiga RBCP Bootloader",
-  [1] = "Kickstart 1.3",
-  [2] = "Kickstart 2.05",
-  [3] = "DiagROM V2",
-  [4] = "Adrian's Amiga Diagnostic ROM",
-}
-local total_flash = tonumber(os.getenv("RBCP_SLOTS") or "5")
-for n = 5, total_flash - 1 do
-  slots[n] = string.format("SPARE IMAGE %d", n)
-end
 
 -- The ROM type every slot reports.  A host offering a choice of image only
 -- offers slots of the type it is being served, so this follows the socket: a
--- 27C200 for the 256 KB build, a 27C400 for the 512 KB one.
-local ROM_TYPE = (ROM_KB == 512) and 0x13 or 0x21
-
--- How many RAM slots the device has.  One makes the bootloader boot with
--- LOAD_AND_EXIT and store its choice without a staging slot.  Two make it
--- stage a load in the spare and SWITCH_AND_EXIT to it.
-local RAM_SLOTS = tonumber(os.getenv("RBCP_RAM_SLOTS") or "2")
--- The RAM slot active at the start.  One ROM always starts in slot 0.
-local ACTIVE_RAM = tonumber(os.getenv("RBCP_ACTIVE_RAM") or "0")
+-- 27C200 for the 256 KB build, a 27C400 for the 512 KB one.  On the 32-bit bus
+-- it follows each device's size.
+local ROM_TYPE = ((WIDE and DEV_KB or ROM_KB) == 512) and 0x13 or 0x21
 
 -- The image the device serves once it has switched slots.  Without one there
 -- is nothing to follow the hand-over into, so the run stops at the switch.
+-- On the 32-bit bus it is the whole image as the CPU reads it.
 local switch_img = nil
 if SWITCH_IMG then
   local f = io.open(SWITCH_IMG, "rb")
@@ -129,19 +131,6 @@ elseif DIRTY ~= "off" then
 end
 local dirtied = false
 
-local bch = {}                          -- region bytes, index 0..BCH_SIZE-1
-for i = 0, BCH_SIZE - 1 do bch[i] = 0 end
-
--- The command that holds its response back, the number of reads it holds it
--- for, and the value those reads answer with.
-local late_g, late_c, late_n
-if LATE then
-  local g, c, n = LATE:match("^(%x%x):(%x%x):(%d+)$")
-  if not g then error("RBCP_LATE_RSP must be GG:CC:reads, e.g. 01:00:5") end
-  late_g, late_c, late_n = tonumber(g, 16), tonumber(c, 16), tonumber(n)
-end
-local late_left, late_val = 0, 0
-
 -- The auxiliary pins the device pretends to have.  There are three groups, so
 -- a host that assumed a single group is caught.  The first is GPIO with only
 -- the even pins from 2 upwards drivable, the second an image-select group with
@@ -177,33 +166,10 @@ local function aux_power_on()
   return t
 end
 
-local dev = {
-  cmd_resp = false,
-  knock_at = 0,                         -- how much of the knock has matched
-  knocked  = false,
-  group    = nil,
-  cmd      = nil,
-  args     = {},
-  want     = 0,
-  token    = 0,
-  nv       = NV_START,
-  active_ram = ACTIVE_RAM,
-  switched = nil,
-  aux      = aux_power_on(),
-}
-
--- The frame counter and the hold the device is still timing.  A SET_AUX with
--- a non-zero hold does not complete until the hold has elapsed, so its answer
--- waits here instead of going out with the command.  Both are declared here
--- because execute() and the frame loop below touch them.
-local frames = 0
-local pending = nil
-
 -- Two LEDs with the RGB one second, so the search for the lowest RGB LED is
 -- exercised rather than landing on zero.
 local LED_TYPE = { [0] = 0x00, [1] = 0x01 }
 local MODE_NAME = { [0] = "off", "on", "blink", "breathe", "cycle", "beacon" }
-local last_led_info = nil               -- the LED GET_LED_INFO last reported
 
 local ARGS = {                          -- [group][cmd] = argument count
   [0x00] = { [0x00] = 0, [0x01] = 9, [0x02] = 0, [0x03] = 0, [0x04] = 1,
@@ -220,34 +186,123 @@ local ARGS = {                          -- [group][cmd] = argument count
 }
 
 -- The Device Info group the One ROM host-control plugin adds, specified in its
--- EXTENSIONS.md.  The plugin that has it reports RBCP 0.1.4, so an older
--- version leaves it out.
-local function proto_at_least(major, minor, patch)
-  local have = (PROTO[1] << 16) | (PROTO[2] << 8) | PROTO[3]
-  return have >= ((major << 16) | (minor << 8) | patch)
-end
-if proto_at_least(0, 1, 4) then
-  ARGS[0x80] = { [0x00] = 0, [0x01] = 5, [0x02] = 7, [0x03] = 4, [0x04] = 7 }
-end
+-- EXTENSIONS.md.  The plugin that has it reports RBCP 0.1.4, so a device
+-- reporting an older version leaves it out.
+local INFO_ARGS = { [0x00] = 0, [0x01] = 5, [0x02] = 7, [0x03] = 4, [0x04] = 7 }
 
 -- The values it serves.  RBCP_UNIT_NAME is the unit's name, which is otherwise
 -- unset.  RBCP_COMM is the commissioning version, 0 where the unit isn't
 -- commissioned, and a version other than 1 makes every value fail as an older
--- firmware would.
-local META_STR   = { [0x01] = os.getenv("RBCP_UNIT_NAME") or "",
-                     [0x06] = "fire-40-a" }
-local META_UINT  = { [0x14] = 2 }                 -- size L
-local META_ARRAY = { [0x1A] = { 0xE1, 0x26, 0xC9, 0xF9, 0x7C, 0x10, 0xAD, 0xAC } }
-local COMM_VERSION = tonumber(os.getenv("RBCP_COMM") or "1")
--- The date is YYYYMMDD, as OTP holds it.  RBCP_UNSIGNED leaves out the
--- signature and the key that made it.
-local COMM = { [1] = "fire-40-a", [3] = "piers.rocks", [4] = "20260929" }
-if not os.getenv("RBCP_UNSIGNED") then
-  COMM[2] = string.rep("\90", 64)
-  COMM[5] = string.char(1, 0)
+-- firmware would.  The low word's device has a chip ID of its own.
+local CHIP_ID = { [0] = { 0xE1, 0x26, 0xC9, 0xF9, 0x7C, 0x10, 0xAD, 0xAC },
+                        { 0xE1, 0x26, 0xC9, 0xF9, 0x7C, 0x10, 0x3B, 0x52 } }
+
+-- ---------------------------------------------------------------------------
+-- The devices.  One on the 16-bit bus, two on the 32-bit one, each with its
+-- own settings and its own state.  Everything below works on dev, the device
+-- whose turn it is, and bch, that device's back-channel region.
+-- ---------------------------------------------------------------------------
+local function new_device(k)
+  local d = {
+    name     = WIDE and ((k == 0) and "hi" or "lo") or "dev",
+    cmd_resp = false,
+    knock_at = 0,                       -- how much of the knock has matched
+    knocked  = false,
+    group    = nil,
+    cmd      = nil,
+    args     = {},
+    want     = 0,
+    token    = 0,
+    switched = nil,
+    aux      = aux_power_on(),
+    bch      = {},                      -- region bytes, index 0..BCH_SIZE-1
+    commands = 0, failed = 0, lost = 0,
+    late_left = 0, late_val = 0,
+    lag_left = 0,                       -- progress reads still to answer pending
+    pending  = nil,                     -- a SET_AUX hold, answered once it has elapsed
+    last_led_info = nil,                -- the LED GET_LED_INFO last reported
+    tx_line  = "",
+  }
+  for i = 0, BCH_SIZE - 1 do d.bch[i] = 0 end
+
+  -- "01:06" makes the device ignore GET_PROTOCOL_VERSION entirely.  That is
+  -- how a device too busy to answer in time looks to the host.
+  d.deaf   = setting("RBCP_DEAF", k)
+  d.refuse = setting("RBCP_REFUSE", k)
+  -- "01:00:5" makes the device answer the response byte with what it held
+  -- before the command for five reads after it has said the command is
+  -- complete.  That is a device publishing the two out of order.
+  local late = setting("RBCP_LATE_RSP", k)
+  if late then
+    local g, c, n = late:match("^(%x%x):(%x%x):(%d+)$")
+    if not g then error("RBCP_LATE_RSP must be GG:CC:reads, e.g. 01:00:5") end
+    d.late_g, d.late_c, d.late_n = tonumber(g, 16), tonumber(c, 16), tonumber(n)
+  end
+  -- Reads of the progress byte that answer pending after every command, as a
+  -- device slower than its neighbour does.
+  d.lag = tonumber(setting("RBCP_LAG", k) or "0")
+
+  -- The protocol version the device reports.  A host-control plugin before
+  -- 0.1.3 reports 0.1.1, which has no LOAD_AND_EXIT.
+  d.proto = {}
+  for n in (setting("RBCP_PROTO", k) or "0.1.2"):gmatch("%d+") do
+    d.proto[#d.proto + 1] = tonumber(n)
+  end
+  d.info = ((d.proto[1] << 16) | (d.proto[2] << 8) | d.proto[3]) >= 0x000104
+
+  -- Names a real device might carry.  One runs capitals into lower case
+  -- mid-word and one is twenty-nine characters.  A record holds thirty.
+  d.slots = {
+    [0] = "Amiga RBCP Bootloader",
+    [1] = "Kickstart 1.3",
+    [2] = "Kickstart 2.05",
+    [3] = "DiagROM V2",
+    [4] = "Adrian's Amiga Diagnostic ROM",
+  }
+  d.total_flash = tonumber(setting("RBCP_SLOTS", k) or "5")
+  for n = 5, d.total_flash - 1 do
+    d.slots[n] = string.format("SPARE IMAGE %d", n)
+  end
+
+  -- How many RAM slots the device has.  One makes the bootloader boot with
+  -- LOAD_AND_EXIT and store its choice without a staging slot.  Two make it
+  -- stage a load in the spare and SWITCH_AND_EXIT to it.
+  d.ram_slots  = tonumber(setting("RBCP_RAM_SLOTS", k) or "2")
+  -- The RAM slot active at the start.  One ROM always starts in slot 0.
+  d.active_ram = tonumber(setting("RBCP_ACTIVE_RAM", k) or "0")
+  d.nv         = tonumber(setting("RBCP_NV", k) or "0")
+  d.nv_fail    = setting("RBCP_NV_FAIL", k) ~= nil
+
+  d.meta_str   = { [0x01] = setting("RBCP_UNIT_NAME", k) or "",
+                   [0x06] = "fire-40-a" }
+  d.meta_uint  = { [0x14] = 2 }                   -- size L
+  d.meta_array = { [0x1A] = CHIP_ID[k] }
+  d.comm_version = tonumber(setting("RBCP_COMM", k) or "1")
+  -- The date is YYYYMMDD, as OTP holds it.  RBCP_UNSIGNED leaves out the
+  -- signature and the key that made it.
+  d.comm = { [1] = "fire-40-a", [3] = "piers.rocks", [4] = "20260929" }
+  if not setting("RBCP_UNSIGNED", k) then
+    d.comm[2] = string.rep("\90", 64)
+    d.comm[5] = string.char(1, 0)
+  end
+
+  -- The far end's side of the pipe, as RBCP_SEND holds it.  "\n" in that
+  -- variable is a line feed, which ends a line at the far end of a real pipe.
+  -- PIPE_READ hands it over a read at a time and GET_PIPE_INFO says how much
+  -- of it is left.
+  d.rx_text = (os.getenv("RBCP_SEND") or ""):gsub("\\n", "\n")
+  d.rx_at = 1
+  return d
 end
 
-local function log(fmt, ...) print(string.format("[dev] " .. fmt, ...)) end
+local devs = {}
+for k = 0, DEVICES - 1 do devs[k] = new_device(k) end
+local dev, bch = devs[0], devs[0].bch
+
+-- The frame counter, which execute() and the frame loop below both touch.
+local frames = 0
+
+local function log(fmt, ...) print(string.format("[" .. dev.name .. "] " .. fmt, ...)) end
 
 local function put_data(i, v) bch[8 + i] = v & 0xFF end
 
@@ -268,19 +323,12 @@ local function put_value(s, count, offset)
   return true
 end
 
--- The far end's side of the pipe, as RBCP_SEND holds it.  "\n" in that
--- variable is a line feed, which ends a line at the far end of a real pipe.
--- PIPE_READ hands it over a read at a time and GET_PIPE_INFO says how much of
--- it is left.
-local rx_text = (os.getenv("RBCP_SEND") or ""):gsub("\\n", "\n")
-local rx_at = 1
-
 -- The most PIPE_READ can be asked for here is the region less its eight-byte
 -- response header and the eight bytes PIPE_READ puts in front of the data.
 local PIPE_READ_ROOM = BCH_SIZE - 8 - 8
 
 local function rx_waiting()
-  local n = #rx_text - rx_at + 1
+  local n = #dev.rx_text - dev.rx_at + 1
   if n < 0 then n = 0 end
   if n > 0xFF then n = 0xFF end
   return n
@@ -294,31 +342,38 @@ end
 
 -- PIPE_WRITE moves at most four bytes, so a log line arrives in pieces.  They
 -- are held here until the line feed that ends the line, then printed whole.
-local tx_line = ""
+-- Both devices on the 32-bit bus receive every write, so only the high
+-- word's is printed.
 local function pipe_out(s)
-  tx_line = tx_line .. s
+  if dev ~= devs[0] then return end
+  dev.tx_line = dev.tx_line .. s
   while true do
-    local nl = tx_line:find("\n")
+    local nl = dev.tx_line:find("\n")
     if not nl then break end
-    io.write("[pipe] " .. printable(tx_line:sub(1, nl - 1)) .. "\n")
-    tx_line = tx_line:sub(nl + 1)
+    io.write("[pipe] " .. printable(dev.tx_line:sub(1, nl - 1)) .. "\n")
+    dev.tx_line = dev.tx_line:sub(nl + 1)
   end
 end
 
 -- Flush a line a run ended part way through, so an error line with no line
 -- feed behind it is still seen.
 local function pipe_flush()
-  if tx_line ~= "" then pipe_out(tx_line .. "\n") end
+  dev = devs[0]
+  if dev.tx_line ~= "" then pipe_out(dev.tx_line .. "\n") end
 end
 
--- The device's tally, printed as the run ends.  A host that draws to a
+-- Each device's tally, printed as the run ends.  A host that draws to a
 -- bitmap leaves nothing to read on screen, so this is the only sign the
 -- session ran at all and how much of it went through.
 local function summary()
+  dev = devs[0]
   if dirty_byte and not dirtied then
     log("chip RAM was never dirtied — rom_entry was not reached")
   end
-  log("%d commands, %d failed, %d lost", commands, failed, lost)
+  for k = 0, DEVICES - 1 do
+    dev = devs[k]
+    log("%d commands, %d failed, %d lost", dev.commands, dev.failed, dev.lost)
+  end
 end
 
 -- The group and command default to the ones in hand.  A deferred hold names
@@ -332,9 +387,10 @@ local function answer(ok, g, c)
   bch[2] = dev.token & 0xFF
   bch[3] = (dev.token >> 8) & 0xFF
   bch[4] = COMPLETE
-  if late_g and g == late_g and c == late_c then
-    late_left, late_val = late_n, bch[5]
-    log("%02X/%02X response held back for %d reads", late_g, late_c, late_n)
+  dev.lag_left = dev.lag
+  if dev.late_g and g == dev.late_g and c == dev.late_c then
+    dev.late_left, dev.late_val = dev.late_n, bch[5]
+    log("%02X/%02X response held back for %d reads", g, c, dev.late_n)
   end
   bch[5] = ok and STATUS_OK or ((~STATUS_OK) & 0xFF)
 end
@@ -378,24 +434,32 @@ end
 -- Hand the machine the image the device switched to.  Every read of the socket
 -- comes from the Kickstart region, so writing the new image into it is the
 -- switch.  It happens the moment the command says so, because the
--- bootloader reads the new image's reset vector a few instructions later.
+-- bootloader reads the new image's reset vector a few instructions later.  On
+-- the 32-bit bus each device writes only its own word of every long.
 local function do_switch(slot)
   dev.switched = slot
   dev.cmd_resp = false
   if not switch_img then return end
   local region = manager.machine.memory.regions[":kickstart"]
-  for i = 0, #switch_img - 2, 2 do
+  local first, step = 0, 2
+  if WIDE then
+    first, step = (dev == devs[0]) and 0 or 2, 4
+  end
+  for i = first, #switch_img - 2, step do
     region:write_u16(i, (switch_img:byte(i + 1) << 8) | switch_img:byte(i + 2))
   end
 end
 
 local function execute()
   local g, c, a = dev.group, dev.cmd, dev.args
-  if DEAF == string.format("%02X:%02X", g, c) then
+  if dev.lag_left > 0 then
+    log("%02X/%02X arrived before the previous command completed", g, c)
+  end
+  if dev.deaf == string.format("%02X:%02X", g, c) then
     log("%02X/%02X ignored", g, c)
     return
   end
-  if os.getenv("RBCP_REFUSE") == string.format("%02X:%02X", g, c) then
+  if dev.refuse == string.format("%02X:%02X", g, c) then
     log("%02X/%02X refused", g, c)
     answer(false)
     return
@@ -408,14 +472,14 @@ local function execute()
 
   -- The intermittent device.  It is counted here, after the reset, because a
   -- reset is not a command the host is waiting on an answer to.
-  commands = commands + 1
-  if LOSE_EVERY > 0 and commands % LOSE_EVERY == 0 then
-    lost = lost + 1
+  dev.commands = dev.commands + 1
+  if LOSE_EVERY > 0 and dev.commands % LOSE_EVERY == 0 then
+    dev.lost = dev.lost + 1
     log("%02X/%02X lost", g, c)
     return
   end
-  if FAIL_EVERY > 0 and commands % FAIL_EVERY == 0 then
-    failed = failed + 1
+  if FAIL_EVERY > 0 and dev.commands % FAIL_EVERY == 0 then
+    dev.failed = dev.failed + 1
     log("%02X/%02X failed", g, c)
     answer(false)
     return
@@ -425,45 +489,51 @@ local function execute()
     answer(true)
   elseif g == 0x00 and c == 0x01 then             -- ENTER_CMD_RESP
     dev.cmd_resp = true
-    log("ENTER_CMD_RESP page=$%04X bch=$%06X size=%d", a[1] | (a[2] << 8),
-        a[3] | (a[4] << 8) | (a[5] << 16), a[6] | (a[7] << 8))
+    dev.page = a[1] | (a[2] << 8)
+    dev.bch_start = a[3] | (a[4] << 8) | (a[5] << 16)
+    log("ENTER_CMD_RESP page=$%04X bch=$%06X size=%d", dev.page, dev.bch_start,
+        a[6] | (a[7] << 8))
+    if dev.page ~= CMD_PAGE or dev.bch_start ~= BCH_START then
+      log("but the CPU reads page $%04X and back-channel $%06X", CMD_PAGE, BCH_START)
+    end
     answer(true)
   elseif g == 0x00 and c == 0x04 then             -- SWITCH_AND_EXIT
     log("SWITCH_AND_EXIT ram slot %d", a[1])
     do_switch(a[1])
   elseif g == 0x00 and c == 0x05 then             -- LOAD_AND_EXIT
-    log("LOAD_AND_EXIT ram %d <- flash %d (%s)", a[1], a[2], slots[a[2]] or "?")
+    log("LOAD_AND_EXIT ram %d <- flash %d (%s)", a[1], a[2],
+        dev.slots[a[2]] or "?")
     dev.active_ram = a[1]
     do_switch(a[1])
   elseif g == 0x01 and c == 0x00 then             -- GET_FLASH_SLOT_COUNT
-    put_data(0, total_flash)
+    put_data(0, dev.total_flash)
     answer(true)
   elseif g == 0x01 and c == 0x01 then             -- GET_FLASH_SLOT_INFO
     local n = a[1]
     put_data(0, ROM_TYPE)
-    put_string(1, slots[n] or "")
-    log("GET_FLASH_SLOT_INFO %d = %s", n, slots[n] or "<none>")
-    answer(slots[n] ~= nil)
+    put_string(1, dev.slots[n] or "")
+    log("GET_FLASH_SLOT_INFO %d = %s", n, dev.slots[n] or "<none>")
+    answer(dev.slots[n] ~= nil)
   elseif g == 0x01 and c == 0x02 then             -- GET_FLASH_SLOT_INFO_ALL
     -- Four bytes of preamble and then 32 bytes a slot, so the data section's
     -- size sets how many records fit.  A record that only partly fits is left
     -- out and flagged, as the spec requires and as a host reading the list has
     -- to cope with.  This region holds fifteen.
     local room = (BCH_SIZE - 8 - 4) // 32
-    local whole = math.min(total_flash, room)
-    put_data(0, total_flash)
+    local whole = math.min(dev.total_flash, room)
+    put_data(0, dev.total_flash)
     put_data(1, whole)
-    put_data(2, (whole < total_flash) and 0x01 or 0x00)
+    put_data(2, (whole < dev.total_flash) and 0x01 or 0x00)
     put_data(3, 0)
     for n = 0, whole - 1 do
       put_data(4 + n * 32, ROM_TYPE)
-      put_string(4 + n * 32 + 1, slots[n] or "")
+      put_string(4 + n * 32 + 1, dev.slots[n] or "")
     end
-    log("GET_FLASH_SLOT_INFO_ALL %d of %d%s", whole, total_flash,
-        (whole < total_flash) and ", partial record flagged" or "")
+    log("GET_FLASH_SLOT_INFO_ALL %d of %d%s", whole, dev.total_flash,
+        (whole < dev.total_flash) and ", partial record flagged" or "")
     answer(true)
   elseif g == 0x01 and c == 0x03 then             -- GET_RAM_SLOT_INFO_ALL
-    put_data(0, RAM_SLOTS)
+    put_data(0, dev.ram_slots)
     put_data(1, dev.active_ram)
     put_data(2, ROM_TYPE)
     put_data(3, 0)
@@ -475,11 +545,12 @@ local function execute()
     put_string(0, "v0.7.2")
     answer(true)
   elseif g == 0x01 and c == 0x06 then             -- GET_PROTOCOL_VERSION
-    put_data(0, PROTO[1]) put_data(1, PROTO[2]) put_data(2, PROTO[3]) put_data(3, 0)
+    put_data(0, dev.proto[1]) put_data(1, dev.proto[2])
+    put_data(2, dev.proto[3]) put_data(3, 0)
     answer(true)
   elseif g == 0x02 and c == 0x02 then             -- LOAD_SLOT
-    log("LOAD_SLOT ram %d <- flash %d (%s)", a[1], a[2], slots[a[2]] or "?")
-    answer(slots[a[2]] ~= nil and a[1] < RAM_SLOTS)
+    log("LOAD_SLOT ram %d <- flash %d (%s)", a[1], a[2], dev.slots[a[2]] or "?")
+    answer(dev.slots[a[2]] ~= nil and a[1] < dev.ram_slots)
   elseif g == 0x03 and c == 0x00 then             -- GET_NV_CAPABILITY
     put_data(0, 16) put_data(1, 0) put_data(2, 1)
     -- With no spare RAM slot to stage in, the device stages within itself and
@@ -491,7 +562,7 @@ local function execute()
     log("NV_PEEK = %d", dev.nv)
     answer(true)
   elseif g == 0x03 and c == 0x06 then             -- NV_POKE_COMMIT_BYTE
-    if os.getenv("RBCP_NV_FAIL") then
+    if dev.nv_fail then
       log("NV_POKE_COMMIT_BYTE = %d, refused", a[1])
       answer(false)
       return
@@ -525,15 +596,16 @@ local function execute()
     local n = rx_waiting()
     if n > want then n = want end
     for i = 0, n - 1 do
-      put_data(8 + i, rx_text:byte(rx_at + i))
+      put_data(8 + i, dev.rx_text:byte(dev.rx_at + i))
     end
-    rx_at = rx_at + n
+    dev.rx_at = dev.rx_at + n
     put_data(0, n & 0xFF)
     put_data(1, (n == want) and 0x02 or 0x00)     -- bit 0 is never set here
     put_data(2, rx_waiting())
     for i = 3, 7 do put_data(i, 0) end
-    if n > 0 then
-      io.write("[pipe<] " .. printable(rx_text:sub(rx_at - n, rx_at - 1)) .. "\n")
+    if n > 0 and dev == devs[0] then
+      io.write("[pipe<] " ..
+               printable(dev.rx_text:sub(dev.rx_at - n, dev.rx_at - 1)) .. "\n")
     end
     answer(true)
   elseif g == 0x05 and c == 0x00 then             -- GET_AUX_CAPABILITY
@@ -564,8 +636,8 @@ local function execute()
     aux_apply(n, p, state)
     log("SET_AUX %d/%d %s hold %d", n, p, AUX_STATE[state], hold)
     if hold == 0 then answer(true) return end
-    pending = { at = frames + hold_frames(hold),
-                group = n, pin = p, after = after, g = g, c = c, ok = true }
+    dev.pending = { at = frames + hold_frames(hold),
+                    group = n, pin = p, after = after, g = g, c = c, ok = true }
   elseif g == 0x05 and c == 0x04 then             -- SET_AUX_AND_EXIT
     local state, after, hold, p, n = a[1], a[2], a[3], a[4], a[5]
     dev.cmd_resp = false
@@ -576,8 +648,8 @@ local function execute()
     aux_apply(n, p, state)
     log("SET_AUX_AND_EXIT %d/%d %s hold %d", n, p, AUX_STATE[state], hold)
     if hold ~= 0 then
-      pending = { at = frames + hold_frames(hold),
-                  group = n, pin = p, after = after }
+      dev.pending = { at = frames + hold_frames(hold),
+                      group = n, pin = p, after = after }
     end
   elseif g == 0x05 and c == 0x05 then             -- SET_AUX_SWITCH_EXIT
     local state, after, hold = a[1], a[2], a[3]
@@ -601,8 +673,8 @@ local function execute()
       aux_apply(n, p, state)
     end
     if hold ~= 0 then
-      pending = { at = frames + hold_frames(hold),
-                  group = n, pin = p, after = after }
+      dev.pending = { at = frames + hold_frames(hold),
+                      group = n, pin = p, after = after }
     end
   elseif g == 0x06 and c == 0x00 then             -- GET_LED_CAPABILITY
     put_data(0, 2)                                -- two LEDs
@@ -617,8 +689,8 @@ local function execute()
     put_data(8, 0x3F)                             -- every defined mode
     -- A host asking in a loop would otherwise bury the rest of the log, and
     -- the same answer a second time says nothing the first did not.
-    if last_led_info ~= n then
-      last_led_info = n
+    if dev.last_led_info ~= n then
+      dev.last_led_info = n
       log("GET_LED_INFO %d = %s", n, LED_TYPE[n] == 1 and "RGB" or "monochrome")
     end
     answer(true)
@@ -631,23 +703,23 @@ local function execute()
     log("SET_LED %d %s rgb %02X%02X%02X", led, MODE_NAME[mode] or mode, r, gr, b)
     answer(true)
   elseif g == 0x80 and c == 0x00 then             -- GET_COMMISSIONING_VERSION
-    put_data(0, COMM_VERSION & 0xFF) put_data(1, COMM_VERSION >> 8)
+    put_data(0, dev.comm_version & 0xFF) put_data(1, dev.comm_version >> 8)
     put_data(2, 0) put_data(3, 0)
-    log("GET_COMMISSIONING_VERSION = %d", COMM_VERSION)
+    log("GET_COMMISSIONING_VERSION = %d", dev.comm_version)
     answer(true)
   elseif g == 0x80 and c == 0x01 then             -- GET_COMMISSIONING_VALUE
     local key = a[4] | (a[5] << 8)
-    local v = (COMM_VERSION == 1) and COMM[key] or nil
+    local v = (dev.comm_version == 1) and dev.comm[key] or nil
     log("GET_COMMISSIONING_VALUE %d%s", key, v and "" or " missing")
     answer(v ~= nil and put_value(v, a[1], a[2] | (a[3] << 8)))
   elseif g == 0x80 and c == 0x02 then             -- GET_METADATA_STR
     local key = a[4] | (a[5] << 8) | (a[6] << 16) | (a[7] << 24)
-    local v = META_STR[key]
+    local v = dev.meta_str[key]
     log("GET_METADATA_STR $%02X = %s", key, v or "<not a string>")
     answer(v ~= nil and put_value(v, a[1], a[2] | (a[3] << 8)))
   elseif g == 0x80 and c == 0x03 then             -- GET_METADATA_UINT
     local key = a[1] | (a[2] << 8) | (a[3] << 16) | (a[4] << 24)
-    local v = META_UINT[key]
+    local v = dev.meta_uint[key]
     if v == nil then answer(false) return end
     for i = 0, 3 do put_data(i, (v >> (8 * i)) & 0xFF) end
     log("GET_METADATA_UINT $%02X = %d", key, v)
@@ -655,7 +727,7 @@ local function execute()
   elseif g == 0x80 and c == 0x04 then             -- GET_METADATA_ARRAY
     local count, index, width = a[1], a[2], a[3]
     local key = a[4] | (a[5] << 8) | (a[6] << 16) | (a[7] << 24)
-    local v = META_ARRAY[key]
+    local v = dev.meta_array[key]
     if count == 0 then count = 256 end
     if v == nil or index >= #v or width ~= 1 or 4 + count > BCH_SIZE - 8 then
       answer(false)
@@ -698,7 +770,12 @@ local function byte_in(b)
   end
   dev.cmd = b
   dev.args = {}
-  local n = (ARGS[dev.group] or {})[dev.cmd]
+  local n
+  if dev.group == 0x80 then
+    n = dev.info and INFO_ARGS[dev.cmd] or nil
+  else
+    n = (ARGS[dev.group] or {})[dev.cmd]
+  end
   if n == nil then
     dev.group, dev.cmd = nil, nil
     return
@@ -712,13 +789,18 @@ local function after_command()
   if not dev.cmd_resp then dev.knocked = false end
 end
 
--- The response byte, index 5, is the one a late answer holds back.  It shares
--- a word with the progress byte at index 4, so a word read at region offset 4
--- passes through here once for each.
+-- The progress byte, index 4, is the one a lagging device holds at pending,
+-- and the response byte, index 5, the one a late answer holds back.  They
+-- share a word, so a word read at region offset 4 passes through here once
+-- for each.
 local function bch_byte(i)
-  if i == 5 and late_left > 0 then
-    late_left = late_left - 1
-    return late_val
+  if i == 4 and dev.lag_left > 0 then
+    dev.lag_left = dev.lag_left - 1
+    return (~COMPLETE) & 0xFF
+  end
+  if i == 5 and dev.late_left > 0 then
+    dev.late_left = dev.late_left - 1
+    return dev.late_val
   end
   return bch[i] or 0
 end
@@ -726,33 +808,48 @@ end
 local mem = manager.machine.devices[":maincpu"].spaces["program"]
 
 -- The tap object has to be kept, or Lua collects it.  COLOR00 carries the boot
--- progress colour, and COL_YELLOW is written once.
+-- progress colour, and COL_YELLOW is written once.  On the 32-bit bus the tap
+-- covers the long, and COLOR00 is its high word.
 if dirty_byte then
-  dirty_tap = mem:install_write_tap(COLOR00, COLOR00 + 1, "dirty",
+  dirty_tap = mem:install_write_tap(COLOR00, COLOR00 + (WIDE and 3 or 1), "dirty",
                                     function(offset, data, mask)
-    if dirtied or data ~= COL_YELLOW then return data end
+    local colour = data
+    if WIDE then
+      if (mask & 0xFFFF0000) == 0 then return data end
+      colour = (data >> 16) & 0xFFFF
+    end
+    if dirtied or colour ~= COL_YELLOW then return data end
     dirtied = true
     for a = DIRTY_LOW, DIRTY_HIGH, 4 do
       mem:write_u32(a, (dirty_byte(a) << 24) | (dirty_byte(a + 1) << 16)
                      | (dirty_byte(a + 2) << 8) | dirty_byte(a + 3))
     end
+    dev = devs[0]
     log("chip RAM $%06X-$%06X dirtied with %s", DIRTY_LOW, DIRTY_HIGH, DIRTY)
     return data
   end)
 end
 
--- The tap object has to be kept, or Lua collects it.
-rbcp_tap = mem:install_read_tap(ROM_BASE, 0xFFFFFF, "rbcp", function(offset, data, mask)
-  if dev.switched then return data end
+-- One device's word of a back-channel read at CPU offset rel into the region.
+-- The specification puts the even region offset on D0-D7, which on a
+-- big-endian 68K is the higher CPU address of the pair.  Answering the whole
+-- word covers both lanes with no branch on the mask.
+local function bch_word(rel)
+  local n = rel // STRIDE * 2
+  return (bch_byte(n + 1) << 8) | bch_byte(n)
+end
+
+-- One device's part in a read.  It decodes a command byte from the address
+-- and returns its word of the data, or nil to leave the ROM's word.
+local function device_read(offset)
+  if dev.switched then return nil end
   if dev.cmd_resp and offset >= BCH_ABS and offset < BCH_ABS + BCH_SPAN then
-    local rel = offset - BCH_ABS
-    -- The specification puts the even region offset on D0-D7, which on a
-    -- big-endian 68K is the higher CPU address of the pair.  Answering the
-    -- whole word covers both lanes with no branch on the mask.
-    return (bch_byte(rel + 1) << 8) | bch_byte(rel)
+    if dev.bch_start ~= BCH_START then return nil end
+    return bch_word(offset - BCH_ABS)
   end
-  if offset < CMD_ABS then return data end
-  local b = (offset - CMD_ABS) >> 1
+  if offset < CMD_ABS then return nil end
+  if dev.cmd_resp and (dev_word(offset) >> 8) ~= dev.page then return nil end
+  local b = (offset - CMD_ABS) // STRIDE
   local finished = (dev.want == 1)
   if DEBUG then
     log("byte $%02X (group=%s cmd=%s want=%d)", b, tostring(dev.group),
@@ -761,6 +858,23 @@ rbcp_tap = mem:install_read_tap(ROM_BASE, 0xFFFFFF, "rbcp", function(offset, dat
   byte_in(b)
   if finished or (dev.group ~= nil and dev.cmd ~= nil and dev.want == 0) then
     after_command()
+  end
+  return nil
+end
+
+-- The tap object has to be kept, or Lua collects it.
+rbcp_tap = mem:install_read_tap(ROM_BASE, 0xFFFFFF, "rbcp", function(offset, data, mask)
+  if not WIDE then
+    dev, bch = devs[0], devs[0].bch
+    return device_read(offset) or data
+  end
+  for k = 0, DEVICES - 1 do
+    dev, bch = devs[k], devs[k].bch
+    local w = device_read(offset)
+    if w then
+      local shift = (k == 0) and 16 or 0
+      data = (data & ~(0xFFFF << shift)) | (w << shift)
+    end
   end
   return data
 end)
@@ -828,11 +942,16 @@ local RMB = (MOUSE > 0 or RCLICK > 0) and need_field("P1 Button 2") or nil
 
 emu.register_frame_done(function()
   frames = frames + 1
-  if pending and frames >= pending.at then
-    aux_apply(pending.group, pending.pin, pending.after)
-    if pending.ok then answer(true, pending.g, pending.c) end
-    pending = nil
+  for k = 0, DEVICES - 1 do
+    dev, bch = devs[k], devs[k].bch
+    local p = dev.pending
+    if p and frames >= p.at then
+      aux_apply(p.group, p.pin, p.after)
+      if p.ok then answer(true, p.g, p.c) end
+      dev.pending = nil
+    end
   end
+  dev, bch = devs[0], devs[0].bch
 
   if MOUSE > 0 then
     if frames < MOUSE then
@@ -861,7 +980,12 @@ emu.register_frame_done(function()
     end
   end
 
-  if dev.switched then
+  -- The session ends once every device has switched.
+  local switched = true
+  for k = 0, DEVICES - 1 do
+    if not devs[k].switched then switched = false end
+  end
+  if switched then
     if switch_img then
       -- The image is already in the socket.  The tap belonged to the session
       -- that has just ended, and every Kickstart fetch would otherwise come
@@ -869,7 +993,7 @@ emu.register_frame_done(function()
       log("switched to ram slot %d, now serving %s", dev.switched, SWITCH_IMG)
       rbcp_tap:remove()
       rbcp_tap, switch_img = nil, nil
-      dev.switched = nil
+      for k = 0, DEVICES - 1 do devs[k].switched = nil end
     else
       log("switched, and nothing to switch to — stopping at frame %d", frames)
       pipe_flush()

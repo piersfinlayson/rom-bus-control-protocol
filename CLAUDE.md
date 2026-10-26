@@ -81,7 +81,8 @@ Adding one under `reference/host/` means all of:
 - 6502: cc65 (`ca65`, `ld65`, `ar65`), from `brew install cc65` or `apt install
   cc65`.
 - 68K: `vasmm68k_mot`, built from the tarball at
-  http://sun.hasenbraten.de/vasm/ with `make CPU=m68k SYNTAX=mot`.
+  http://sun.hasenbraten.de/vasm/ with `make CPU=m68k SYNTAX=mot`. The Amiga
+  bootloader's 32-bit build also requires Python 3.
 - Apple II testing: MAME, plus the machine's ROM files, which are not in the
   repository and must be supplied as a path.
 - C64 and VIC-20 testing: MAME, plus the machines' ROM files, which are not in

@@ -1,12 +1,16 @@
 {
     "kind": "rom",
     "name": "Amiga RBCP Reference Bootloader",
-    "description": "An Amiga Kickstart bootloader reference implementation. 256KB and 512KB images.",
+    "description": "An Amiga Kickstart bootloader reference implementation. 256KB, 512KB and 32-bit images.",
     "machine": "amiga",
     "zip": "amiga",
     "build": "make images",
     "files": {
         "amiga_boot_256k.bin": {"variant": "256k"},
-        "amiga_boot_512k.bin": {"variant": "512k"}
+        "amiga_boot_512k.bin": {"variant": "512k"},
+        "amiga_boot_32bit_256k_hi.bin": {"variant": "32bit-256k-hi"},
+        "amiga_boot_32bit_256k_lo.bin": {"variant": "32bit-256k-lo"},
+        "amiga_boot_32bit_512k_hi.bin": {"variant": "32bit-512k-hi"},
+        "amiga_boot_32bit_512k_lo.bin": {"variant": "32bit-512k-lo"}
     }
 }
