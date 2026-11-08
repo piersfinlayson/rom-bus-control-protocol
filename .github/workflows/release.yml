@@ -51,7 +51,8 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#spec/}" >> $GITHUB_OUTPUT
 
-      # Fails if a binary listed in an app.json wasn't built.
+      # Fails if a binary listed in an app.json wasn't built, or if the
+      # specification's version or changelog heading is wrong for the tag.
       - name: Gather the artefacts and write the release body
         env:
           VERSION: ${{ steps.version.outputs.version }}

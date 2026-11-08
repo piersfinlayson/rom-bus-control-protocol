@@ -15,12 +15,14 @@ binaries.
   level of each zip.
 - notes writes the release body to stdout. The body is <changelog>'s section
   for <version> and the applications in each zip. <changelog> is
-  spec/CHANGELOG.md by default.
+  spec/CHANGELOG.md by default. It fails if spec/rbcp.md's version is not
+  <version>, or if the section's heading has no date.
 
 See RELEASE.md.
 """
 
 import argparse
+import datetime
 import os
 import shlex
 import subprocess
@@ -30,6 +32,7 @@ import zipfile
 import apps
 
 CHANGELOG = os.path.join(apps.ROOT, "spec", "CHANGELOG.md")
+SPEC = os.path.join(apps.ROOT, "spec", "rbcp.md")
 
 
 def die(message):
@@ -83,33 +86,58 @@ def build_zips(outdir):
 
 
 def section(text, version):
-    """The body of the changelog's section for a version, without its heading."""
+    """The date in the heading of the changelog's section for a version, and
+    the section's body without its heading. None if there is no section."""
     wanted = version.lstrip("v")
     body = []
     found = False
+    date = ""
     for line in text.splitlines():
         if line.startswith("## "):
             if found:
                 break
-            heading = line[3:].split(" - ")[0].strip()
-            found = heading.lstrip("v") == wanted
+            heading = line[3:].split(" - ")
+            found = heading[0].strip().lstrip("v") == wanted
+            if found and len(heading) > 1:
+                date = heading[1].strip()
             continue
         if found:
             body.append(line)
     if not found:
         return None
-    return "\n".join(body).strip()
+    return date, "\n".join(body).strip()
+
+
+def spec_version():
+    """The version on the specification's Version: line, or None."""
+    try:
+        with open(SPEC) as f:
+            for line in f:
+                if line.startswith("Version:"):
+                    return line[len("Version:"):].strip()
+    except OSError as e:
+        die(str(e))
+    return None
 
 
 def notes(version, changelog):
+    spec = spec_version()
+    if spec != version.lstrip("v"):
+        die("%s is version %s, not %s" % (SPEC, spec, version))
     try:
         with open(changelog) as f:
             text = f.read()
     except OSError as e:
         die(str(e))
-    changes = section(text, version)
-    if changes is None:
+    found = section(text, version)
+    if found is None:
         die("%s has no section for %s" % (changelog, version))
+    date, changes = found
+    try:
+        datetime.datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        die("%s: the heading for %s has %r, not a date"
+            % (changelog, version, date))
     out = ["## Specification %s" % version, "", changes, "",
            "The specification is the attached `rbcp.md`.", "",
            "## Applications", ""]

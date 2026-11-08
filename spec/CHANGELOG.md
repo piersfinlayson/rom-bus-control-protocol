@@ -2,7 +2,7 @@
 
 Substantive changes to the specification are documented in this file.
 
-## v0.1.4 - UNRELEASED
+## v0.1.4 - 2026-11-08
 
 - Clarify group of 0xAA on SET_AUX is not allowed.
 - Correct the reserved ROM type range to 0x27–0x7F, which overlapped the assigned 0x25

@@ -13,7 +13,8 @@ its own version, never at the tag.
 1. Set the version at the top of `spec/rbcp.md`, and record the changes in
    `spec/CHANGELOG.md` under a heading with that version. That section opens
    the release body, so a version without a section of its own fails the
-   release.
+   release. So does a heading without a date, or a version at the top of
+   `spec/rbcp.md` other than the tag's.
 2. Raise the version of every application whose code changed since the last
    release, as in **An application release**.
 3. Tag and push. `release.yml` builds the ROM images and `romsel.exe` and
